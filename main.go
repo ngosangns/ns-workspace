@@ -73,10 +73,13 @@ func run(args []string) error {
 		return nil
 	}
 	switch cmd {
-	case "init", "update", "status", "doctor", "registry":
+	case "init", "update", "status", "doctor", "registry", "preview":
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", cmd)
+	}
+	if cmd == "preview" {
+		return runPreview(args[1:])
 	}
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
@@ -122,6 +125,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest status [flags]
   go run github.com/ngosangns/ns-workspace@latest doctor [flags]
   go run github.com/ngosangns/ns-workspace@latest registry [flags]
+  go run github.com/ngosangns/ns-workspace@latest preview [flags]
 
 Flags:
   --agents-home PATH   shared home, default ~/.agents
@@ -130,7 +134,13 @@ Flags:
   --force             replace existing files during init
   --copy              copy instead of symlink
   --no-mcp            skip MCP config
-  --no-registry       skip skills registry installation`)
+  --no-registry       skip skills registry installation
+
+Preview flags:
+  --project PATH      project root to inspect, default current directory
+  --specs-dir PATH    specs directory, default specs
+  --addr HOST:PORT    local server address, default 127.0.0.1:8787
+  --open              open browser after the server starts`)
 }
 
 func apply(opt options, update bool) error {

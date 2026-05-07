@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spec Preview</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="mark">SP</div>
+        <div>
+          <div class="brand-title">Spec Preview</div>
+          <div class="brand-subtitle" id="projectName">Loading</div>
+        </div>
+      </div>
+      <input id="search" class="search" placeholder="Search specs" />
+      <div class="filters">
+        <select id="categoryFilter"><option value="">All categories</option></select>
+        <select id="statusFilter"><option value="">All statuses</option></select>
+        <select id="complianceFilter"><option value="">All compliance</option></select>
+      </div>
+      <nav id="specList" class="spec-list"></nav>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Overview</h1>
+          <p id="pagePath"></p>
+        </div>
+        <div class="tabs">
+          <button class="tab active" data-tab="overview">Overview</button>
+          <button class="tab" data-tab="spec">Spec</button>
+          <button class="tab" data-tab="graph">Graph</button>
+        </div>
+      </header>
+
+      <section id="overviewTab" class="panel active">
+        <div id="summaryCards" class="cards"></div>
+        <div class="split">
+          <article class="surface">
+            <h2>Sync State</h2>
+            <dl id="syncState" class="kv"></dl>
+          </article>
+          <article class="surface">
+            <h2>Warnings</h2>
+            <div id="warnings" class="warnings"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="specTab" class="panel">
+        <article id="specContent" class="markdown surface"></article>
+      </section>
+
+      <section id="graphTab" class="panel">
+        <div class="graph-shell">
+          <svg id="graphSvg" viewBox="0 0 1200 720" role="img" aria-label="Spec dependency graph"></svg>
+          <aside class="relationship-panel">
+            <h2>Relationships</h2>
+            <div id="relationships"></div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
