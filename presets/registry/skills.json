@@ -1,0 +1,34 @@
+{
+  "skills": [
+    {
+      "name": "find-skills",
+      "source": "vercel-labs/skills",
+      "skill": "find-skills"
+    },
+    {
+      "name": "dispatching-parallel-agents",
+      "source": "obra/superpowers",
+      "skill": "dispatching-parallel-agents"
+    },
+    {
+      "name": "gitbutler",
+      "source": "aheritier/boost-your-ai",
+      "skill": "gitbutler"
+    },
+    {
+      "name": "graphify",
+      "source": "howell5/willhong-skills",
+      "skill": "graphify"
+    },
+    {
+      "name": "likec4-dsl",
+      "source": "likec4.dev",
+      "skill": "likec4-dsl"
+    },
+    {
+      "name": "refactor",
+      "source": "github/awesome-copilot",
+      "skill": "refactor"
+    }
+  ]
+}
