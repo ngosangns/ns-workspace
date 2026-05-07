@@ -29,7 +29,7 @@ async function load() {
     fetchJSON("/api/specs"),
     fetchJSON("/api/graph"),
   ]);
-  state.project = project.summary;
+  state.project = project;
   state.specs = specs;
   state.graph = graph;
   state.selectedId = specs.find((spec) => spec.path === "overview.md")?.id || specs[0]?.id || "";
