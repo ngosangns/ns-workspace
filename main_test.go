@@ -20,7 +20,7 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".agents", "AGENTS.md"))
 	mustExist(t, filepath.Join(home, ".agents", "agents", "spec-guardian.md"))
 	mustExist(t, filepath.Join(home, ".agents", "registry", "skills.json"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "add-new-element-shape", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "changeset-generator", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".agents", "settings.json"))
 	mustExist(t, filepath.Join(home, ".agents", "mcp", "servers.json"))
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))

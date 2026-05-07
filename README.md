@@ -8,6 +8,7 @@ go run github.com/ngosangns/ns-workspace@latest status
 go run github.com/ngosangns/ns-workspace@latest doctor
 go run github.com/ngosangns/ns-workspace@latest update
 go run github.com/ngosangns/ns-workspace@latest registry
+go run github.com/ngosangns/ns-workspace@latest preview --project /path/to/project
 ```
 
 The CLI uses `~/.agents` as the source of truth, then syncs supported tools to their native locations.
@@ -49,6 +50,7 @@ MCP presets are merged directly for OpenCode, Kimi, and Qwen. Claude Code uses i
 - `status`: show installed, missing, and linked paths.
 - `doctor`: validate JSON config and report installed local agent CLIs.
 - `registry`: install only registry-managed skills.
+- `preview`: run a local web dashboard for a project's `specs/` folder.
 
 ## Useful Flags
 
@@ -63,3 +65,21 @@ MCP presets are merged directly for OpenCode, Kimi, and Qwen. Claude Code uses i
 ```
 
 Use `--copy` if symlinks are not desirable on your machine.
+
+## Spec Preview
+
+`preview` starts a localhost-only web server that reads a Viclass-style `specs/` folder and renders a Notion-like dashboard with the spec list, Markdown preview, sync state, dependency graph, and relationship map.
+
+```bash
+go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass
+go run github.com/ngosangns/ns-workspace@latest preview --project . --addr 127.0.0.1:8787 --open
+```
+
+Preview flags:
+
+```bash
+--project PATH
+--specs-dir specs
+--addr 127.0.0.1:8787
+--open
+```
