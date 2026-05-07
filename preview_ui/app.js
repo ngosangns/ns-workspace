@@ -2,6 +2,7 @@ const state = {
   project: null,
   specs: [],
   graph: null,
+  graphInstance: null,
   selectedId: "",
   tab: "overview",
 };
@@ -19,9 +20,14 @@ const els = {
   syncState: document.querySelector("#syncState"),
   warnings: document.querySelector("#warnings"),
   specContent: document.querySelector("#specContent"),
-  graphSvg: document.querySelector("#graphSvg"),
+  graphCanvas: document.querySelector("#graphCanvas"),
   relationships: document.querySelector("#relationships"),
 };
+
+marked.use({
+  gfm: true,
+  breaks: false,
+});
 
 async function load() {
   const [project, specs, graph] = await Promise.all([
@@ -80,19 +86,26 @@ function renderOverview() {
     ["Graph edges", state.graph.edges.length],
   ].forEach(([label, value]) => {
     const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = `<div class="card-value">${escapeHTML(String(value))}</div><div class="card-label">${label}</div>`;
+    card.className = "card border border-base-300 bg-base-100 shadow-sm";
+    card.innerHTML = `
+      <div class="card-body gap-1 p-4">
+        <div class="text-3xl font-bold">${escapeHTML(String(value))}</div>
+        <div class="text-sm text-base-content/60">${label}</div>
+      </div>
+    `;
     els.summaryCards.append(card);
   });
 
   els.syncState.innerHTML = "";
   const syncEntries = Object.entries(project.sync || {});
   if (syncEntries.length === 0) {
-    els.syncState.innerHTML = "<dt>State</dt><dd>Unavailable</dd>";
+    els.syncState.innerHTML = '<dt class="text-base-content/60">State</dt><dd>Unavailable</dd>';
   } else {
     syncEntries.forEach(([key, value]) => {
       const dt = document.createElement("dt");
       const dd = document.createElement("dd");
+      dt.className = "text-base-content/60";
+      dd.className = "break-words";
       dt.textContent = key;
       dd.textContent = value;
       els.syncState.append(dt, dd);
@@ -102,11 +115,11 @@ function renderOverview() {
   els.warnings.innerHTML = "";
   const warnings = project.warnings || [];
   if (warnings.length === 0) {
-    els.warnings.innerHTML = '<div class="warning" style="color: var(--ok); background: #eaf8f0;">No structural warnings.</div>';
+    els.warnings.innerHTML = '<div class="alert alert-success py-3 text-sm">No structural warnings.</div>';
   } else {
     warnings.forEach((warning) => {
       const item = document.createElement("div");
-      item.className = "warning";
+      item.className = "alert alert-warning py-3 text-sm";
       item.textContent = warning;
       els.warnings.append(item);
     });
@@ -134,15 +147,18 @@ function renderSpecList() {
     if (spec.category !== lastCategory) {
       lastCategory = spec.category;
       const label = document.createElement("div");
-      label.className = "group-label";
+      label.className = "px-2 pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-base-content/50";
       label.textContent = lastCategory;
       els.specList.append(label);
     }
     const button = document.createElement("button");
-    button.className = `spec-item ${spec.id === state.selectedId ? "active" : ""}`;
+    button.className = [
+      "btn btn-ghost btn-sm grid h-auto min-h-9 w-full grid-cols-[minmax(0,1fr)_auto] justify-start gap-2 px-2 text-left font-normal",
+      spec.id === state.selectedId ? "btn-active" : "",
+    ].join(" ");
     button.innerHTML = `
-      <span class="spec-title">${escapeHTML(spec.title)}</span>
-      ${spec.status ? `<span class="pill">${escapeHTML(spec.status)}</span>` : ""}
+      <span class="truncate">${escapeHTML(spec.title)}</span>
+      ${spec.status ? `<span class="badge badge-ghost badge-sm">${escapeHTML(spec.status)}</span>` : ""}
     `;
     button.addEventListener("click", () => selectSpec(spec.id, true));
     els.specList.append(button);
@@ -154,122 +170,156 @@ async function selectSpec(id, showSpecTab) {
   state.selectedId = id;
   els.pageTitle.textContent = spec.title;
   els.pagePath.textContent = spec.path;
-  els.specContent.innerHTML = spec.html || "<p>No content.</p>";
+  els.specContent.innerHTML = renderMarkdown(spec.raw, spec.html);
   renderSpecList();
   highlightGraphNode(id);
   if (showSpecTab) switchTab("spec");
 }
 
+function renderMarkdown(raw, fallbackHTML) {
+  if (!raw) {
+    return fallbackHTML || "<p>No content.</p>";
+  }
+  return DOMPurify.sanitize(marked.parse(raw));
+}
+
 function switchTab(name) {
   state.tab = name;
-  document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
+  document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("tab-active", tab.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((panel) => panel.classList.remove("active"));
   document.querySelector(`#${name}Tab`).classList.add("active");
+  if (name === "graph" && state.graphInstance) {
+    state.graphInstance.resize();
+    state.graphInstance.fit(undefined, 36);
+  }
 }
 
 function renderGraph() {
   const { nodes, edges, relationships } = state.graph;
-  const width = 1200;
-  const height = 720;
-  const cx = width / 2;
-  const cy = height / 2;
-  const radius = Math.min(width, height) * 0.38;
-  const positions = new Map();
-  nodes.forEach((node, index) => {
-    const angle = (Math.PI * 2 * index) / Math.max(nodes.length, 1) - Math.PI / 2;
-    positions.set(node.id, {
-      x: cx + Math.cos(angle) * radius,
-      y: cy + Math.sin(angle) * radius,
-    });
+  const elements = [
+    ...nodes.map((node) => ({
+      data: {
+        id: node.id,
+        label: node.id,
+        title: node.label,
+        specId: node.specId || "",
+        category: node.category || "unknown",
+        status: node.status || "",
+      },
+    })),
+    ...edges.map((edge, index) => ({
+      data: {
+        id: `edge-${index}-${edge.from}-${edge.to}`,
+        source: edge.from,
+        target: edge.to,
+        label: edge.label || "",
+      },
+    })),
+  ];
+
+  state.graphInstance = cytoscape({
+    container: els.graphCanvas,
+    elements,
+    wheelSensitivity: 0.18,
+    minZoom: 0.22,
+    maxZoom: 2.2,
+    style: [
+      {
+        selector: "node",
+        style: {
+          "background-color": "mapData(category, root, versions, #e5e7eb, #e0f2fe)",
+          "border-color": "#ffffff",
+          "border-width": 3,
+          color: "#232529",
+          label: "data(label)",
+          "font-size": 12,
+          "text-wrap": "wrap",
+          "text-max-width": 120,
+          "text-valign": "bottom",
+          "text-margin-y": 10,
+          height: 44,
+          width: 44,
+        },
+      },
+      {
+        selector: "node[category = 'modules']",
+        style: { "background-color": "#dbeafe" },
+      },
+      {
+        selector: "node[category = 'shared']",
+        style: { "background-color": "#dcfce7" },
+      },
+      {
+        selector: "node[category = 'compliance']",
+        style: { "background-color": "#fef3c7" },
+      },
+      {
+        selector: "node[category = 'docs']",
+        style: { "background-color": "#fce7f3" },
+      },
+      {
+        selector: "edge",
+        style: {
+          "curve-style": "bezier",
+          "line-color": "#aab1ba",
+          "target-arrow-color": "#aab1ba",
+          "target-arrow-shape": "triangle",
+          width: 1.4,
+        },
+      },
+      {
+        selector: ".selected",
+        style: {
+          "border-color": "#2563eb",
+          "border-width": 6,
+        },
+      },
+    ],
+    layout: {
+      name: "cose",
+      animate: false,
+      fit: true,
+      padding: 48,
+      nodeRepulsion: 100000,
+      idealEdgeLength: 96,
+    },
   });
 
-  els.graphSvg.innerHTML = `
-    <defs>
-      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" fill="#aab1ba"></path>
-      </marker>
-    </defs>
-  `;
-  edges.forEach((edge) => {
-    const from = positions.get(edge.from);
-    const to = positions.get(edge.to);
-    if (!from || !to) return;
-    const line = svg("line", {
-      class: "edge",
-      x1: from.x,
-      y1: from.y,
-      x2: to.x,
-      y2: to.y,
-      "marker-end": "url(#arrow)",
-    });
-    els.graphSvg.append(line);
-  });
-  nodes.forEach((node) => {
-    const pos = positions.get(node.id);
-    const group = svg("g", { class: "node", "data-spec-id": node.specId || "" });
-    group.append(svg("circle", { cx: pos.x, cy: pos.y, r: 34, fill: colorFor(node.category), stroke: "#fff", "stroke-width": 3 }));
-    const text = svg("text", {
-      x: pos.x,
-      y: pos.y + 52,
-      "text-anchor": "middle",
-      "font-size": 13,
-      fill: "#232529",
-    });
-    text.textContent = node.id;
-    group.append(text);
-    if (node.specId) {
-      group.addEventListener("click", () => selectSpec(node.specId, true));
+  state.graphInstance.on("tap", "node", (event) => {
+    const specId = event.target.data("specId");
+    if (specId) {
+      selectSpec(specId, true);
     }
-    els.graphSvg.append(group);
   });
   highlightGraphNode(state.selectedId);
+  renderRelationships(relationships);
+}
 
+function renderRelationships(relationships) {
   els.relationships.innerHTML = "";
-  relationships.slice(0, 120).forEach((rel) => {
+  relationships.slice(0, 160).forEach((rel) => {
     const item = document.createElement("div");
-    item.className = "relation";
-    item.innerHTML = `<strong>${escapeHTML(rel.from)} → ${escapeHTML(rel.to)}</strong><span>${escapeHTML(rel.description || rel.section || "")}</span>`;
+    item.className = "py-3 text-sm";
+    item.innerHTML = `
+      <div class="font-semibold">${escapeHTML(rel.from)} → ${escapeHTML(rel.to)}</div>
+      <div class="text-base-content/60">${escapeHTML(rel.description || rel.section || "")}</div>
+    `;
     els.relationships.append(item);
   });
   if (relationships.length === 0) {
-    els.relationships.innerHTML = "<p>No relationship map entries found.</p>";
+    els.relationships.innerHTML = '<p class="text-sm text-base-content/60">No relationship map entries found.</p>';
   }
 }
 
 function highlightGraphNode(specId) {
-  document.querySelectorAll(".node circle").forEach((circle) => circle.setAttribute("stroke", "#fff"));
-  document.querySelectorAll(`.node[data-spec-id="${cssEscape(specId)}"] circle`).forEach((circle) => {
-    circle.setAttribute("stroke", "#2563eb");
-    circle.setAttribute("stroke-width", "5");
-  });
-}
-
-function svg(tag, attrs) {
-  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
-  return el;
-}
-
-function colorFor(category) {
-  const palette = {
-    modules: "#dbeafe",
-    shared: "#dcfce7",
-    compliance: "#fef3c7",
-    planning: "#ede9fe",
-    docs: "#fce7f3",
-    versions: "#e0f2fe",
-    root: "#e5e7eb",
-  };
-  return palette[category] || "#e5e7eb";
+  if (!state.graphInstance) return;
+  state.graphInstance.nodes().removeClass("selected");
+  if (!specId) return;
+  state.graphInstance.nodes().filter((node) => node.data("specId") === specId).addClass("selected");
 }
 
 function escapeHTML(value) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-}
-
-function cssEscape(value) {
-  if (window.CSS && CSS.escape) return CSS.escape(value);
-  return value.replace(/"/g, '\\"');
 }
 
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));

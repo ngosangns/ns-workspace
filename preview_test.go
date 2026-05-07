@@ -89,3 +89,21 @@ func TestPreviewUIUsesProjectSummaryResponse(t *testing.T) {
 		t.Fatalf("preview UI should use /api/project summary response directly")
 	}
 }
+
+func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlText := string(html)
+	appText := string(app)
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "marked", "DOMPurify", "cytoscape"} {
+		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
+			t.Fatalf("preview UI missing %s integration", want)
+		}
+	}
+}
