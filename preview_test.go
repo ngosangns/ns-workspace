@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -76,5 +77,15 @@ overview → editor.core
 func TestPreviewHelpIsAccepted(t *testing.T) {
 	if err := run([]string{"preview", "--help"}); err != nil {
 		t.Fatalf("preview help failed: %v", err)
+	}
+}
+
+func TestPreviewUIUsesProjectSummaryResponse(t *testing.T) {
+	data, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "project.summary") {
+		t.Fatalf("preview UI should use /api/project summary response directly")
 	}
 }
