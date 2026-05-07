@@ -1,71 +1,107 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Spec Preview</title>
+    <script>
+      tailwind = {
+        config: {
+          theme: {
+            extend: {
+              fontFamily: {
+                sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body>
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="mark">SP</div>
-        <div>
-          <div class="brand-title">Spec Preview</div>
-          <div class="brand-subtitle" id="projectName">Loading</div>
+  <body class="min-h-screen bg-base-200 text-base-content">
+    <div class="grid min-h-screen grid-cols-1 lg:grid-cols-[22rem_minmax(0,1fr)]">
+      <aside class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:h-screen lg:max-h-none lg:border-b-0 lg:border-r">
+        <div class="mb-4 flex items-center gap-3">
+          <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-sm font-bold text-neutral-content">SP</div>
+          <div class="min-w-0">
+            <div class="font-bold">Spec Preview</div>
+            <div id="projectName" class="text-base-content/60 truncate text-sm">Loading</div>
+          </div>
         </div>
-      </div>
-      <input id="search" class="search" placeholder="Search specs" />
-      <div class="filters">
-        <select id="categoryFilter"><option value="">All categories</option></select>
-        <select id="statusFilter"><option value="">All statuses</option></select>
-        <select id="complianceFilter"><option value="">All compliance</option></select>
-      </div>
-      <nav id="specList" class="spec-list"></nav>
-    </aside>
 
-    <main class="workspace">
-      <header class="topbar">
-        <div>
-          <h1 id="pageTitle">Overview</h1>
-          <p id="pagePath"></p>
+        <label class="input input-bordered mb-3 flex h-10 items-center gap-2">
+          <span class="text-base-content/50">Search</span>
+          <input id="search" class="grow" placeholder="Spec name, path, status" />
+        </label>
+
+        <div class="mb-4 grid gap-2">
+          <select id="categoryFilter" class="select select-bordered select-sm w-full"><option value="">All categories</option></select>
+          <select id="statusFilter" class="select select-bordered select-sm w-full"><option value="">All statuses</option></select>
+          <select id="complianceFilter" class="select select-bordered select-sm w-full"><option value="">All compliance</option></select>
         </div>
-        <div class="tabs">
-          <button class="tab active" data-tab="overview">Overview</button>
-          <button class="tab" data-tab="spec">Spec</button>
-          <button class="tab" data-tab="graph">Graph</button>
-        </div>
-      </header>
 
-      <section id="overviewTab" class="panel active">
-        <div id="summaryCards" class="cards"></div>
-        <div class="split">
-          <article class="surface">
-            <h2>Sync State</h2>
-            <dl id="syncState" class="kv"></dl>
-          </article>
-          <article class="surface">
-            <h2>Warnings</h2>
-            <div id="warnings" class="warnings"></div>
-          </article>
-        </div>
-      </section>
+        <nav id="specList" class="space-y-1"></nav>
+      </aside>
 
-      <section id="specTab" class="panel">
-        <article id="specContent" class="markdown surface"></article>
-      </section>
+      <main class="min-w-0">
+        <header class="bg-base-200/90 border-base-300 sticky top-0 z-10 flex flex-col gap-4 border-b px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+          <div class="min-w-0">
+            <h1 id="pageTitle" class="truncate text-2xl font-bold tracking-normal">Overview</h1>
+            <p id="pagePath" class="text-base-content/60 truncate text-sm"></p>
+          </div>
+          <div role="tablist" class="tabs tabs-boxed w-fit">
+            <button class="tab tab-active" data-tab="overview">Overview</button>
+            <button class="tab" data-tab="spec">Spec</button>
+            <button class="tab" data-tab="graph">Graph</button>
+          </div>
+        </header>
 
-      <section id="graphTab" class="panel">
-        <div class="graph-shell">
-          <svg id="graphSvg" viewBox="0 0 1200 720" role="img" aria-label="Spec dependency graph"></svg>
-          <aside class="relationship-panel">
-            <h2>Relationships</h2>
-            <div id="relationships"></div>
-          </aside>
-        </div>
-      </section>
-    </main>
+        <section id="overviewTab" class="panel active p-5">
+          <div id="summaryCards" class="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-5"></div>
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+            <article class="card border-base-300 bg-base-100 border">
+              <div class="card-body">
+                <h2 class="card-title text-base">Sync State</h2>
+                <dl id="syncState" class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm"></dl>
+              </div>
+            </article>
+            <article class="card border-base-300 bg-base-100 border">
+              <div class="card-body">
+                <h2 class="card-title text-base">Warnings</h2>
+                <div id="warnings" class="grid gap-2"></div>
+              </div>
+            </article>
+          </div>
+        </section>
 
+        <section id="specTab" class="panel p-5">
+          <article id="specContent" class="markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"></article>
+        </section>
+
+        <section id="graphTab" class="panel p-5">
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+            <div class="card border-base-300 bg-base-100 border">
+              <div class="card-body p-0">
+                <div id="graphCanvas" class="h-[70vh] min-h-[34rem] w-full"></div>
+              </div>
+            </div>
+            <aside class="card border-base-300 bg-base-100 max-h-[70vh] border">
+              <div class="card-body overflow-auto">
+                <h2 class="card-title text-base">Relationships</h2>
+                <div id="relationships" class="divide-base-300 divide-y"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
