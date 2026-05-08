@@ -20,6 +20,7 @@ const state = {
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
+  applyingRoute: false,
 };
 
 const els = {
@@ -78,7 +79,8 @@ async function load() {
   state.specs = specs;
   state.graph = graph;
   state.likec4 = null;
-  state.selectedId = specs.find((spec) => spec.path === "overview.md")?.id || specs[0]?.id || "";
+  const route = routeFromLocation();
+  state.selectedId = validSpecId(route.spec) || defaultSpecId();
   renderFilters();
   renderOverview();
   renderSpecList();
@@ -86,10 +88,12 @@ async function load() {
   if (state.selectedId) {
     await selectSpec(state.selectedId, false);
   }
+  switchTab(route.tab || "overview", { updateURL: false });
 }
 
 async function reloadPreviewData() {
   const previousSelection = state.selectedId;
+  const route = routeFromLocation();
   const [project, specs, graph] = await Promise.all([
     fetchJSON("/api/project"),
     fetchJSON("/api/specs"),
@@ -99,9 +103,7 @@ async function reloadPreviewData() {
   state.specs = specs;
   state.graph = graph;
   state.likec4 = null;
-  state.selectedId = specs.some((spec) => spec.id === previousSelection)
-    ? previousSelection
-    : specs.find((spec) => spec.path === "overview.md")?.id || specs[0]?.id || "";
+  state.selectedId = validSpecId(route.spec) || validSpecId(previousSelection) || defaultSpecId();
   renderFilters();
   renderOverview();
   renderSpecList();
@@ -109,9 +111,19 @@ async function reloadPreviewData() {
   if (state.selectedId) {
     await selectSpec(state.selectedId, false);
   }
+  switchTab(route.tab || state.tab || "overview", { updateURL: false });
   if (state.tab === "models") {
     await loadLikeC4Models(true);
   }
+}
+
+function defaultSpecId() {
+  return state.specs.find((spec) => spec.path === "overview.md")?.id || state.specs[0]?.id || "";
+}
+
+function validSpecId(id) {
+  if (!id) return "";
+  return state.specs.some((spec) => spec.id === id) ? id : "";
 }
 
 async function fetchJSON(path) {
@@ -323,7 +335,8 @@ function expandAllVisibleFolders(node) {
   });
 }
 
-async function selectSpec(id, showSpecTab) {
+async function selectSpec(id, showSpecTab, options = {}) {
+  const updateURL = options.updateURL !== false;
   const spec = await fetchJSON(`/api/specs/${encodeURIComponent(id)}`);
   state.selectedId = id;
   els.pageTitle.textContent = spec.title;
@@ -333,7 +346,11 @@ async function selectSpec(id, showSpecTab) {
   await renderMermaidBlocks(els.specContent);
   renderSpecList();
   highlightGraphNode(id);
-  if (showSpecTab) switchTab("spec");
+  if (showSpecTab) {
+    switchTab("spec", { updateURL });
+  } else if (updateURL && state.tab === "spec") {
+    updateRouteURL("spec");
+  }
 }
 
 function renderMarkdown(raw, fallbackHTML) {
@@ -557,7 +574,8 @@ async function postJSON(path, payload) {
   return res.json();
 }
 
-function switchTab(name) {
+function switchTab(name, options = {}) {
+  const updateURL = options.updateURL !== false;
   state.tab = name;
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("tab-active", tab.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((panel) => panel.classList.remove("active"));
@@ -568,6 +586,51 @@ function switchTab(name) {
   }
   if (name === "models") {
     loadLikeC4Models(false);
+  }
+  if (updateURL) {
+    updateRouteURL(name);
+  }
+}
+
+function routeFromLocation() {
+  const hash = decodeURIComponent(window.location.hash || "").replace(/^#\/?/, "");
+  const [tab = "", ...rest] = hash.split("/");
+  if (["overview", "graph", "models"].includes(tab)) {
+    return { tab };
+  }
+  if (tab === "spec") {
+    return { tab: "spec", spec: rest.join("/") };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const queryTab = params.get("tab") || "";
+  const querySpec = params.get("spec") || "";
+  if (["overview", "graph", "models", "spec"].includes(queryTab)) {
+    return { tab: queryTab, spec: querySpec };
+  }
+  return {};
+}
+
+function updateRouteURL(tab) {
+  if (state.applyingRoute) return;
+  const route = tab === "spec" ? `/spec/${encodeURIComponent(state.selectedId || defaultSpecId())}` : `/${tab}`;
+  const next = `${window.location.pathname}${window.location.search}#${route}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next !== current) {
+    window.history.pushState({ tab, spec: state.selectedId }, "", next);
+  }
+}
+
+async function applyRouteFromLocation() {
+  const route = routeFromLocation();
+  const tab = route.tab || "overview";
+  state.applyingRoute = true;
+  try {
+    if (route.spec && validSpecId(route.spec)) {
+      await selectSpec(route.spec, false, { updateURL: false });
+    }
+    switchTab(tab, { updateURL: false });
+  } finally {
+    state.applyingRoute = false;
   }
 }
 
@@ -875,6 +938,12 @@ function escapeHTML(value) {
 }
 
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
+window.addEventListener("popstate", () => {
+  applyRouteFromLocation().catch(() => {});
+});
+window.addEventListener("hashchange", () => {
+  applyRouteFromLocation().catch(() => {});
+});
 [els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => el.addEventListener("input", renderSpecList));
 els.themeToggle.addEventListener("click", () => {
   applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true, rerender: true });
