@@ -185,10 +185,13 @@ async function selectSpec(id, showSpecTab) {
 }
 
 function renderMarkdown(raw, fallbackHTML) {
-  if (!raw) {
-    return fallbackHTML || "<p>No content.</p>";
+  if (fallbackHTML) {
+    return DOMPurify.sanitize(fallbackHTML);
   }
-  return DOMPurify.sanitize(markdownRenderer.render(raw));
+  if (raw) {
+    return DOMPurify.sanitize(markdownRenderer.render(raw));
+  }
+  return "<p>No content.</p>";
 }
 
 async function renderMermaidBlocks(root) {

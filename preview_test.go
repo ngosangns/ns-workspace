@@ -107,3 +107,14 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewUIPrefersServerRenderedMarkdownHTML(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	if !strings.Contains(text, "if (fallbackHTML)") || !strings.Contains(text, "DOMPurify.sanitize(fallbackHTML)") {
+		t.Fatalf("preview UI should prefer server-rendered Markdown HTML so GFM tables stay consistent")
+	}
+}
