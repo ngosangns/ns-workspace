@@ -371,9 +371,15 @@ function decorateDiagram(host, id, title) {
   const svg = host.querySelector("svg");
   if (!svg) return;
   destroyDiagramPanZoom(id);
+  const size = svgDiagramSize(svg);
   svg.classList.add("diagram-svg");
-  svg.setAttribute("width", "100%");
-  svg.setAttribute("height", "100%");
+  svg.setAttribute("width", String(size.width));
+  svg.setAttribute("height", String(size.height));
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  svg.style.width = "100%";
+  svg.style.height = "100%";
+  svg.style.maxWidth = "none";
+  prepareSvgPanZoomViewport(svg);
 
   const toolbar = document.createElement("div");
   toolbar.className = "diagram-toolbar";
@@ -419,23 +425,29 @@ function initDiagramPanZoom(id, svg, toolbar) {
       return;
     }
     let instance;
-    instance = window.svgPanZoom(svg, {
-      panEnabled: true,
-      zoomEnabled: true,
-      controlIconsEnabled: false,
-      dblClickZoomEnabled: true,
-      mouseWheelZoomEnabled: true,
-      preventMouseEventsDefault: true,
-      zoomScaleSensitivity: 0.2,
-      minZoom: 0.2,
-      maxZoom: 10,
-      fit: true,
-      contain: false,
-      center: true,
-      refreshRate: "auto",
-      onZoom: () => instance && setZoomLevel(instance),
-      onPan: () => instance && setZoomLevel(instance),
-    });
+    try {
+      instance = window.svgPanZoom(svg, {
+        viewportSelector: ".svg-pan-zoom_viewport",
+        panEnabled: true,
+        zoomEnabled: true,
+        controlIconsEnabled: false,
+        dblClickZoomEnabled: true,
+        mouseWheelZoomEnabled: true,
+        preventMouseEventsDefault: true,
+        zoomScaleSensitivity: 0.2,
+        minZoom: 0.2,
+        maxZoom: 10,
+        fit: true,
+        contain: false,
+        center: true,
+        refreshRate: "auto",
+        onZoom: () => instance && setZoomLevel(instance),
+        onPan: () => instance && setZoomLevel(instance),
+      });
+    } catch (error) {
+      zoomLevel.textContent = "Static";
+      return;
+    }
     state.diagramPanZoomInstances.set(id, instance);
     instance.resize();
     instance.fit();
@@ -461,6 +473,30 @@ function initDiagramPanZoom(id, svg, toolbar) {
       setZoomLevel(instance);
     });
   });
+}
+
+function prepareSvgPanZoomViewport(svg) {
+  if (svg.querySelector(":scope > .svg-pan-zoom_viewport")) return;
+  const viewport = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  viewport.classList.add("svg-pan-zoom_viewport");
+  const preservedTags = new Set(["defs", "style", "title", "desc"]);
+  [...svg.childNodes].forEach((child) => {
+    if (child.nodeType === Node.ELEMENT_NODE && preservedTags.has(child.tagName.toLowerCase())) {
+      return;
+    }
+    viewport.append(child);
+  });
+  svg.append(viewport);
+}
+
+function svgDiagramSize(svg) {
+  const viewBox = svg.viewBox?.baseVal;
+  const attrWidth = parseFloat(svg.getAttribute("width") || "");
+  const attrHeight = parseFloat(svg.getAttribute("height") || "");
+  return {
+    width: Math.max(1, viewBox?.width || attrWidth || 1000),
+    height: Math.max(1, viewBox?.height || attrHeight || 700),
+  };
 }
 
 function destroyDiagramPanZoom(id) {
