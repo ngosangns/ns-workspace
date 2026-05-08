@@ -373,9 +373,10 @@ async function renderMermaidDiagram(host, id, source, label, title, framed) {
     ? "mermaid diagram-surface my-5 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4"
     : "mermaid diagram-surface overflow-auto";
   host.dataset.diagramTitle = title;
+  host.textContent = "Rendering diagram...";
   try {
-    const { svg } = await mermaid.render(id, source);
-    host.innerHTML = DOMPurify.sanitize(svg, diagramSanitizeConfig);
+    const result = await postJSON("/api/render/mermaid", { source, theme: state.theme });
+    host.innerHTML = DOMPurify.sanitize(result.svg || "", diagramSanitizeConfig);
     decorateDiagram(host, title);
   } catch (error) {
     host.className = "alert alert-error my-2 text-sm";
@@ -874,11 +875,6 @@ function applyTheme(theme, options) {
   if (options.persist) {
     localStorage.setItem("spec-preview-theme", theme);
   }
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: "strict",
-    theme: theme === "dark" ? "dark" : "default",
-  });
   updateThemeControl();
   if (options.rerender) {
     rerenderForTheme();

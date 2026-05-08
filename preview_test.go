@@ -95,6 +95,38 @@ overview → editor.core
 	}
 }
 
+func TestPreviewMermaidRenderHandler(t *testing.T) {
+	server := newPreviewServer(previewOptions{projectRoot: t.TempDir(), specsDir: "specs", addr: "127.0.0.1:0"})
+	server.mermaidRenderer = func(_ context.Context, source, theme string) (string, error) {
+		if !strings.Contains(source, "A-->B") {
+			t.Fatalf("renderer did not receive source: %s", source)
+		}
+		if theme != "dark" {
+			t.Fatalf("renderer did not receive theme: %s", theme)
+		}
+		return `<svg viewBox="0 0 10 10"><text>A</text></svg>`, nil
+	}
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Post(ts.URL+"/api/render/mermaid", "application/json", strings.NewReader(`{"source":"graph TB\nA-->B","theme":"dark"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status: %s", res.Status)
+	}
+	var body mermaidRenderResponse
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body.SVG, "<svg") || !strings.Contains(body.SVG, "<text>A</text>") {
+		t.Fatalf("unexpected Mermaid response: %+v", body)
+	}
+}
+
 func TestPreviewHelpIsAccepted(t *testing.T) {
 	if err := run([]string{"preview", "--help"}); err != nil {
 		t.Fatalf("preview help failed: %v", err)
@@ -126,10 +158,13 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "mermaid", "cytoscape"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
+	}
+	if strings.Contains(htmlText, "mermaid.min.js") || strings.Contains(appText, "mermaid.render") || strings.Contains(appText, "mermaid.initialize") {
+		t.Fatalf("preview UI should render Mermaid on the server side")
 	}
 	for _, forbidden := range []string{"data-ui-kit=\"treact\"", "Treact-style component primitives"} {
 		if strings.Contains(htmlText, forbidden) || strings.Contains(appText, forbidden) {
@@ -231,7 +266,7 @@ func TestPreviewUISupportsDarkMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app)
-	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "graphPalette", "theme === \"dark\" ? \"dark\" : \"default\""} {
+	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "graphPalette", "theme: state.theme"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI dark mode missing %s", want)
 		}
