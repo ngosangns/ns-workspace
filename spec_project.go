@@ -52,10 +52,11 @@ type specDocument struct {
 }
 
 type specGraph struct {
-	Nodes             []graphNode     `json:"nodes"`
-	Edges             []graphEdge     `json:"edges"`
-	Relationships     []graphRelation `json:"relationships"`
-	DependencyDiagram string          `json:"dependencyDiagram,omitempty"`
+	Nodes             []graphNode       `json:"nodes"`
+	Edges             []graphEdge       `json:"edges"`
+	Relationships     []graphRelation   `json:"relationships"`
+	Constraints       []graphConstraint `json:"constraints,omitempty"`
+	DependencyDiagram string            `json:"dependencyDiagram,omitempty"`
 }
 
 type graphNode struct {
@@ -77,6 +78,13 @@ type graphRelation struct {
 	To          string `json:"to"`
 	Description string `json:"description"`
 	Section     string `json:"section,omitempty"`
+}
+
+type graphConstraint struct {
+	From        string `json:"from"`
+	To          string `json:"to"`
+	Description string `json:"description,omitempty"`
+	Raw         string `json:"raw"`
 }
 
 type moduleMeta struct {
@@ -353,6 +361,7 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 			nodes[rel.To] = graphNode{ID: rel.To, Label: rel.To}
 		}
 	}
+	constraints := parseForbiddenDependencies(indexRaw)
 
 	list := make([]graphNode, 0, len(nodes))
 	for _, node := range nodes {
@@ -370,7 +379,7 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		}
 		return edges[i].From < edges[j].From
 	})
-	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: relationships, DependencyDiagram: dependencyDiagram}
+	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: relationships, Constraints: constraints, DependencyDiagram: dependencyDiagram}
 }
 
 func specAliasesForDoc(name string, doc specDocument) []string {
@@ -393,7 +402,38 @@ func specAliasesForDoc(name string, doc specDocument) []string {
 	add(strings.ToLower(doc.Title))
 	add(strings.ToLower(strings.ReplaceAll(doc.Title, " ", "-")))
 	add(strings.ToLower(strings.ReplaceAll(doc.Title, " ", ".")))
+	addKnownSpecAliases(doc.Path, add)
 	return out
+}
+
+func addKnownSpecAliases(path string, add func(string)) {
+	switch path {
+	case "modules/mfe.md":
+		add("ww")
+		add("web wrappers")
+	case "modules/turnstile-captcha.md":
+		add("turnstile")
+		add("common.libs.captcha")
+		add("cloudflare turnstile api")
+	case "modules/editorui/_overview.md":
+		for _, alias := range []string{
+			"editorui.common",
+			"editorui.loader",
+			"editorui.word",
+			"editorui.geo",
+			"editorui.diagram",
+			"editorui.freedrawing",
+			"editorui.math",
+			"editorui.magh",
+			"editorui.textbox",
+			"editorui.image",
+			"editorui.composer",
+			"commontools",
+			"classroomtools",
+		} {
+			add(alias)
+		}
+	}
 }
 
 func canonicalGraphEndpoint(value string, specs map[string]specDocument, diagramLabelSet map[string]bool) string {
@@ -563,6 +603,70 @@ func splitNodeList(value string) []string {
 		}
 	}
 	return out
+}
+
+func parseForbiddenDependencies(markdown string) []graphConstraint {
+	lines := strings.Split(markdown, "\n")
+	inDependencyGraph := false
+	inForbidden := false
+	out := []graphConstraint{}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") {
+			inDependencyGraph = strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(trimmed, "## ")), "Dependency Graph")
+			inForbidden = false
+			continue
+		}
+		if !inDependencyGraph {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSuffix(trimmed, ":"), "FORBIDDEN") {
+			inForbidden = true
+			continue
+		}
+		if !inForbidden || !strings.HasPrefix(trimmed, "- ") {
+			continue
+		}
+		raw := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+		from, to, desc := parseForbiddenLine(raw)
+		out = append(out, graphConstraint{From: from, To: to, Description: desc, Raw: raw})
+	}
+	return out
+}
+
+func parseForbiddenLine(raw string) (string, string, string) {
+	desc := ""
+	if start := strings.Index(raw, "("); start >= 0 {
+		if end := strings.LastIndex(raw, ")"); end > start {
+			desc = strings.TrimSpace(raw[start+1 : end])
+			raw = strings.TrimSpace(raw[:start])
+		}
+	}
+	for _, arrow := range []string{"->", "→"} {
+		if idx := strings.Index(raw, arrow); idx >= 0 {
+			to, inlineDesc := splitConstraintTarget(raw[idx+len(arrow):])
+			if inlineDesc != "" {
+				desc = strings.TrimSpace(firstNonEmpty(desc, inlineDesc))
+			}
+			return cleanConstraintNode(raw[:idx]), to, desc
+		}
+	}
+	return "", "", desc
+}
+
+func splitConstraintTarget(value string) (string, string) {
+	fields := strings.Fields(strings.TrimSpace(value))
+	if len(fields) == 0 {
+		return "", ""
+	}
+	return cleanConstraintNode(fields[0]), strings.Join(fields[1:], " ")
+}
+
+func cleanConstraintNode(value string) string {
+	value = cleanGraphLine(value)
+	value = strings.Trim(value, "`_ ")
+	value = strings.TrimSuffix(value, ".md")
+	return strings.TrimSpace(value)
 }
 
 func renderMarkdown(data []byte) (string, error) {
