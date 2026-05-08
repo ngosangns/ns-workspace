@@ -16,13 +16,12 @@
 
 - `specs/overview.md`: Mục tiêu, phạm vi dự án, OUT OF SCOPE.
 - `specs/_index.md`: Mục lục (TOC), biểu đồ phụ thuộc, sơ đồ mối liên kết.
-- `specs/_sync.md`: Trạng thái đồng bộ Git.
+- `specs/_sync.md`: Trạng thái đồng bộ Git hiện tại, chỉ giữ snapshot ngắn gọn của HEAD/sync hiện hành.
 - `specs/modules/`: Mỗi file quản lý một module.
 - `specs/shared/`: `data-models.md`, `api-conventions.md`, `glossary.md`, `project-context.md` (Kiến thức ngầm).
 - `specs/planning/`: **Nơi lưu trữ các file planning và task liệt kê các việc cần làm.**
 - `specs/compliance/`: Báo cáo tuân thủ theo module + `_summary.md`.
 - `specs/decisions/`: File Quyết định kiến trúc (ADR) + `_index.md`.
-- `specs/versions/`: Bản snapshot (lưu trữ) các phiên bản.
 
 ---
 
@@ -44,6 +43,7 @@ Mọi yêu cầu viết code / thêm tính năng từ user đều phải tuân t
 
 - Trước khi thực thi code, đối chiếu commit được đồng bộ lần cuối với HEAD (`_sync.md`). Tự động đồng bộ spec nếu bị chậm (behind).
 - Kiểm tra `overview.md` để chắc chắn action không nằm ngoài scope (phạm vi).
+- `_sync.md` chỉ được dùng như trạng thái hiện tại. **KHÔNG lưu sync history, incremental log, changelog, bảng lịch sử commit, hoặc snapshot phiên bản** trong `_sync.md`.
 
 **Bước 4: Thực thi (Code Execution - No Backward Compat)**
 
@@ -57,7 +57,7 @@ Mọi yêu cầu viết code / thêm tính năng từ user đều phải tuân t
 
 **Bước 6: Finalize & Báo cáo**
 
-- Cập nhật số phiên bản và lịch sử update thông qua `_sync.md`.
+- Cập nhật `_sync.md` bằng trạng thái hiện tại ngắn gọn nếu specs đã được đồng bộ với HEAD. Không ghi lịch sử update, incremental history, commit history hoặc version snapshots.
 - Báo cáo tóm tắt gọn gàng cho user.
 
 ---
@@ -88,7 +88,6 @@ Output cực kỳ ngắn gọn lúc có mâu thuẫn:
 5. Ràng buộc & Giả định (Constraints & Assumptions)
 6. Mối quan hệ (Cung cấp, Tiêu thụ, Dùng chung, Events, Phụ thuộc quy tắc)
 7. Tiêu điểm kiến trúc (Related Decisions)
-8. Changelog (Lịch sử cập nhật)
 ```
 
 ---
@@ -100,6 +99,7 @@ Output cực kỳ ngắn gọn lúc có mâu thuẫn:
 - **Forward-only (No backward compat)**: Viết code triệt để nhất, bỏ qua tương thích với các module đang rác.
 - **Extract-always**: BẮT BUỘC chủ động bốc tách kiến thức từ code để cập nhật ngược lại vào specs sau khi code mượt. Chỉ cập nhật các thay đổi liên quan đến flows, business, architecture, relation,... Những thay đổi nhỏ và không quan trọng thì KHÔNG NÊN ghi vào specs.
 - **Sync-first & Scope-guard**: Theo sát Git commit và bảo vệ chặt biên giới (scope) dự án.
+- **Current-state only**: Không lưu sync history, increment history, changelog, commit-history table, hoặc version snapshots trong specs. Specs phải mô tả trạng thái/thiết kế hiện tại; `_sync.md` chỉ giữ metadata sync hiện tại.
 - **Transparent-compact**: Giao tiếp thẳng thắn, báo cáo cô đọng, đi vào trọng tâm.
 - **No browser tool**: Tuyệt đối không dùng browser tool.
 - **Concise-update**: Khi cập nhật specs phải đảm bảo nội dung tinh gọn, phản ánh thiết kế/logic mới nhất. BẮT BUỘC xóa bỏ các nội dung cũ không còn chính xác, KHÔNG ĐƯỢC giữ lại thông tin cũ rồi gióng ngoặc / ghi thêm cập nhật bên cạnh.
