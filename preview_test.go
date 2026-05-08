@@ -318,3 +318,24 @@ func TestPreviewUIUsesSafeScrollbars(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewUISupportsDiagramLightbox(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(css)
+	for _, want := range []string{"id=\"diagramLightbox\"", "openDiagramLightbox", "decorateDiagram", "showModal()", "diagram-surface", "diagram-zoom", "diagram-lightbox__content"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram lightbox missing %s", want)
+		}
+	}
+}

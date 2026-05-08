@@ -29,6 +29,10 @@ const els = {
   likec4Models: document.querySelector("#likec4Models"),
   themeToggle: document.querySelector("#themeToggle"),
   themeLabel: document.querySelector("#themeLabel"),
+  diagramLightbox: document.querySelector("#diagramLightbox"),
+  diagramLightboxTitle: document.querySelector("#diagramLightboxTitle"),
+  diagramLightboxContent: document.querySelector("#diagramLightboxContent"),
+  diagramLightboxClose: document.querySelector("#diagramLightboxClose"),
 };
 
 const markdownRenderer = window.markdownit({
@@ -331,7 +335,7 @@ async function renderMermaidBlocks(root) {
       if (!source) return;
       const host = document.createElement("div");
       const id = `mermaid-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`;
-      await renderMermaidDiagram(host, id, source, "Mermaid", true);
+      await renderMermaidDiagram(host, id, source, "Mermaid", "Mermaid diagram", true);
       block.closest("pre").replaceWith(host);
     }),
   );
@@ -370,7 +374,7 @@ async function renderLikeC4Blocks(root) {
             panel.append(caption, target);
             host.append(panel);
             const id = `likec4-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}-${diagramIndex}`;
-            await renderMermaidDiagram(target, id, diagram.mermaid || "", "LikeC4", false);
+            await renderMermaidDiagram(target, id, diagram.mermaid || "", "LikeC4", diagram.name || "LikeC4 diagram", false);
           }),
         );
         refreshIcons();
@@ -382,17 +386,65 @@ async function renderLikeC4Blocks(root) {
   );
 }
 
-async function renderMermaidDiagram(host, id, source, label, framed) {
+async function renderMermaidDiagram(host, id, source, label, title, framed) {
   host.className = framed
-    ? "mermaid my-5 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4"
-    : "mermaid overflow-auto";
+    ? "mermaid diagram-surface my-5 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4"
+    : "mermaid diagram-surface overflow-auto";
+  host.dataset.diagramTitle = title;
   try {
     const { svg } = await mermaid.render(id, source);
     host.innerHTML = DOMPurify.sanitize(svg, diagramSanitizeConfig);
+    decorateDiagram(host, title);
   } catch (error) {
     host.className = "alert alert-error my-2 text-sm";
     host.textContent = `${label} render failed: ${error.message || error}`;
   }
+}
+
+function decorateDiagram(host, title) {
+  const svg = host.querySelector("svg");
+  if (!svg) return;
+  host.tabIndex = 0;
+  host.setAttribute("role", "button");
+  host.setAttribute("aria-label", `Open ${title}`);
+  host.title = "Open diagram";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "diagram-zoom btn btn-ghost btn-xs";
+  button.setAttribute("aria-label", `Open ${title}`);
+  button.innerHTML = '<i data-lucide="expand" class="h-4 w-4"></i>';
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openDiagramLightbox(title, svg);
+  });
+  host.append(button);
+  host.addEventListener("click", () => openDiagramLightbox(title, svg));
+  host.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDiagramLightbox(title, svg);
+    }
+  });
+  refreshIcons();
+}
+
+function openDiagramLightbox(title, svg) {
+  if (!svg) return;
+  els.diagramLightboxTitle.textContent = title;
+  els.diagramLightboxContent.innerHTML = "";
+  const clone = svg.cloneNode(true);
+  clone.removeAttribute("width");
+  clone.removeAttribute("height");
+  clone.classList.add("diagram-lightbox__svg");
+  els.diagramLightboxContent.append(clone);
+  els.diagramLightbox.showModal();
+}
+
+function closeDiagramLightbox() {
+  if (els.diagramLightbox.open) {
+    els.diagramLightbox.close();
+  }
+  els.diagramLightboxContent.innerHTML = "";
 }
 
 async function postJSON(path, payload) {
@@ -484,7 +536,7 @@ async function renderLikeC4Models() {
       figure.append(caption, target);
       body.append(figure);
       const id = `likec4-model-${project.id.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`;
-      await renderMermaidDiagram(target, id, diagram.mermaid || "", "LikeC4", false);
+      await renderMermaidDiagram(target, id, diagram.mermaid || "", "LikeC4", diagram.name || "diagram", false);
     }
     if (project.source) {
       const details = document.createElement("details");
@@ -666,6 +718,15 @@ document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click",
 [els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => el.addEventListener("input", renderSpecList));
 els.themeToggle.addEventListener("click", () => {
   applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true, rerender: true });
+});
+els.diagramLightboxClose.addEventListener("click", closeDiagramLightbox);
+els.diagramLightbox.addEventListener("click", (event) => {
+  if (event.target === els.diagramLightbox) {
+    closeDiagramLightbox();
+  }
+});
+els.diagramLightbox.addEventListener("close", () => {
+  els.diagramLightboxContent.innerHTML = "";
 });
 
 function getInitialTheme() {
