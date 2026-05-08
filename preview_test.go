@@ -112,6 +112,52 @@ func TestPreviewLikeC4RenderHandler(t *testing.T) {
 	}
 }
 
+func TestPreviewLikeC4ModelsFallsBackToSpecGraph(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "AGENTS.md", "# Agents\n")
+	writeTestFile(t, root, "specs/_index.md", `# Spec Index
+
+## Modules
+
+| Module | Spec File | Status | Version | Compliance | Priority |
+| ------ | --------- | ------ | ------- | ---------- | -------- |
+| API | [modules/api.md](./modules/api.md) | Draft | v1.0 | - | P1 |
+| Web | [modules/web.md](./modules/web.md) | Draft | v1.0 | - | P1 |
+
+## Dependency Graph
+
+`+"```"+`
+web → api
+`+"```"+`
+`)
+	writeTestFile(t, root, "specs/modules/api.md", "# API\n")
+	writeTestFile(t, root, "specs/modules/web.md", "# Web\n")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, specsDir: "specs", addr: "127.0.0.1:0"})
+	server.likeC4Renderer = func(_ context.Context, source string) ([]likeC4Diagram, error) {
+		if !strings.Contains(source, "specs.web -[depends]-> specs.api") {
+			t.Fatalf("generated LikeC4 source missing spec edge:\n%s", source)
+		}
+		return []likeC4Diagram{{Name: "specs-overview", Mermaid: "graph TB\n  web-->api\n"}}, nil
+	}
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/likec4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var body likeC4ModelsResponse
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Projects) != 1 || !body.Projects[0].Generated || !strings.Contains(body.Projects[0].Source, "view specs-overview") {
+		t.Fatalf("unexpected LikeC4 models response: %+v", body)
+	}
+}
+
 func TestPreviewHelpIsAccepted(t *testing.T) {
 	if err := run([]string{"preview", "--help"}); err != nil {
 		t.Fatalf("preview help failed: %v", err)
@@ -209,6 +255,23 @@ func TestPreviewUISupportsLikeC4Blocks(t *testing.T) {
 	for _, want := range []string{"renderLikeC4Blocks", "/api/render/likec4", "language-likec4", "language-c4", "workflow"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI LikeC4 support missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIHasLikeC4ModelsTab(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app)
+	for _, want := range []string{"data-tab=\"models\"", "id=\"likec4Models\"", "/api/likec4", "renderLikeC4Models", "Generated from specs"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI LikeC4 models tab missing %s", want)
 		}
 	}
 }

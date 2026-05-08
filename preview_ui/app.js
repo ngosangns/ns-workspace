@@ -3,6 +3,8 @@ const state = {
   specs: [],
   graph: null,
   graphInstance: null,
+  likec4: null,
+  likec4Loading: false,
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
@@ -23,6 +25,7 @@ const els = {
   specContent: document.querySelector("#specContent"),
   graphCanvas: document.querySelector("#graphCanvas"),
   relationships: document.querySelector("#relationships"),
+  likec4Models: document.querySelector("#likec4Models"),
 };
 
 const markdownRenderer = window.markdownit({
@@ -51,6 +54,7 @@ async function load() {
   state.project = project;
   state.specs = specs;
   state.graph = graph;
+  state.likec4 = null;
   state.selectedId = specs.find((spec) => spec.path === "overview.md")?.id || specs[0]?.id || "";
   renderFilters();
   renderOverview();
@@ -71,6 +75,7 @@ async function reloadPreviewData() {
   state.project = project;
   state.specs = specs;
   state.graph = graph;
+  state.likec4 = null;
   state.selectedId = specs.some((spec) => spec.id === previousSelection)
     ? previousSelection
     : specs.find((spec) => spec.path === "overview.md")?.id || specs[0]?.id || "";
@@ -80,6 +85,9 @@ async function reloadPreviewData() {
   renderGraph();
   if (state.selectedId) {
     await selectSpec(state.selectedId, false);
+  }
+  if (state.tab === "models") {
+    await loadLikeC4Models(true);
   }
 }
 
@@ -406,6 +414,89 @@ function switchTab(name) {
     state.graphInstance.resize();
     state.graphInstance.fit(undefined, 36);
   }
+  if (name === "models") {
+    loadLikeC4Models(false);
+  }
+}
+
+async function loadLikeC4Models(force) {
+  if (state.likec4Loading || (state.likec4 && !force)) return;
+  state.likec4Loading = true;
+  els.likec4Models.innerHTML = '<div class="alert py-3 text-sm">Rendering LikeC4 models...</div>';
+  try {
+    state.likec4 = await fetchJSON("/api/likec4");
+    await renderLikeC4Models();
+  } catch (error) {
+    els.likec4Models.innerHTML = `<div class="alert alert-error py-3 text-sm">${escapeHTML(error.message || String(error))}</div>`;
+  } finally {
+    state.likec4Loading = false;
+  }
+}
+
+async function renderLikeC4Models() {
+  const projects = state.likec4?.projects || [];
+  els.likec4Models.innerHTML = "";
+  if (projects.length === 0) {
+    els.likec4Models.innerHTML = '<div class="alert py-3 text-sm">No LikeC4 models or spec graph found.</div>';
+    return;
+  }
+  for (const project of projects) {
+    const card = document.createElement("article");
+    card.className = "card border-base-300 bg-base-100 border";
+    const body = document.createElement("div");
+    body.className = "card-body gap-4";
+    body.innerHTML = `
+      <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div class="min-w-0">
+          <h2 class="card-title text-base">
+            <i data-lucide="${project.generated ? "sparkles" : "boxes"}" class="h-5 w-5"></i>
+            <span class="truncate">${escapeHTML(project.name)}</span>
+          </h2>
+          <p class="text-base-content/60 mt-1 break-all text-sm">${escapeHTML(project.root || "")}</p>
+        </div>
+        <span class="badge ${project.generated ? "badge-info" : "badge-ghost"}">${project.generated ? "Generated from specs" : "LikeC4 workspace"}</span>
+      </div>
+      <div class="text-base-content/60 text-xs">${escapeHTML((project.sourceFiles || []).slice(0, 8).join(", ") || "No source files")}</div>
+    `;
+    card.append(body);
+    els.likec4Models.append(card);
+
+    if (project.error) {
+      const error = document.createElement("div");
+      error.className = "alert alert-error block whitespace-pre-wrap text-sm";
+      error.textContent = project.error;
+      body.append(error);
+      continue;
+    }
+
+    const diagrams = project.diagrams || [];
+    if (diagrams.length === 0) {
+      body.insertAdjacentHTML("beforeend", '<div class="alert py-3 text-sm">No diagrams generated.</div>');
+      continue;
+    }
+    for (const [index, diagram] of diagrams.entries()) {
+      const figure = document.createElement("figure");
+      const caption = document.createElement("figcaption");
+      const target = document.createElement("div");
+      figure.className = "overflow-auto rounded-lg border border-base-300 bg-base-100 p-4";
+      caption.className = "mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-base-content/55";
+      caption.innerHTML = `<i data-lucide="workflow" class="h-4 w-4"></i><span>${escapeHTML(diagram.name || "diagram")}</span>`;
+      figure.append(caption, target);
+      body.append(figure);
+      const id = `likec4-model-${project.id.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`;
+      await renderMermaidDiagram(target, id, diagram.mermaid || "", "LikeC4", false);
+    }
+    if (project.source) {
+      const details = document.createElement("details");
+      details.className = "collapse collapse-arrow border border-base-300";
+      details.innerHTML = `
+        <summary class="collapse-title min-h-0 py-3 text-sm font-medium">Generated LikeC4 source</summary>
+        <pre class="collapse-content overflow-auto text-xs"><code>${escapeHTML(project.source)}</code></pre>
+      `;
+      body.append(details);
+    }
+  }
+  refreshIcons();
 }
 
 function renderGraph() {
