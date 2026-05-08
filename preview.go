@@ -125,13 +125,34 @@ func newPreviewServer(opt previewOptions) *previewServer {
 	mux.HandleFunc("/api/render/likec4", ps.handleRenderLikeC4)
 	mux.HandleFunc("/api/events", ps.handleEvents)
 	static, _ := fs.Sub(previewUIFS, "preview_ui")
-	mux.Handle("/", http.FileServer(http.FS(static)))
+	mux.Handle("/", spaFileServer(static))
 	ps.srv = &http.Server{
 		Addr:              opt.addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	return ps
+}
+
+func spaFileServer(static fs.FS) http.Handler {
+	files := http.FileServer(http.FS(static))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			files.ServeHTTP(w, r)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		if _, err := fs.Stat(static, path); err == nil {
+			files.ServeHTTP(w, r)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/"
+		files.ServeHTTP(w, r2)
+	})
 }
 
 func (ps *previewServer) shutdown(ctx context.Context) error {
