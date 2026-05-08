@@ -29,6 +29,12 @@ marked.use({
   breaks: false,
 });
 
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: "strict",
+  theme: "default",
+});
+
 async function load() {
   const [project, specs, graph] = await Promise.all([
     fetchJSON("/api/project"),
@@ -171,6 +177,7 @@ async function selectSpec(id, showSpecTab) {
   els.pageTitle.textContent = spec.title;
   els.pagePath.textContent = spec.path;
   els.specContent.innerHTML = renderMarkdown(spec.raw, spec.html);
+  await renderMermaidBlocks(els.specContent);
   renderSpecList();
   highlightGraphNode(id);
   if (showSpecTab) switchTab("spec");
@@ -181,6 +188,27 @@ function renderMarkdown(raw, fallbackHTML) {
     return fallbackHTML || "<p>No content.</p>";
   }
   return DOMPurify.sanitize(marked.parse(raw));
+}
+
+async function renderMermaidBlocks(root) {
+  const blocks = [...root.querySelectorAll("pre > code.language-mermaid, pre > code.mermaid")];
+  await Promise.all(
+    blocks.map(async (block, index) => {
+      const source = block.textContent.trim();
+      if (!source) return;
+      const host = document.createElement("div");
+      host.className = "mermaid my-5 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4";
+      const id = `mermaid-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`;
+      try {
+        const { svg } = await mermaid.render(id, source);
+        host.innerHTML = DOMPurify.sanitize(svg, { ADD_TAGS: ["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan"], ADD_ATTR: ["viewBox", "d", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "rx", "ry", "r", "points", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "transform", "width", "height", "fill", "stroke", "stroke-width", "class", "id"] });
+      } catch (error) {
+        host.className = "alert alert-error my-5 text-sm";
+        host.textContent = `Mermaid render failed: ${error.message || error}`;
+      }
+      block.closest("pre").replaceWith(host);
+    }),
+  );
 }
 
 function switchTab(name) {

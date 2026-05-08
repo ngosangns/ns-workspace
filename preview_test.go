@@ -101,7 +101,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "marked", "DOMPurify", "cytoscape"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "marked", "DOMPurify", "mermaid", "cytoscape"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
