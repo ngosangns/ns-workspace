@@ -361,6 +361,22 @@ func TestPreviewDiagramLightboxSupportsZoomPan(t *testing.T) {
 	}
 }
 
+func TestPreviewDiagramLightboxPreservesSvgSize(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"svgDiagramSize", "clone.setAttribute(\"width\"", "clone.setAttribute(\"height\"", "clone.style.width", "clone.style.height"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram lightbox SVG sizing missing %s", want)
+		}
+	}
+	if strings.Contains(text, "clone.removeAttribute(\"width\")") || strings.Contains(text, "clone.removeAttribute(\"height\")") {
+		t.Fatalf("preview diagram lightbox should preserve explicit SVG size")
+	}
+}
+
 func TestPreviewDiagramLightboxCentersDiagram(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
