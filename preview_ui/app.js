@@ -1,8 +1,11 @@
+import { createDocsGraph } from "./js/graph.js";
+
 const state = {
   project: null,
   specs: [],
   graph: null,
-  graphInstance: null,
+  graphSimulation: null,
+  graphSelectedId: "",
   theme: getInitialTheme(),
   diagramPanZoomInstances: new Map(),
   diagramPanZoomTargets: new Map(),
@@ -10,6 +13,7 @@ const state = {
   selectedId: "",
   tab: "overview",
   applyingRoute: false,
+  diagramSerial: 0,
 };
 
 const els = {
@@ -25,8 +29,11 @@ const els = {
   syncState: document.querySelector("#syncState"),
   warnings: document.querySelector("#warnings"),
   specContent: document.querySelector("#specContent"),
-  graphStats: document.querySelector("#graphStats"),
   graphCanvas: document.querySelector("#graphCanvas"),
+  graphDetails: document.querySelector("#graphDetails"),
+  graphSearch: document.querySelector("#graphSearch"),
+  graphStats: document.querySelector("#graphStats"),
+  graphFit: document.querySelector("#graphFit"),
   themeToggle: document.querySelector("#themeToggle"),
   themeLabel: document.querySelector("#themeLabel"),
 };
@@ -45,6 +52,8 @@ const diagramSanitizeConfig = {
   ADD_ATTR: ["viewBox", "xmlns", "d", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "rx", "ry", "r", "points", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "transform", "width", "height", "fill", "stroke", "stroke-width", "class", "id", "style", "dominant-baseline", "alignment-baseline"],
 };
 
+const graphView = createDocsGraph({ state, els, escapeHTML, refreshIcons, selectSpec });
+
 async function load() {
   const [project, specs, graph] = await Promise.all([
     fetchJSON("/api/project"),
@@ -58,8 +67,8 @@ async function load() {
   state.selectedId = validSpecId(route.spec) || defaultSpecId();
   renderFilters();
   renderOverview();
+  graphView.render();
   renderSpecList();
-  renderGraph();
   if (state.selectedId) {
     await selectSpec(state.selectedId, false);
   }
@@ -80,8 +89,8 @@ async function reloadPreviewData() {
   state.selectedId = validSpecId(route.spec) || validSpecId(previousSelection) || defaultSpecId();
   renderFilters();
   renderOverview();
+  graphView.render();
   renderSpecList();
-  renderGraph();
   if (state.selectedId) {
     await selectSpec(state.selectedId, false);
   }
@@ -131,8 +140,8 @@ function renderOverview() {
     ["Specs", project.totalSpecs],
     ["Categories", Object.keys(project.categories || {}).length],
     ["Statuses", Object.keys(project.statusCounts || {}).length],
-    ["Graph nodes", state.graph.nodes.length],
-    ["Graph edges", state.graph.edges.length],
+    ["Compliance", Object.keys(project.compliance || {}).length],
+    ["Warnings", (project.warnings || []).length],
   ].forEach(([label, value]) => {
     const card = document.createElement("div");
     card.className = "card border border-base-300 bg-base-100 shadow-sm";
@@ -313,10 +322,9 @@ async function selectSpec(id, showSpecTab, options = {}) {
   els.pageTitle.textContent = spec.title;
   els.pagePath.textContent = spec.path;
   destroyDiagramsIn(els.specContent);
-  els.specContent.innerHTML = renderMarkdown(spec.raw, spec.html);
+  els.specContent.innerHTML = renderMarkdown(spec.raw);
   await renderMermaidBlocks(els.specContent);
   renderSpecList();
-  highlightGraphNode(id);
   if (showSpecTab) {
     switchTab("spec", { updateURL });
   } else if (updateURL && state.tab === "spec") {
@@ -324,10 +332,7 @@ async function selectSpec(id, showSpecTab, options = {}) {
   }
 }
 
-function renderMarkdown(raw, fallbackHTML) {
-  if (fallbackHTML) {
-    return DOMPurify.sanitize(fallbackHTML);
-  }
+function renderMarkdown(raw) {
   if (raw) {
     return DOMPurify.sanitize(markdownRenderer.render(raw));
   }
@@ -341,7 +346,7 @@ async function renderMermaidBlocks(root) {
       const source = block.textContent.trim();
       if (!source) return;
       const host = document.createElement("div");
-      const id = `mermaid-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`;
+      const id = `mermaid-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}-${++state.diagramSerial}`;
       await renderMermaidDiagram(host, id, source, "Mermaid", "Mermaid diagram", true);
       block.closest("pre").replaceWith(host);
     }),
@@ -356,7 +361,15 @@ async function renderMermaidDiagram(host, id, source, label, title, framed) {
   host.dataset.diagramTitle = title;
   host.textContent = "Rendering diagram...";
   try {
-    const result = await postJSON("/api/render/mermaid", { source, theme: state.theme });
+    if (!window.mermaid) {
+      throw new Error("Mermaid library is not loaded");
+    }
+    window.mermaid.initialize({
+      startOnLoad: false,
+      theme: state.theme === "dark" ? "dark" : "default",
+      securityLevel: "strict",
+    });
+    const result = await window.mermaid.render(id, source);
     host.innerHTML = DOMPurify.sanitize(result.svg || "", diagramSanitizeConfig);
     decorateDiagram(host, id, title);
   } catch (error) {
@@ -551,27 +564,16 @@ function destroyDiagramsIn(root) {
   });
 }
 
-async function postJSON(path, payload) {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
 function switchTab(name, options = {}) {
   const updateURL = options.updateURL !== false;
   state.tab = name;
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("tab-active", tab.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((panel) => panel.classList.remove("active"));
   document.querySelector(`#${name}Tab`).classList.add("active");
-  if (name === "graph" && state.graphInstance) {
-    state.graphInstance.resize();
-    state.graphInstance.fit(undefined, 36);
-  }
   requestAnimationFrame(initVisibleDiagramPanZooms);
+  if (name === "graph") {
+    requestAnimationFrame(graphView.render);
+  }
   if (updateURL) {
     updateRouteURL(name);
   }
@@ -580,7 +582,10 @@ function switchTab(name, options = {}) {
 function routeFromLocation() {
   const routePath = decodeURIComponent(window.location.pathname).replace(/^\/+/, "");
   const [tab = "", ...rest] = routePath.split("/");
-  if (["overview", "graph"].includes(tab)) {
+  if (tab === "overview") {
+    return { tab };
+  }
+  if (tab === "graph") {
     return { tab };
   }
   if (tab === "spec") {
@@ -623,190 +628,6 @@ async function applyRouteFromLocation() {
   }
 }
 
-function renderGraph() {
-  const { nodes, edges, relationships, constraints = [] } = state.graph;
-  const palette = graphPalette();
-  els.graphStats.textContent = `${nodes.length} nodes, ${edges.length} dependencies, ${relationships.length} relationships, ${constraints.length} rules`;
-  if (state.graphInstance) {
-    state.graphInstance.destroy();
-    state.graphInstance = null;
-  }
-  const relationshipEdges = relationships.map((rel, index) => ({
-    data: {
-      id: `relationship-${index}-${rel.from}-${rel.to}`,
-      source: rel.from,
-      target: rel.to,
-      label: rel.section || "relationship",
-      kind: "relationship",
-    },
-  }));
-  const elements = [
-    ...nodes.map((node) => ({
-      data: {
-        id: node.id,
-        label: node.id,
-        title: node.label,
-        specId: node.specId || "",
-        category: node.category || "unknown",
-        status: node.status || "",
-        nodeSize: 44,
-        nodeFontSize: 12,
-        nodeTextMaxWidth: 120,
-        nodeTextMarginY: 10,
-        nodeBorderWidth: 3,
-        selectedBorderWidth: 6,
-      },
-    })),
-    ...edges.map((edge, index) => ({
-      data: {
-        id: `edge-${index}-${edge.from}-${edge.to}`,
-        source: edge.from,
-        target: edge.to,
-        label: edge.label || "",
-        kind: "dependency",
-      },
-    })),
-    ...relationshipEdges,
-  ];
-
-  state.graphInstance = cytoscape({
-    container: els.graphCanvas,
-    elements,
-    wheelSensitivity: 0.18,
-    minZoom: 0.22,
-    maxZoom: 2.2,
-    style: [
-      {
-        selector: "node",
-        style: {
-          "background-color": "mapData(category, root, versions, #e5e7eb, #e0f2fe)",
-          "border-color": palette.nodeBorder,
-          "border-width": "data(nodeBorderWidth)",
-          color: palette.text,
-          label: "data(label)",
-          "font-size": "data(nodeFontSize)",
-          "text-wrap": "wrap",
-          "text-max-width": "data(nodeTextMaxWidth)",
-          "text-valign": "bottom",
-          "text-margin-y": "data(nodeTextMarginY)",
-          height: "data(nodeSize)",
-          width: "data(nodeSize)",
-        },
-      },
-      {
-        selector: "node[category = 'modules']",
-        style: { "background-color": palette.modules },
-      },
-      {
-        selector: "node[category = 'shared']",
-        style: { "background-color": palette.shared },
-      },
-      {
-        selector: "node[category = 'compliance']",
-        style: { "background-color": palette.compliance },
-      },
-      {
-        selector: "node[category = 'docs']",
-        style: { "background-color": palette.docs },
-      },
-      {
-        selector: "edge",
-        style: {
-          "curve-style": "bezier",
-          "line-color": palette.edge,
-          "target-arrow-color": palette.edge,
-          "target-arrow-shape": "triangle",
-          width: 1.4,
-        },
-      },
-      {
-        selector: "edge[kind = 'relationship']",
-        style: {
-          "line-style": "dashed",
-          "line-color": palette.relationshipEdge,
-          "target-arrow-color": palette.relationshipEdge,
-          opacity: 0.72,
-        },
-      },
-      {
-        selector: ".selected",
-        style: {
-          "border-color": palette.selected,
-          "border-width": "data(selectedBorderWidth)",
-        },
-      },
-    ],
-    layout: {
-      name: "cose",
-      animate: false,
-      fit: true,
-      padding: 48,
-      nodeRepulsion: 100000,
-      idealEdgeLength: 96,
-    },
-  });
-
-  state.graphInstance.on("tap", "node", (event) => {
-    const specId = event.target.data("specId");
-    if (specId) {
-      selectSpec(specId, true);
-    }
-  });
-  state.graphInstance.on("zoom", () => applyGraphZoomScale(state.graphInstance));
-  applyGraphZoomScale(state.graphInstance);
-  highlightGraphNode(state.selectedId);
-}
-
-function applyGraphZoomScale(graph) {
-  if (!graph) return;
-  const zoom = graph.zoom();
-  const scale = Math.max(0.72, Math.min(1.45, Math.sqrt(zoom)));
-  graph.nodes().forEach((node) => {
-    node.data({
-      nodeSize: Math.round(44 * scale),
-      nodeFontSize: Math.round(12 * scale),
-      nodeTextMaxWidth: Math.round(120 * scale),
-      nodeTextMarginY: Math.round(10 * scale),
-      nodeBorderWidth: Math.max(2, Math.round(3 * scale)),
-      selectedBorderWidth: Math.max(4, Math.round(6 * scale)),
-    });
-  });
-}
-
-function graphPalette() {
-  if (state.theme === "dark") {
-    return {
-      text: "#e5e7eb",
-      edge: "#7b8494",
-      relationshipEdge: "#a78bfa",
-      nodeBorder: "#111827",
-      selected: "#60a5fa",
-      modules: "#1d4ed8",
-      shared: "#15803d",
-      compliance: "#b45309",
-      docs: "#be185d",
-    };
-  }
-  return {
-    text: "#232529",
-    edge: "#aab1ba",
-    relationshipEdge: "#8b5cf6",
-    nodeBorder: "#ffffff",
-    selected: "#2563eb",
-    modules: "#dbeafe",
-    shared: "#dcfce7",
-    compliance: "#fef3c7",
-    docs: "#fce7f3",
-  };
-}
-
-function highlightGraphNode(specId) {
-  if (!state.graphInstance) return;
-  state.graphInstance.nodes().removeClass("selected");
-  if (!specId) return;
-  state.graphInstance.nodes().filter((node) => node.data("specId") === specId).addClass("selected");
-}
-
 function escapeHTML(value) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 }
@@ -816,6 +637,8 @@ window.addEventListener("popstate", () => {
   applyRouteFromLocation().catch(() => {});
 });
 [els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => el.addEventListener("input", renderSpecList));
+els.graphSearch?.addEventListener("input", graphView.render);
+els.graphFit?.addEventListener("click", graphView.render);
 els.themeToggle.addEventListener("click", () => {
   applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true, rerender: true });
 });
@@ -849,12 +672,10 @@ function updateThemeControl() {
 }
 
 function rerenderForTheme() {
-  if (state.graph) {
-    renderGraph();
-  }
   if (state.selectedId) {
     selectSpec(state.selectedId, false);
   }
+  graphView.render();
 }
 
 function refreshIcons() {

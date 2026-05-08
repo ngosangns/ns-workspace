@@ -62,8 +62,8 @@
           <div class="flex flex-wrap items-center gap-2">
             <div role="tablist" class="tabs tabs-boxed w-fit">
               <button class="tab tab-active" data-tab="overview">Overview</button>
-              <button class="tab" data-tab="spec">Spec</button>
               <button class="tab" data-tab="graph">Graph</button>
+              <button class="tab" data-tab="spec">Spec</button>
             </div>
             <button id="themeToggle" class="btn btn-ghost btn-sm" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
               <i data-lucide="moon" class="h-4 w-4"></i>
@@ -90,23 +90,32 @@
           </div>
         </section>
 
-        <section id="specTab" class="panel p-5">
-          <article id="specContent" class="markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"></article>
-        </section>
-
         <section id="graphTab" class="panel p-5">
-          <div class="grid gap-4">
-            <div class="flex flex-wrap items-center justify-end gap-3">
-              <div id="graphStats" class="text-base-content/60 text-sm"></div>
-            </div>
-            <div class="grid gap-4">
-              <div class="card border-base-300 bg-base-100 border">
-                <div class="card-body p-0">
-                  <div id="graphCanvas" class="h-[70vh] min-h-[34rem] w-full"></div>
-                </div>
+          <div class="graph-shell border-base-300 bg-base-100 border">
+            <div class="graph-toolbar border-base-300 border-b">
+              <div class="min-w-0">
+                <h2 class="text-base font-semibold">Docs Graph</h2>
+                <p id="graphStats" class="text-base-content/60 text-sm">Loading graph</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="input input-bordered input-sm flex items-center gap-2">
+                  <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
+                  <input id="graphSearch" class="w-40 sm:w-56" placeholder="Find node" />
+                </label>
+                <button id="graphFit" class="btn btn-ghost btn-sm" type="button" aria-label="Fit graph" title="Fit graph">
+                  <i data-lucide="scan" class="h-4 w-4"></i>
+                </button>
               </div>
             </div>
+            <div class="graph-layout">
+              <div id="graphCanvas" class="graph-canvas" role="img" aria-label="Spec document graph"></div>
+              <aside id="graphDetails" class="graph-details border-base-300 border-t lg:border-l lg:border-t-0"></aside>
+            </div>
           </div>
+        </section>
+
+        <section id="specTab" class="panel p-5">
+          <article id="specContent" class="markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"></article>
         </section>
       </main>
     </div>
@@ -114,8 +123,9 @@
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js"></script>
-    <script src="/app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>
