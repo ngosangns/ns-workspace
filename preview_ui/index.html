@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Spec Preview</title>
     <script>
+      (() => {
+        const stored = localStorage.getItem("spec-preview-theme");
+        const system = window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = stored || system;
+      })();
+    </script>
+    <script>
       tailwind = {
         config: {
           theme: {
@@ -52,11 +59,17 @@
             <h1 id="pageTitle" class="truncate text-2xl font-bold tracking-normal">Overview</h1>
             <p id="pagePath" class="text-base-content/60 truncate text-sm"></p>
           </div>
-          <div role="tablist" class="tabs tabs-boxed w-fit">
-            <button class="tab tab-active" data-tab="overview">Overview</button>
-            <button class="tab" data-tab="spec">Spec</button>
-            <button class="tab" data-tab="graph">Graph</button>
-            <button class="tab" data-tab="models">Models</button>
+          <div class="flex flex-wrap items-center gap-2">
+            <div role="tablist" class="tabs tabs-boxed w-fit">
+              <button class="tab tab-active" data-tab="overview">Overview</button>
+              <button class="tab" data-tab="spec">Spec</button>
+              <button class="tab" data-tab="graph">Graph</button>
+              <button class="tab" data-tab="models">Models</button>
+            </div>
+            <button id="themeToggle" class="btn btn-ghost btn-sm" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+              <i data-lucide="moon" class="h-4 w-4"></i>
+              <span id="themeLabel" class="hidden sm:inline">Dark</span>
+            </button>
           </div>
         </header>
 

@@ -5,6 +5,7 @@ const state = {
   graphInstance: null,
   likec4: null,
   likec4Loading: false,
+  theme: getInitialTheme(),
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
@@ -26,6 +27,8 @@ const els = {
   graphCanvas: document.querySelector("#graphCanvas"),
   relationships: document.querySelector("#relationships"),
   likec4Models: document.querySelector("#likec4Models"),
+  themeToggle: document.querySelector("#themeToggle"),
+  themeLabel: document.querySelector("#themeLabel"),
 };
 
 const markdownRenderer = window.markdownit({
@@ -34,11 +37,7 @@ const markdownRenderer = window.markdownit({
   typographer: false,
 });
 
-mermaid.initialize({
-  startOnLoad: false,
-  securityLevel: "strict",
-  theme: "default",
-});
+applyTheme(state.theme, { persist: false, rerender: false });
 
 const diagramSanitizeConfig = {
   USE_PROFILES: { html: true, svg: true, svgFilters: true },
@@ -502,6 +501,11 @@ async function renderLikeC4Models() {
 
 function renderGraph() {
   const { nodes, edges, relationships } = state.graph;
+  const palette = graphPalette();
+  if (state.graphInstance) {
+    state.graphInstance.destroy();
+    state.graphInstance = null;
+  }
   const elements = [
     ...nodes.map((node) => ({
       data: {
@@ -534,9 +538,9 @@ function renderGraph() {
         selector: "node",
         style: {
           "background-color": "mapData(category, root, versions, #e5e7eb, #e0f2fe)",
-          "border-color": "#ffffff",
+          "border-color": palette.nodeBorder,
           "border-width": 3,
-          color: "#232529",
+          color: palette.text,
           label: "data(label)",
           "font-size": 12,
           "text-wrap": "wrap",
@@ -549,26 +553,26 @@ function renderGraph() {
       },
       {
         selector: "node[category = 'modules']",
-        style: { "background-color": "#dbeafe" },
+        style: { "background-color": palette.modules },
       },
       {
         selector: "node[category = 'shared']",
-        style: { "background-color": "#dcfce7" },
+        style: { "background-color": palette.shared },
       },
       {
         selector: "node[category = 'compliance']",
-        style: { "background-color": "#fef3c7" },
+        style: { "background-color": palette.compliance },
       },
       {
         selector: "node[category = 'docs']",
-        style: { "background-color": "#fce7f3" },
+        style: { "background-color": palette.docs },
       },
       {
         selector: "edge",
         style: {
           "curve-style": "bezier",
-          "line-color": "#aab1ba",
-          "target-arrow-color": "#aab1ba",
+          "line-color": palette.edge,
+          "target-arrow-color": palette.edge,
           "target-arrow-shape": "triangle",
           width: 1.4,
         },
@@ -576,7 +580,7 @@ function renderGraph() {
       {
         selector: ".selected",
         style: {
-          "border-color": "#2563eb",
+          "border-color": palette.selected,
           "border-width": 6,
         },
       },
@@ -599,6 +603,31 @@ function renderGraph() {
   });
   highlightGraphNode(state.selectedId);
   renderRelationships(relationships);
+}
+
+function graphPalette() {
+  if (state.theme === "dark") {
+    return {
+      text: "#e5e7eb",
+      edge: "#7b8494",
+      nodeBorder: "#111827",
+      selected: "#60a5fa",
+      modules: "#1d4ed8",
+      shared: "#15803d",
+      compliance: "#b45309",
+      docs: "#be185d",
+    };
+  }
+  return {
+    text: "#232529",
+    edge: "#aab1ba",
+    nodeBorder: "#ffffff",
+    selected: "#2563eb",
+    modules: "#dbeafe",
+    shared: "#dcfce7",
+    compliance: "#fef3c7",
+    docs: "#fce7f3",
+  };
 }
 
 function renderRelationships(relationships) {
@@ -635,6 +664,56 @@ function escapeHTML(value) {
 
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 [els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => el.addEventListener("input", renderSpecList));
+els.themeToggle.addEventListener("click", () => {
+  applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true, rerender: true });
+});
+
+function getInitialTheme() {
+  const stored = localStorage.getItem("spec-preview-theme");
+  if (stored === "dark" || stored === "light") return stored;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme, options) {
+  state.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  if (options.persist) {
+    localStorage.setItem("spec-preview-theme", theme);
+  }
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: theme === "dark" ? "dark" : "default",
+  });
+  updateThemeControl();
+  if (options.rerender) {
+    rerenderForTheme();
+  }
+}
+
+function updateThemeControl() {
+  const dark = state.theme === "dark";
+  els.themeToggle.innerHTML = `
+    <i data-lucide="${dark ? "sun" : "moon"}" class="h-4 w-4"></i>
+    <span id="themeLabel" class="hidden sm:inline">${dark ? "Light" : "Dark"}</span>
+  `;
+  els.themeLabel = document.querySelector("#themeLabel");
+  refreshIcons();
+}
+
+function rerenderForTheme() {
+  if (state.graph) {
+    renderGraph();
+  }
+  if (state.selectedId) {
+    selectSpec(state.selectedId, false);
+  }
+  state.likec4 = null;
+  if (state.tab === "models") {
+    loadLikeC4Models(true);
+  }
+}
 
 function refreshIcons() {
   if (window.lucide) {

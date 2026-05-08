@@ -288,3 +288,20 @@ func TestPreviewDiagramSanitizerKeepsMermaidLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewUISupportsDarkMode(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app)
+	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "graphPalette", "theme === \"dark\" ? \"dark\" : \"default\""} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI dark mode missing %s", want)
+		}
+	}
+}
