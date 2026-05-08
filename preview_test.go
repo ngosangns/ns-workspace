@@ -339,3 +339,24 @@ func TestPreviewUISupportsDiagramLightbox(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewDiagramLightboxSupportsZoomPan(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(css)
+	for _, want := range []string{"id=\"diagramZoomIn\"", "id=\"diagramZoomOut\"", "id=\"diagramZoomFit\"", "diagramZoomLevel", "zoomLightbox", "fitLightboxDiagram", "pointerdown", "wheel", "diagram-lightbox__stage", "is-panning"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram lightbox zoom/pan missing %s", want)
+		}
+	}
+}

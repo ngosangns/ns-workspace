@@ -6,6 +6,16 @@ const state = {
   likec4: null,
   likec4Loading: false,
   theme: getInitialTheme(),
+  lightbox: {
+    scale: 1,
+    x: 0,
+    y: 0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    originX: 0,
+    originY: 0,
+  },
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
@@ -33,6 +43,11 @@ const els = {
   diagramLightboxTitle: document.querySelector("#diagramLightboxTitle"),
   diagramLightboxContent: document.querySelector("#diagramLightboxContent"),
   diagramLightboxClose: document.querySelector("#diagramLightboxClose"),
+  diagramZoomIn: document.querySelector("#diagramZoomIn"),
+  diagramZoomOut: document.querySelector("#diagramZoomOut"),
+  diagramZoomFit: document.querySelector("#diagramZoomFit"),
+  diagramZoomReset: document.querySelector("#diagramZoomReset"),
+  diagramZoomLevel: document.querySelector("#diagramZoomLevel"),
 };
 
 const markdownRenderer = window.markdownit({
@@ -432,12 +447,17 @@ function openDiagramLightbox(title, svg) {
   if (!svg) return;
   els.diagramLightboxTitle.textContent = title;
   els.diagramLightboxContent.innerHTML = "";
+  resetLightboxTransform();
+  const stage = document.createElement("div");
+  stage.className = "diagram-lightbox__stage";
   const clone = svg.cloneNode(true);
   clone.removeAttribute("width");
   clone.removeAttribute("height");
   clone.classList.add("diagram-lightbox__svg");
-  els.diagramLightboxContent.append(clone);
+  stage.append(clone);
+  els.diagramLightboxContent.append(stage);
   els.diagramLightbox.showModal();
+  requestAnimationFrame(fitLightboxDiagram);
 }
 
 function closeDiagramLightbox() {
@@ -445,6 +465,50 @@ function closeDiagramLightbox() {
     els.diagramLightbox.close();
   }
   els.diagramLightboxContent.innerHTML = "";
+}
+
+function resetLightboxTransform() {
+  state.lightbox.scale = 1;
+  state.lightbox.x = 0;
+  state.lightbox.y = 0;
+  state.lightbox.dragging = false;
+  updateLightboxTransform();
+}
+
+function updateLightboxTransform() {
+  const stage = els.diagramLightboxContent.querySelector(".diagram-lightbox__stage");
+  if (stage) {
+    stage.style.transform = `translate(${state.lightbox.x}px, ${state.lightbox.y}px) scale(${state.lightbox.scale})`;
+  }
+  els.diagramZoomLevel.textContent = `${Math.round(state.lightbox.scale * 100)}%`;
+}
+
+function zoomLightbox(delta, clientX, clientY) {
+  const previous = state.lightbox.scale;
+  const next = Math.min(6, Math.max(0.2, previous * delta));
+  const rect = els.diagramLightboxContent.getBoundingClientRect();
+  const anchorX = clientX == null ? rect.left + rect.width / 2 : clientX;
+  const anchorY = clientY == null ? rect.top + rect.height / 2 : clientY;
+  const localX = anchorX - rect.left - state.lightbox.x;
+  const localY = anchorY - rect.top - state.lightbox.y;
+  state.lightbox.x -= localX * (next / previous - 1);
+  state.lightbox.y -= localY * (next / previous - 1);
+  state.lightbox.scale = next;
+  updateLightboxTransform();
+}
+
+function fitLightboxDiagram() {
+  const svg = els.diagramLightboxContent.querySelector("svg");
+  if (!svg) return;
+  const viewBox = svg.viewBox?.baseVal;
+  const diagramWidth = viewBox?.width || svg.getBoundingClientRect().width || 1000;
+  const diagramHeight = viewBox?.height || svg.getBoundingClientRect().height || 700;
+  const viewport = els.diagramLightboxContent.getBoundingClientRect();
+  const scale = Math.min(1, (viewport.width - 32) / diagramWidth, (viewport.height - 32) / diagramHeight);
+  state.lightbox.scale = Math.max(0.2, scale);
+  state.lightbox.x = Math.max(16, (viewport.width - diagramWidth * state.lightbox.scale) / 2);
+  state.lightbox.y = Math.max(16, (viewport.height - diagramHeight * state.lightbox.scale) / 2);
+  updateLightboxTransform();
 }
 
 async function postJSON(path, payload) {
@@ -727,6 +791,45 @@ els.diagramLightbox.addEventListener("click", (event) => {
 });
 els.diagramLightbox.addEventListener("close", () => {
   els.diagramLightboxContent.innerHTML = "";
+});
+els.diagramZoomIn.addEventListener("click", () => zoomLightbox(1.18));
+els.diagramZoomOut.addEventListener("click", () => zoomLightbox(1 / 1.18));
+els.diagramZoomReset.addEventListener("click", resetLightboxTransform);
+els.diagramZoomFit.addEventListener("click", fitLightboxDiagram);
+els.diagramLightboxContent.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+    zoomLightbox(event.deltaY < 0 ? 1.12 : 1 / 1.12, event.clientX, event.clientY);
+  },
+  { passive: false },
+);
+els.diagramLightboxContent.addEventListener("pointerdown", (event) => {
+  if (!els.diagramLightboxContent.querySelector(".diagram-lightbox__stage")) return;
+  state.lightbox.dragging = true;
+  state.lightbox.dragStartX = event.clientX;
+  state.lightbox.dragStartY = event.clientY;
+  state.lightbox.originX = state.lightbox.x;
+  state.lightbox.originY = state.lightbox.y;
+  els.diagramLightboxContent.classList.add("is-panning");
+  els.diagramLightboxContent.setPointerCapture(event.pointerId);
+});
+els.diagramLightboxContent.addEventListener("pointermove", (event) => {
+  if (!state.lightbox.dragging) return;
+  state.lightbox.x = state.lightbox.originX + event.clientX - state.lightbox.dragStartX;
+  state.lightbox.y = state.lightbox.originY + event.clientY - state.lightbox.dragStartY;
+  updateLightboxTransform();
+});
+els.diagramLightboxContent.addEventListener("pointerup", (event) => {
+  state.lightbox.dragging = false;
+  els.diagramLightboxContent.classList.remove("is-panning");
+  if (els.diagramLightboxContent.hasPointerCapture(event.pointerId)) {
+    els.diagramLightboxContent.releasePointerCapture(event.pointerId);
+  }
+});
+els.diagramLightboxContent.addEventListener("pointercancel", () => {
+  state.lightbox.dragging = false;
+  els.diagramLightboxContent.classList.remove("is-panning");
 });
 
 function getInitialTheme() {
