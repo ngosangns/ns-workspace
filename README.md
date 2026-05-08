@@ -67,7 +67,7 @@ Use `--copy` if symlinks are not desirable on your machine.
 
 ## Spec Preview
 
-`preview` starts a localhost-only web server that reads a Viclass-style `specs/` folder and renders a Treact-style dashboard with the spec list, Markdown preview, sync state, dependency graph, relationship map, and forbidden dependency rules. Markdown code fences for `mermaid` render as diagrams in the browser.
+`preview` starts a localhost-only web server that reads a Viclass-style `specs/` folder and renders a DaisyUI dashboard with the spec list, Markdown preview, sync state, dependency graph, relationship map, and forbidden dependency rules. Markdown code fences for `mermaid` render as diagrams in the browser.
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass
