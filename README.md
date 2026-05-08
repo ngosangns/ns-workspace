@@ -31,7 +31,6 @@ Registry-managed skills:
 - `dispatching-parallel-agents` from `obra/superpowers`
 - `gitbutler` from `aheritier/boost-your-ai`
 - `graphify` from `howell5/willhong-skills`
-- `likec4-dsl` from `likec4.dev`
 - `refactor` from `github/awesome-copilot`
 
 Custom embedded skills:
@@ -68,7 +67,7 @@ Use `--copy` if symlinks are not desirable on your machine.
 
 ## Spec Preview
 
-`preview` starts a localhost-only web server that reads a Viclass-style `specs/` folder and renders a Notion-like dashboard with the spec list, Markdown preview, sync state, dependency graph, relationship map, and LikeC4 models. Markdown code fences for `mermaid`, `likec4`, `likec4-dsl`, and `c4` render as diagrams; the Models tab scans `.c4`/`.likec4` workspaces or generates a LikeC4 model from the spec graph. LikeC4 rendering uses the official `likec4 gen mermaid` CLI through `npx`, then displays through Mermaid in the browser.
+`preview` starts a localhost-only web server that reads a Viclass-style `specs/` folder and renders a Treact-style dashboard with the spec list, Markdown preview, sync state, dependency graph, relationship map, and forbidden dependency rules. Markdown code fences for `mermaid` render as diagrams in the browser.
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass

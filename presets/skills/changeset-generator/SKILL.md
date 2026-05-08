@@ -71,7 +71,7 @@ Group changed files by their package:
 
 - Test files (`*.spec.ts`, `__tests__/*`, `__snapshots__/*`)
 - Generated files (anything in `.gitignore`)
-- Internal packages that are never published: `@likec4/icons`, `@likec4/tsconfig`
+- Internal packages that are never published in the target repo
 
 If no packages remain after filtering, tell the user there are no user-facing changes and stop — do not create a changeset.
 
@@ -83,7 +83,7 @@ Write from the **user's perspective** — what they can now do, what was fixed, 
 
 - Be concise: 1–3 bullet points or a single sentence
 - Focus on user-facing/public impact only
-- Reference issues when relevant: `Fixes [#123](https://github.com/likec4/likec4/issues/123)`
+- Reference issues when relevant: `Fixes #123`
 
 **Do NOT mention:** test changes, internal refactors, config changes, code cleanup, dependency bumps.
 
@@ -133,7 +133,7 @@ Show the user the changeset content and file path before or after writing. If so
 
 ```markdown
 ---
-'@likec4/diagram': patch
+'@scope/diagram': patch
 ---
 
 Add reset manual layout button with tooltip guidance
@@ -141,8 +141,8 @@ Add reset manual layout button with tooltip guidance
 
 ```markdown
 ---
-'@likec4/core': patch
-'@likec4/diagram': patch
+'@scope/core': patch
+'@scope/diagram': patch
 ---
 
 First iteration of element notes feature:

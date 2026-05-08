@@ -21,11 +21,6 @@
       "skill": "graphify"
     },
     {
-      "name": "likec4-dsl",
-      "source": "likec4.dev",
-      "skill": "likec4-dsl"
-    },
-    {
       "name": "refactor",
       "source": "github/awesome-copilot",
       "skill": "refactor"
