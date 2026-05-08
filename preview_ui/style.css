@@ -111,9 +111,23 @@ figure,
 }
 
 .diagram-lightbox__content {
+  position: relative;
   overflow: auto;
   padding: 1rem;
+  cursor: grab;
+  touch-action: none;
   scrollbar-gutter: stable both-edges;
+}
+
+.diagram-lightbox__content.is-panning {
+  cursor: grabbing;
+}
+
+.diagram-lightbox__stage {
+  width: max-content;
+  min-width: min-content;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
 .diagram-lightbox__svg {

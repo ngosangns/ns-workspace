@@ -122,11 +122,26 @@
         <header class="diagram-lightbox__header">
           <div class="min-w-0">
             <div id="diagramLightboxTitle" class="truncate text-sm font-semibold">Diagram</div>
-            <div class="text-base-content/55 text-xs">Press ESC or click outside to close</div>
+            <div class="text-base-content/55 text-xs">Scroll to zoom, drag to pan</div>
           </div>
-          <button id="diagramLightboxClose" class="btn btn-ghost btn-sm" type="button" aria-label="Close diagram">
-            <i data-lucide="x" class="h-4 w-4"></i>
-          </button>
+          <div class="flex shrink-0 items-center gap-1">
+            <button id="diagramZoomOut" class="btn btn-ghost btn-sm" type="button" aria-label="Zoom out">
+              <i data-lucide="zoom-out" class="h-4 w-4"></i>
+            </button>
+            <span id="diagramZoomLevel" class="text-base-content/60 w-14 text-center text-xs tabular-nums">100%</span>
+            <button id="diagramZoomIn" class="btn btn-ghost btn-sm" type="button" aria-label="Zoom in">
+              <i data-lucide="zoom-in" class="h-4 w-4"></i>
+            </button>
+            <button id="diagramZoomFit" class="btn btn-ghost btn-sm" type="button" aria-label="Fit diagram">
+              <i data-lucide="scan" class="h-4 w-4"></i>
+            </button>
+            <button id="diagramZoomReset" class="btn btn-ghost btn-sm" type="button" aria-label="Reset zoom">
+              <i data-lucide="rotate-ccw" class="h-4 w-4"></i>
+            </button>
+            <button id="diagramLightboxClose" class="btn btn-ghost btn-sm" type="button" aria-label="Close diagram">
+              <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+          </div>
         </header>
         <div id="diagramLightboxContent" class="diagram-lightbox__content"></div>
       </div>
