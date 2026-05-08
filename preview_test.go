@@ -158,7 +158,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape", "svg-pan-zoom"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -286,7 +286,7 @@ func TestPreviewUIUsesSafeScrollbars(t *testing.T) {
 	}
 }
 
-func TestPreviewUIRendersMermaidWithInlineViewport(t *testing.T) {
+func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -300,19 +300,19 @@ func TestPreviewUIRendersMermaidWithInlineViewport(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "diagram-stage", "diagramViewports"} {
+	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "diagramPanZoomInstances", "window.svgPanZoom"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid viewport missing %s", want)
+			t.Fatalf("preview Mermaid svg-pan-zoom integration missing %s", want)
 		}
 	}
-	for _, forbidden := range []string{"id=\"diagramLightbox\"", "openDiagramLightbox", "showModal()", "diagram-lightbox"} {
+	for _, forbidden := range []string{"id=\"diagramLightbox\"", "openDiagramLightbox", "showModal()", "diagram-lightbox", "diagramViewports"} {
 		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview Mermaid should not use lightbox anymore: %s", forbidden)
+			t.Fatalf("preview Mermaid should not use old lightbox/custom viewport code: %s", forbidden)
 		}
 	}
 }
 
-func TestPreviewDiagramViewportSupportsZoomPan(t *testing.T) {
+func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -326,42 +326,49 @@ func TestPreviewDiagramViewportSupportsZoomPan(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "zoomDiagramViewport", "fitDiagramViewport", "pointerdown", "wheel", "diagram-stage", "is-panning"} {
+	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "zoomScaleSensitivity: 0.2", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid zoom/pan missing %s", want)
+			t.Fatalf("preview Mermaid svg-pan-zoom API missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{"zoomDiagramViewport", "fitDiagramViewport", "centerDiagramViewport", "pointerdown", "pointermove", "setPointerCapture", "view.stage.style.transform"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview Mermaid should delegate zoom/pan to svg-pan-zoom: %s", forbidden)
 		}
 	}
 }
 
-func TestPreviewDiagramViewportZoomKeepsSvgSharp(t *testing.T) {
+func TestPreviewDiagramPanZoomLifecycleIsManaged(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"dataset.baseWidth", "dataset.baseHeight", "renderWidth", "renderHeight", "view.stage.style.transform = `translate(${view.x}px, ${view.y}px)`"} {
+	for _, want := range []string{"destroyDiagramPanZoom", "instance.destroy()", "state.diagramPanZoomInstances.set", "state.diagramPanZoomInstances.delete"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid sharp SVG zoom missing %s", want)
+			t.Fatalf("preview Mermaid svg-pan-zoom lifecycle missing %s", want)
 		}
 	}
-	if strings.Contains(text, "scale(${view.scale})") || strings.Contains(text, "scale(${state.lightbox.scale})") {
-		t.Fatalf("preview Mermaid should resize SVG instead of CSS-scaling the stage")
+	for _, forbidden := range []string{"dataset.baseWidth", "dataset.baseHeight", "renderWidth", "renderHeight"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview Mermaid should not keep custom SVG resize zoom code: %s", forbidden)
+		}
 	}
 }
 
-func TestPreviewDiagramViewportPreservesSvgSize(t *testing.T) {
+func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"svgDiagramSize", "svg.setAttribute(\"width\"", "svg.setAttribute(\"height\"", "svg.style.width", "svg.style.height"} {
+	for _, want := range []string{"svg.setAttribute(\"width\", \"100%\")", "svg.setAttribute(\"height\", \"100%\")", "svg.classList.add(\"diagram-svg\")"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid SVG sizing missing %s", want)
+			t.Fatalf("preview Mermaid SVG library preparation missing %s", want)
 		}
 	}
-	if strings.Contains(text, "svg.removeAttribute(\"width\")") || strings.Contains(text, "svg.removeAttribute(\"height\")") {
-		t.Fatalf("preview Mermaid should preserve explicit SVG size")
+	if strings.Contains(text, "svgDiagramSize") || strings.Contains(text, "svg.removeAttribute(\"width\")") || strings.Contains(text, "svg.removeAttribute(\"height\")") {
+		t.Fatalf("preview Mermaid should let svg-pan-zoom manage rendered SVG sizing")
 	}
 }
 
@@ -380,9 +387,6 @@ func TestPreviewDiagramViewportUsesHiddenOverflowAndBackground(t *testing.T) {
 			t.Fatalf("preview inline Mermaid hidden overflow/background missing %s", want)
 		}
 	}
-	if strings.Contains(text, ".diagram-stage") && strings.Contains(text, "box-shadow: 0 12px 36px") {
-		t.Fatalf("preview inline Mermaid stage should not have a diagram shadow")
-	}
 	for _, forbidden := range []string{"injectSvgBackground", "diagram-lightbox__svg-bg", "clone.style.background"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("preview Mermaid should not add background to diagram SVG: %s", forbidden)
@@ -393,30 +397,13 @@ func TestPreviewDiagramViewportUsesHiddenOverflowAndBackground(t *testing.T) {
 	}
 }
 
-func TestPreviewDiagramViewportCentersDiagram(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(app) + "\n" + string(css)
-	for _, want := range []string{"centerDiagramViewport", "stageWidth", "stageHeight", "view.x = Math.max"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid centering missing %s", want)
-		}
-	}
-}
-
 func TestPreviewDiagramViewportHasCanvasBackground(t *testing.T) {
 	css, err := os.ReadFile("preview_ui/style.css")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(css)
-	for _, want := range []string{"--diagram-canvas-bg", "--diagram-grid-line", "background-image:", "background-size: 24px 24px", "--diagram-stage-bg"} {
+	for _, want := range []string{"--diagram-canvas-bg", "--diagram-grid-line", "background-image:", "background-size: 24px 24px"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview inline Mermaid background missing %s", want)
 		}

@@ -5,7 +5,7 @@ const state = {
   graphInstance: null,
   graphDiagramRenderId: 0,
   theme: getInitialTheme(),
-  diagramViewports: new Map(),
+  diagramPanZoomInstances: new Map(),
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
@@ -370,15 +370,10 @@ async function renderMermaidDiagram(host, id, source, label, title, framed) {
 function decorateDiagram(host, id, title) {
   const svg = host.querySelector("svg");
   if (!svg) return;
-  state.diagramViewports.delete(id);
-  const size = svgDiagramSize(svg);
-  svg.setAttribute("width", String(size.width));
-  svg.setAttribute("height", String(size.height));
-  svg.dataset.baseWidth = String(size.width);
-  svg.dataset.baseHeight = String(size.height);
-  svg.style.width = `${size.width}px`;
-  svg.style.height = `${size.height}px`;
+  destroyDiagramPanZoom(id);
   svg.classList.add("diagram-svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
 
   const toolbar = document.createElement("div");
   toolbar.className = "diagram-toolbar";
@@ -405,160 +400,75 @@ function decorateDiagram(host, id, title) {
   viewport.className = "diagram-viewport";
   viewport.tabIndex = 0;
   viewport.setAttribute("aria-label", `${title}. Scroll to zoom, drag to pan.`);
-  const stage = document.createElement("div");
-  stage.className = "diagram-stage";
-  stage.append(svg);
-  viewport.append(stage);
+  viewport.append(svg);
   host.innerHTML = "";
   host.append(toolbar, viewport);
 
-  const viewportState = {
-    host,
-    viewport,
-    stage,
-    svg,
-    zoomLevel: toolbar.querySelector(".diagram-zoom-level"),
-    scale: 1,
-    x: 0,
-    y: 0,
-    dragging: false,
-    dragStartX: 0,
-    dragStartY: 0,
-    originX: 0,
-    originY: 0,
-  };
-  state.diagramViewports.set(id, viewportState);
-  bindDiagramViewport(id, toolbar, viewport);
-  requestAnimationFrame(() => fitDiagramViewport(id));
+  initDiagramPanZoom(id, svg, toolbar);
   refreshIcons();
 }
 
-function svgDiagramSize(svg) {
-  const viewBox = svg.viewBox?.baseVal;
-  const attrWidth = parseFloat(svg.getAttribute("width") || "");
-  const attrHeight = parseFloat(svg.getAttribute("height") || "");
-  const rect = svg.getBoundingClientRect();
-  return {
-    width: Math.max(1, viewBox?.width || attrWidth || rect.width || 1000),
-    height: Math.max(1, viewBox?.height || attrHeight || rect.height || 700),
+function initDiagramPanZoom(id, svg, toolbar) {
+  const zoomLevel = toolbar.querySelector(".diagram-zoom-level");
+  const setZoomLevel = (instance) => {
+    zoomLevel.textContent = `${Math.round(instance.getZoom() * 100)}%`;
   };
-}
-
-function bindDiagramViewport(id, toolbar, viewport) {
-  toolbar.querySelector('[data-diagram-action="zoom-in"]').addEventListener("click", () => zoomDiagramViewport(id, 1.18));
-  toolbar.querySelector('[data-diagram-action="zoom-out"]').addEventListener("click", () => zoomDiagramViewport(id, 1 / 1.18));
-  toolbar.querySelector('[data-diagram-action="fit"]').addEventListener("click", () => fitDiagramViewport(id));
-  toolbar.querySelector('[data-diagram-action="reset"]').addEventListener("click", () => resetDiagramViewport(id));
-  viewport.addEventListener(
-    "wheel",
-    (event) => {
-      event.preventDefault();
-      zoomDiagramViewport(id, event.deltaY < 0 ? 1.12 : 1 / 1.12, event.clientX, event.clientY);
-    },
-    { passive: false },
-  );
-  viewport.addEventListener("pointerdown", (event) => {
-    const view = state.diagramViewports.get(id);
-    if (!view) return;
-    view.dragging = true;
-    view.dragStartX = event.clientX;
-    view.dragStartY = event.clientY;
-    view.originX = view.x;
-    view.originY = view.y;
-    viewport.classList.add("is-panning");
-    viewport.setPointerCapture(event.pointerId);
-  });
-  viewport.addEventListener("pointermove", (event) => {
-    const view = state.diagramViewports.get(id);
-    if (!view?.dragging) return;
-    view.x = view.originX + event.clientX - view.dragStartX;
-    view.y = view.originY + event.clientY - view.dragStartY;
-    updateDiagramViewport(id);
-  });
-  const stopPanning = (event) => {
-    const view = state.diagramViewports.get(id);
-    if (view) {
-      view.dragging = false;
+  requestAnimationFrame(() => {
+    if (!window.svgPanZoom) {
+      zoomLevel.textContent = "No zoom";
+      return;
     }
-    viewport.classList.remove("is-panning");
-    if (event?.pointerId != null && viewport.hasPointerCapture(event.pointerId)) {
-      viewport.releasePointerCapture(event.pointerId);
-    }
-  };
-  viewport.addEventListener("pointerup", stopPanning);
-  viewport.addEventListener("pointercancel", stopPanning);
+    let instance;
+    instance = window.svgPanZoom(svg, {
+      panEnabled: true,
+      zoomEnabled: true,
+      controlIconsEnabled: false,
+      dblClickZoomEnabled: true,
+      mouseWheelZoomEnabled: true,
+      preventMouseEventsDefault: true,
+      zoomScaleSensitivity: 0.2,
+      minZoom: 0.2,
+      maxZoom: 10,
+      fit: true,
+      contain: false,
+      center: true,
+      refreshRate: "auto",
+      onZoom: () => instance && setZoomLevel(instance),
+      onPan: () => instance && setZoomLevel(instance),
+    });
+    state.diagramPanZoomInstances.set(id, instance);
+    instance.resize();
+    instance.fit();
+    instance.center();
+    setZoomLevel(instance);
+    toolbar.querySelector('[data-diagram-action="zoom-in"]').addEventListener("click", () => {
+      instance.zoomIn();
+      setZoomLevel(instance);
+    });
+    toolbar.querySelector('[data-diagram-action="zoom-out"]').addEventListener("click", () => {
+      instance.zoomOut();
+      setZoomLevel(instance);
+    });
+    toolbar.querySelector('[data-diagram-action="fit"]').addEventListener("click", () => {
+      instance.resize();
+      instance.fit();
+      instance.center();
+      setZoomLevel(instance);
+    });
+    toolbar.querySelector('[data-diagram-action="reset"]').addEventListener("click", () => {
+      instance.resetZoom();
+      instance.resetPan();
+      setZoomLevel(instance);
+    });
+  });
 }
 
-function updateDiagramViewport(id) {
-  const view = state.diagramViewports.get(id);
-  if (!view) return;
-  const baseWidth = parseFloat(view.svg.dataset.baseWidth || "");
-  const baseHeight = parseFloat(view.svg.dataset.baseHeight || "");
-  if (baseWidth > 0 && baseHeight > 0) {
-    const renderWidth = Math.max(1, Math.round(baseWidth * view.scale));
-    const renderHeight = Math.max(1, Math.round(baseHeight * view.scale));
-    view.svg.setAttribute("width", String(renderWidth));
-    view.svg.setAttribute("height", String(renderHeight));
-    view.svg.style.width = `${renderWidth}px`;
-    view.svg.style.height = `${renderHeight}px`;
+function destroyDiagramPanZoom(id) {
+  const instance = state.diagramPanZoomInstances.get(id);
+  if (instance) {
+    instance.destroy();
+    state.diagramPanZoomInstances.delete(id);
   }
-  view.stage.style.transform = `translate(${view.x}px, ${view.y}px)`;
-  view.zoomLevel.textContent = `${Math.round(view.scale * 100)}%`;
-}
-
-function zoomDiagramViewport(id, delta, clientX, clientY) {
-  const view = state.diagramViewports.get(id);
-  if (!view) return;
-  const previous = view.scale;
-  const next = Math.min(6, Math.max(0.2, previous * delta));
-  const rect = view.viewport.getBoundingClientRect();
-  const anchorX = clientX == null ? rect.left + rect.width / 2 : clientX;
-  const anchorY = clientY == null ? rect.top + rect.height / 2 : clientY;
-  const localX = anchorX - rect.left - view.x;
-  const localY = anchorY - rect.top - view.y;
-  view.x -= localX * (next / previous - 1);
-  view.y -= localY * (next / previous - 1);
-  view.scale = next;
-  updateDiagramViewport(id);
-}
-
-function resetDiagramViewport(id) {
-  const view = state.diagramViewports.get(id);
-  if (!view) return;
-  view.scale = 1;
-  centerDiagramViewport(id);
-}
-
-function fitDiagramViewport(id) {
-  const view = state.diagramViewports.get(id);
-  if (!view) return;
-  const diagramWidth = parseFloat(view.svg.dataset.baseWidth || "") || svgDiagramSize(view.svg).width;
-  const diagramHeight = parseFloat(view.svg.dataset.baseHeight || "") || svgDiagramSize(view.svg).height;
-  const viewport = view.viewport.getBoundingClientRect();
-  const stageStyles = getComputedStyle(view.stage);
-  const horizontalChrome = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight) + 2;
-  const verticalChrome = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom) + 2;
-  const scale = Math.min(1, (viewport.width - 32 - horizontalChrome) / diagramWidth, (viewport.height - 32 - verticalChrome) / diagramHeight);
-  view.scale = Math.max(0.2, scale);
-  centerDiagramViewport(id, horizontalChrome, verticalChrome);
-}
-
-function centerDiagramViewport(id, horizontalChrome, verticalChrome) {
-  const view = state.diagramViewports.get(id);
-  if (!view) return;
-  const diagramWidth = parseFloat(view.svg.dataset.baseWidth || "") || svgDiagramSize(view.svg).width;
-  const diagramHeight = parseFloat(view.svg.dataset.baseHeight || "") || svgDiagramSize(view.svg).height;
-  const viewport = view.viewport.getBoundingClientRect();
-  if (horizontalChrome == null || verticalChrome == null) {
-    const stageStyles = getComputedStyle(view.stage);
-    horizontalChrome = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight) + 2;
-    verticalChrome = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom) + 2;
-  }
-  const stageWidth = diagramWidth * view.scale + horizontalChrome;
-  const stageHeight = diagramHeight * view.scale + verticalChrome;
-  view.x = Math.max(16, (viewport.width - stageWidth) / 2);
-  view.y = Math.max(16, (viewport.height - stageHeight) / 2);
-  updateDiagramViewport(id);
 }
 
 async function postJSON(path, payload) {
