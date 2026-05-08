@@ -6,6 +6,7 @@ const state = {
   graphDiagramRenderId: 0,
   theme: getInitialTheme(),
   diagramPanZoomInstances: new Map(),
+  diagramPanZoomTargets: new Map(),
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
@@ -315,6 +316,7 @@ async function selectSpec(id, showSpecTab, options = {}) {
   state.selectedId = id;
   els.pageTitle.textContent = spec.title;
   els.pagePath.textContent = spec.path;
+  destroyDiagramsIn(els.specContent);
   els.specContent.innerHTML = renderMarkdown(spec.raw, spec.html);
   await renderMermaidBlocks(els.specContent);
   renderSpecList();
@@ -410,11 +412,20 @@ function decorateDiagram(host, id, title) {
   host.innerHTML = "";
   host.append(toolbar, viewport);
 
-  initDiagramPanZoom(id, svg, toolbar);
+  registerDiagramPanZoom(id, svg, toolbar);
   refreshIcons();
 }
 
-function initDiagramPanZoom(id, svg, toolbar) {
+function registerDiagramPanZoom(id, svg, toolbar) {
+  state.diagramPanZoomTargets.set(id, { svg, toolbar });
+  initDiagramPanZoom(id);
+}
+
+function initDiagramPanZoom(id) {
+  if (state.diagramPanZoomInstances.has(id)) return;
+  const target = state.diagramPanZoomTargets.get(id);
+  if (!target) return;
+  const { svg, toolbar } = target;
   const zoomLevel = toolbar.querySelector(".diagram-zoom-level");
   const setZoomLevel = (instance) => {
     zoomLevel.textContent = `${Math.round(instance.getZoom() * 100)}%`;
@@ -422,6 +433,10 @@ function initDiagramPanZoom(id, svg, toolbar) {
   requestAnimationFrame(() => {
     if (!window.svgPanZoom) {
       zoomLevel.textContent = "No zoom";
+      return;
+    }
+    if (!diagramIsVisible(svg)) {
+      zoomLevel.textContent = "Ready";
       return;
     }
     let instance;
@@ -449,30 +464,54 @@ function initDiagramPanZoom(id, svg, toolbar) {
       return;
     }
     state.diagramPanZoomInstances.set(id, instance);
+    if (!resetDiagramPanZoomView(instance, zoomLevel)) {
+      destroyDiagramPanZoom(id);
+      return;
+    }
+    toolbar.querySelector('[data-diagram-action="zoom-in"]').addEventListener("click", () => {
+      runDiagramPanZoomAction(instance, zoomLevel, () => instance.zoomIn());
+    });
+    toolbar.querySelector('[data-diagram-action="zoom-out"]').addEventListener("click", () => {
+      runDiagramPanZoomAction(instance, zoomLevel, () => instance.zoomOut());
+    });
+    toolbar.querySelector('[data-diagram-action="fit"]').addEventListener("click", () => {
+      resetDiagramPanZoomView(instance, zoomLevel);
+    });
+    toolbar.querySelector('[data-diagram-action="reset"]').addEventListener("click", () => {
+      runDiagramPanZoomAction(instance, zoomLevel, () => {
+        instance.resetZoom();
+        instance.resetPan();
+      });
+    });
+  });
+}
+
+function resetDiagramPanZoomView(instance, zoomLevel) {
+  return runDiagramPanZoomAction(instance, zoomLevel, () => {
     instance.resize();
     instance.fit();
     instance.center();
-    setZoomLevel(instance);
-    toolbar.querySelector('[data-diagram-action="zoom-in"]').addEventListener("click", () => {
-      instance.zoomIn();
-      setZoomLevel(instance);
-    });
-    toolbar.querySelector('[data-diagram-action="zoom-out"]').addEventListener("click", () => {
-      instance.zoomOut();
-      setZoomLevel(instance);
-    });
-    toolbar.querySelector('[data-diagram-action="fit"]').addEventListener("click", () => {
-      instance.resize();
-      instance.fit();
-      instance.center();
-      setZoomLevel(instance);
-    });
-    toolbar.querySelector('[data-diagram-action="reset"]').addEventListener("click", () => {
-      instance.resetZoom();
-      instance.resetPan();
-      setZoomLevel(instance);
-    });
   });
+}
+
+function runDiagramPanZoomAction(instance, zoomLevel, action) {
+  try {
+    action();
+    zoomLevel.textContent = `${Math.round(instance.getZoom() * 100)}%`;
+    return true;
+  } catch (error) {
+    zoomLevel.textContent = "Static";
+    return false;
+  }
+}
+
+function initVisibleDiagramPanZooms() {
+  state.diagramPanZoomTargets.forEach((_, id) => initDiagramPanZoom(id));
+}
+
+function diagramIsVisible(svg) {
+  const rect = svg.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 && svg.getClientRects().length > 0;
 }
 
 function prepareSvgPanZoomViewport(svg) {
@@ -505,6 +544,15 @@ function destroyDiagramPanZoom(id) {
     instance.destroy();
     state.diagramPanZoomInstances.delete(id);
   }
+  state.diagramPanZoomTargets.delete(id);
+}
+
+function destroyDiagramsIn(root) {
+  root.querySelectorAll?.(".diagram-surface[data-diagram-id]").forEach((node) => {
+    if (node.dataset.diagramId) {
+      destroyDiagramPanZoom(node.dataset.diagramId);
+    }
+  });
 }
 
 async function postJSON(path, payload) {
@@ -527,6 +575,7 @@ function switchTab(name, options = {}) {
     state.graphInstance.resize();
     state.graphInstance.fit(undefined, 36);
   }
+  requestAnimationFrame(initVisibleDiagramPanZooms);
   if (updateURL) {
     updateRouteURL(name);
   }
@@ -710,6 +759,7 @@ function renderGraph() {
 async function renderDependencyDiagram() {
   const source = state.graph?.dependencyDiagram?.trim();
   const renderId = ++state.graphDiagramRenderId;
+  destroyDiagramsIn(els.graphDiagram);
   els.graphDiagram.innerHTML = "";
   if (!source) {
     els.graphDiagram.innerHTML = '<div class="alert py-3 text-sm">No dependency diagram source found.</div>';
