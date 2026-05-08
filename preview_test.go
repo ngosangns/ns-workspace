@@ -377,6 +377,26 @@ func TestPreviewDiagramLightboxPreservesSvgSize(t *testing.T) {
 	}
 }
 
+func TestPreviewDiagramLightboxUsesHiddenOverflowAndBackground(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app) + "\n" + string(css)
+	for _, want := range []string{"overflow: hidden", "clone.style.background", "background: var(--diagram-stage-bg)", "touch-action: none"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram lightbox hidden overflow/background missing %s", want)
+		}
+	}
+	if strings.Contains(text, "scrollbar-gutter: stable both-edges") {
+		t.Fatalf("preview diagram lightbox viewport should not reserve scrollbar gutter")
+	}
+}
+
 func TestPreviewDiagramLightboxCentersDiagram(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {

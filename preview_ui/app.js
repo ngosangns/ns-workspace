@@ -454,6 +454,7 @@ function openDiagramLightbox(title, svg) {
   const clone = svg.cloneNode(true);
   clone.setAttribute("width", String(size.width));
   clone.setAttribute("height", String(size.height));
+  clone.style.background = "var(--diagram-stage-bg)";
   clone.style.width = `${size.width}px`;
   clone.style.height = `${size.height}px`;
   clone.classList.add("diagram-lightbox__svg");

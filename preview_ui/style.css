@@ -115,7 +115,7 @@ figure,
 
 .diagram-lightbox__content {
   position: relative;
-  overflow: auto;
+  overflow: hidden;
   padding: 1rem;
   background-color: var(--diagram-canvas-bg);
   background-image:
@@ -124,7 +124,6 @@ figure,
   background-size: 24px 24px;
   cursor: grab;
   touch-action: none;
-  scrollbar-gutter: stable both-edges;
 }
 
 .diagram-lightbox__content.is-panning {
@@ -142,12 +141,14 @@ figure,
   padding: 1rem;
   transform-origin: 0 0;
   will-change: transform;
+  overflow: hidden;
 }
 
 .diagram-lightbox__svg {
   display: block;
   min-width: min-content;
   max-width: none;
+  background: var(--diagram-stage-bg);
 }
 
 .markdown {
