@@ -246,6 +246,19 @@ func TestPreviewUIConnectsHotReload(t *testing.T) {
 	}
 }
 
+func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "#${route}", "popstate", "hashchange", "`/spec/${encodeURIComponent"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI route handling missing %s", want)
+		}
+	}
+}
+
 func TestPreviewUISupportsLikeC4Blocks(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
