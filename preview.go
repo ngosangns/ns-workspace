@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -31,8 +33,24 @@ type previewOptions struct {
 }
 
 type previewServer struct {
-	opt previewOptions
-	srv *http.Server
+	opt            previewOptions
+	srv            *http.Server
+	likeC4Renderer likeC4Renderer
+}
+
+type likeC4Renderer func(context.Context, string) ([]likeC4Diagram, error)
+
+type likeC4RenderRequest struct {
+	Source string `json:"source"`
+}
+
+type likeC4RenderResponse struct {
+	Diagrams []likeC4Diagram `json:"diagrams"`
+}
+
+type likeC4Diagram struct {
+	Name    string `json:"name"`
+	Mermaid string `json:"mermaid"`
 }
 
 func runPreview(args []string) error {
@@ -82,12 +100,13 @@ func runPreview(args []string) error {
 }
 
 func newPreviewServer(opt previewOptions) *previewServer {
-	ps := &previewServer{opt: opt}
+	ps := &previewServer{opt: opt, likeC4Renderer: renderLikeC4Mermaid}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/project", ps.handleProject)
 	mux.HandleFunc("/api/specs", ps.handleSpecs)
 	mux.HandleFunc("/api/specs/", ps.handleSpec)
 	mux.HandleFunc("/api/graph", ps.handleGraph)
+	mux.HandleFunc("/api/render/likec4", ps.handleRenderLikeC4)
 	mux.HandleFunc("/api/events", ps.handleEvents)
 	static, _ := fs.Sub(previewUIFS, "preview_ui")
 	mux.Handle("/", http.FileServer(http.FS(static)))
@@ -176,6 +195,32 @@ func (ps *previewServer) handleGraph(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, project.Graph)
 }
 
+func (ps *previewServer) handleRenderLikeC4(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req likeC4RenderRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Source) == "" {
+		http.Error(w, "likec4 source is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	diagrams, err := ps.likeC4Renderer(ctx, req.Source)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	writeJSON(w, likeC4RenderResponse{Diagrams: diagrams})
+}
+
 func (ps *previewServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -259,6 +304,60 @@ func newestEmbeddedModToken() string {
 		return nil
 	})
 	return fmt.Sprintf("%d:%d", newest, count)
+}
+
+func renderLikeC4Mermaid(ctx context.Context, source string) ([]likeC4Diagram, error) {
+	tmpDir, err := os.MkdirTemp("", "ns-workspace-likec4-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sourcePath := filepath.Join(tmpDir, "workspace.c4")
+	if err := os.WriteFile(sourcePath, []byte(source), 0o600); err != nil {
+		return nil, err
+	}
+	outDir := filepath.Join(tmpDir, "out")
+	cmd := exec.CommandContext(ctx, "npx", "--yes", "likec4", "gen", "mermaid", tmpDir, "-o", outDir)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("likec4 gen mermaid failed: %v\n%s", err, strings.TrimSpace(output.String()))
+	}
+
+	var files []string
+	if err := filepath.WalkDir(outDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ".mmd" {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return nil, fmt.Errorf("likec4 did not generate any Mermaid diagrams")
+	}
+
+	diagrams := make([]likeC4Diagram, 0, len(files))
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		name, err := filepath.Rel(outDir, path)
+		if err != nil {
+			name = filepath.Base(path)
+		}
+		name = strings.TrimSuffix(filepath.ToSlash(name), ".mmd")
+		diagrams = append(diagrams, likeC4Diagram{Name: name, Mermaid: string(data)})
+	}
+	return diagrams, nil
 }
 
 func writeJSON(w http.ResponseWriter, value any) {

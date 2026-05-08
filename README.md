@@ -68,7 +68,7 @@ Use `--copy` if symlinks are not desirable on your machine.
 
 ## Spec Preview
 
-`preview` starts a localhost-only web server that reads a Viclass-style `specs/` folder and renders a Notion-like dashboard with the spec list, Markdown preview, sync state, dependency graph, and relationship map.
+`preview` starts a localhost-only web server that reads a Viclass-style `specs/` folder and renders a Notion-like dashboard with the spec list, Markdown preview, sync state, dependency graph, and relationship map. Markdown code fences for `mermaid`, `likec4`, `likec4-dsl`, and `c4` render as diagrams; LikeC4 blocks use the official `likec4 gen mermaid` CLI through `npx`, then display through Mermaid in the browser.
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass

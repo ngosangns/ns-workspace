@@ -37,6 +37,11 @@ mermaid.initialize({
   theme: "default",
 });
 
+const diagramSanitizeConfig = {
+  ADD_TAGS: ["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan"],
+  ADD_ATTR: ["viewBox", "d", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "rx", "ry", "r", "points", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "transform", "width", "height", "fill", "stroke", "stroke-width", "class", "id"],
+};
+
 async function load() {
   const [project, specs, graph] = await Promise.all([
     fetchJSON("/api/project"),
@@ -293,6 +298,7 @@ async function selectSpec(id, showSpecTab) {
   els.pageTitle.textContent = spec.title;
   els.pagePath.textContent = spec.path;
   els.specContent.innerHTML = renderMarkdown(spec.raw, spec.html);
+  await renderLikeC4Blocks(els.specContent);
   await renderMermaidBlocks(els.specContent);
   renderSpecList();
   highlightGraphNode(id);
@@ -316,18 +322,79 @@ async function renderMermaidBlocks(root) {
       const source = block.textContent.trim();
       if (!source) return;
       const host = document.createElement("div");
-      host.className = "mermaid my-5 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4";
       const id = `mermaid-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`;
-      try {
-        const { svg } = await mermaid.render(id, source);
-        host.innerHTML = DOMPurify.sanitize(svg, { ADD_TAGS: ["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan"], ADD_ATTR: ["viewBox", "d", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "rx", "ry", "r", "points", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "transform", "width", "height", "fill", "stroke", "stroke-width", "class", "id"] });
-      } catch (error) {
-        host.className = "alert alert-error my-5 text-sm";
-        host.textContent = `Mermaid render failed: ${error.message || error}`;
-      }
+      await renderMermaidDiagram(host, id, source, "Mermaid", true);
       block.closest("pre").replaceWith(host);
     }),
   );
+}
+
+async function renderLikeC4Blocks(root) {
+  const blocks = [
+    ...root.querySelectorAll(
+      "pre > code.language-likec4, pre > code.language-likec4-dsl, pre > code.language-c4, pre > code.likec4, pre > code.c4",
+    ),
+  ];
+  await Promise.all(
+    blocks.map(async (block, index) => {
+      const source = block.textContent.trim();
+      if (!source) return;
+      const host = document.createElement("div");
+      host.className = "my-5 rounded-lg border border-base-300 bg-base-100 p-4 text-sm text-base-content/70";
+      host.textContent = "Rendering LikeC4 diagram...";
+      block.closest("pre").replaceWith(host);
+      try {
+        const result = await postJSON("/api/render/likec4", { source });
+        const diagrams = result.diagrams || [];
+        if (diagrams.length === 0) {
+          throw new Error("LikeC4 did not return any diagrams");
+        }
+        host.className = "my-5 grid gap-4";
+        host.innerHTML = "";
+        await Promise.all(
+          diagrams.map(async (diagram, diagramIndex) => {
+            const panel = document.createElement("figure");
+            const caption = document.createElement("figcaption");
+            const target = document.createElement("div");
+            panel.className = "overflow-auto rounded-lg border border-base-300 bg-base-100 p-4";
+            caption.className = "mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-base-content/55";
+            caption.innerHTML = `<i data-lucide="workflow" class="h-4 w-4"></i><span>${escapeHTML(diagram.name || "LikeC4")}</span>`;
+            panel.append(caption, target);
+            host.append(panel);
+            const id = `likec4-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}-${diagramIndex}`;
+            await renderMermaidDiagram(target, id, diagram.mermaid || "", "LikeC4", false);
+          }),
+        );
+        refreshIcons();
+      } catch (error) {
+        host.className = "alert alert-error my-5 block whitespace-pre-wrap text-sm";
+        host.textContent = `LikeC4 render failed: ${error.message || error}`;
+      }
+    }),
+  );
+}
+
+async function renderMermaidDiagram(host, id, source, label, framed) {
+  host.className = framed
+    ? "mermaid my-5 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4"
+    : "mermaid overflow-auto";
+  try {
+    const { svg } = await mermaid.render(id, source);
+    host.innerHTML = DOMPurify.sanitize(svg, diagramSanitizeConfig);
+  } catch (error) {
+    host.className = "alert alert-error my-2 text-sm";
+    host.textContent = `${label} render failed: ${error.message || error}`;
+  }
+}
+
+async function postJSON(path, payload) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
 function switchTab(name) {
