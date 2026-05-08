@@ -5,16 +5,7 @@ const state = {
   graphInstance: null,
   graphDiagramRenderId: 0,
   theme: getInitialTheme(),
-  lightbox: {
-    scale: 1,
-    x: 0,
-    y: 0,
-    dragging: false,
-    dragStartX: 0,
-    dragStartY: 0,
-    originX: 0,
-    originY: 0,
-  },
+  diagramViewports: new Map(),
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
@@ -41,15 +32,6 @@ const els = {
   constraints: document.querySelector("#constraints"),
   themeToggle: document.querySelector("#themeToggle"),
   themeLabel: document.querySelector("#themeLabel"),
-  diagramLightbox: document.querySelector("#diagramLightbox"),
-  diagramLightboxTitle: document.querySelector("#diagramLightboxTitle"),
-  diagramLightboxContent: document.querySelector("#diagramLightboxContent"),
-  diagramLightboxClose: document.querySelector("#diagramLightboxClose"),
-  diagramZoomIn: document.querySelector("#diagramZoomIn"),
-  diagramZoomOut: document.querySelector("#diagramZoomOut"),
-  diagramZoomFit: document.querySelector("#diagramZoomFit"),
-  diagramZoomReset: document.querySelector("#diagramZoomReset"),
-  diagramZoomLevel: document.querySelector("#diagramZoomLevel"),
 };
 
 const markdownRenderer = window.markdownit({
@@ -370,67 +352,85 @@ async function renderMermaidBlocks(root) {
 
 async function renderMermaidDiagram(host, id, source, label, title, framed) {
   host.className = framed
-    ? "mermaid diagram-surface my-5 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4"
-    : "mermaid diagram-surface overflow-auto";
+    ? "mermaid diagram-surface my-5 rounded-lg border border-base-300 bg-base-100"
+    : "mermaid diagram-surface";
+  host.dataset.diagramId = id;
   host.dataset.diagramTitle = title;
   host.textContent = "Rendering diagram...";
   try {
     const result = await postJSON("/api/render/mermaid", { source, theme: state.theme });
     host.innerHTML = DOMPurify.sanitize(result.svg || "", diagramSanitizeConfig);
-    decorateDiagram(host, title);
+    decorateDiagram(host, id, title);
   } catch (error) {
     host.className = "alert alert-error my-2 text-sm";
     host.textContent = `${label} render failed: ${error.message || error}`;
   }
 }
 
-function decorateDiagram(host, title) {
+function decorateDiagram(host, id, title) {
   const svg = host.querySelector("svg");
   if (!svg) return;
-  host.tabIndex = 0;
-  host.setAttribute("role", "button");
-  host.setAttribute("aria-label", `Open ${title}`);
-  host.title = "Open diagram";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "diagram-zoom btn btn-ghost btn-xs";
-  button.setAttribute("aria-label", `Open ${title}`);
-  button.innerHTML = '<i data-lucide="expand" class="h-4 w-4"></i>';
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openDiagramLightbox(title, svg);
-  });
-  host.append(button);
-  host.addEventListener("click", () => openDiagramLightbox(title, svg));
-  host.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openDiagramLightbox(title, svg);
-    }
-  });
-  refreshIcons();
-}
-
-function openDiagramLightbox(title, svg) {
-  if (!svg) return;
-  els.diagramLightboxTitle.textContent = title;
-  els.diagramLightboxContent.innerHTML = "";
-  resetLightboxTransform();
-  const stage = document.createElement("div");
-  stage.className = "diagram-lightbox__stage";
+  state.diagramViewports.delete(id);
   const size = svgDiagramSize(svg);
-  const clone = svg.cloneNode(true);
-  clone.setAttribute("width", String(size.width));
-  clone.setAttribute("height", String(size.height));
-  clone.dataset.baseWidth = String(size.width);
-  clone.dataset.baseHeight = String(size.height);
-  clone.style.width = `${size.width}px`;
-  clone.style.height = `${size.height}px`;
-  clone.classList.add("diagram-lightbox__svg");
-  stage.append(clone);
-  els.diagramLightboxContent.append(stage);
-  els.diagramLightbox.showModal();
-  requestAnimationFrame(fitLightboxDiagram);
+  svg.setAttribute("width", String(size.width));
+  svg.setAttribute("height", String(size.height));
+  svg.dataset.baseWidth = String(size.width);
+  svg.dataset.baseHeight = String(size.height);
+  svg.style.width = `${size.width}px`;
+  svg.style.height = `${size.height}px`;
+  svg.classList.add("diagram-svg");
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "diagram-toolbar";
+  toolbar.innerHTML = `
+    <div class="min-w-0 truncate text-xs font-medium text-base-content/70">${escapeHTML(title)}</div>
+    <div class="flex shrink-0 items-center gap-1">
+      <button class="btn btn-ghost btn-xs" type="button" data-diagram-action="zoom-out" aria-label="Zoom out">
+        <i data-lucide="zoom-out" class="h-4 w-4"></i>
+      </button>
+      <span class="diagram-zoom-level text-base-content/60 w-12 text-center text-xs tabular-nums">100%</span>
+      <button class="btn btn-ghost btn-xs" type="button" data-diagram-action="zoom-in" aria-label="Zoom in">
+        <i data-lucide="zoom-in" class="h-4 w-4"></i>
+      </button>
+      <button class="btn btn-ghost btn-xs" type="button" data-diagram-action="fit" aria-label="Fit diagram">
+        <i data-lucide="scan" class="h-4 w-4"></i>
+      </button>
+      <button class="btn btn-ghost btn-xs" type="button" data-diagram-action="reset" aria-label="Reset zoom">
+        <i data-lucide="rotate-ccw" class="h-4 w-4"></i>
+      </button>
+    </div>
+  `;
+
+  const viewport = document.createElement("div");
+  viewport.className = "diagram-viewport";
+  viewport.tabIndex = 0;
+  viewport.setAttribute("aria-label", `${title}. Scroll to zoom, drag to pan.`);
+  const stage = document.createElement("div");
+  stage.className = "diagram-stage";
+  stage.append(svg);
+  viewport.append(stage);
+  host.innerHTML = "";
+  host.append(toolbar, viewport);
+
+  const viewportState = {
+    host,
+    viewport,
+    stage,
+    svg,
+    zoomLevel: toolbar.querySelector(".diagram-zoom-level"),
+    scale: 1,
+    x: 0,
+    y: 0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    originX: 0,
+    originY: 0,
+  };
+  state.diagramViewports.set(id, viewportState);
+  bindDiagramViewport(id, toolbar, viewport);
+  requestAnimationFrame(() => fitDiagramViewport(id));
+  refreshIcons();
 }
 
 function svgDiagramSize(svg) {
@@ -444,71 +444,121 @@ function svgDiagramSize(svg) {
   };
 }
 
-function closeDiagramLightbox() {
-  if (els.diagramLightbox.open) {
-    els.diagramLightbox.close();
-  }
-  els.diagramLightboxContent.innerHTML = "";
-}
-
-function resetLightboxTransform() {
-  state.lightbox.scale = 1;
-  state.lightbox.x = 0;
-  state.lightbox.y = 0;
-  state.lightbox.dragging = false;
-  updateLightboxTransform();
-}
-
-function updateLightboxTransform() {
-  const stage = els.diagramLightboxContent.querySelector(".diagram-lightbox__stage");
-  if (stage) {
-    const svg = stage.querySelector("svg");
-    const baseWidth = parseFloat(svg?.dataset.baseWidth || "");
-    const baseHeight = parseFloat(svg?.dataset.baseHeight || "");
-    if (svg && baseWidth > 0 && baseHeight > 0) {
-      const renderWidth = Math.max(1, Math.round(baseWidth * state.lightbox.scale));
-      const renderHeight = Math.max(1, Math.round(baseHeight * state.lightbox.scale));
-      svg.setAttribute("width", String(renderWidth));
-      svg.setAttribute("height", String(renderHeight));
-      svg.style.width = `${renderWidth}px`;
-      svg.style.height = `${renderHeight}px`;
+function bindDiagramViewport(id, toolbar, viewport) {
+  toolbar.querySelector('[data-diagram-action="zoom-in"]').addEventListener("click", () => zoomDiagramViewport(id, 1.18));
+  toolbar.querySelector('[data-diagram-action="zoom-out"]').addEventListener("click", () => zoomDiagramViewport(id, 1 / 1.18));
+  toolbar.querySelector('[data-diagram-action="fit"]').addEventListener("click", () => fitDiagramViewport(id));
+  toolbar.querySelector('[data-diagram-action="reset"]').addEventListener("click", () => resetDiagramViewport(id));
+  viewport.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      zoomDiagramViewport(id, event.deltaY < 0 ? 1.12 : 1 / 1.12, event.clientX, event.clientY);
+    },
+    { passive: false },
+  );
+  viewport.addEventListener("pointerdown", (event) => {
+    const view = state.diagramViewports.get(id);
+    if (!view) return;
+    view.dragging = true;
+    view.dragStartX = event.clientX;
+    view.dragStartY = event.clientY;
+    view.originX = view.x;
+    view.originY = view.y;
+    viewport.classList.add("is-panning");
+    viewport.setPointerCapture(event.pointerId);
+  });
+  viewport.addEventListener("pointermove", (event) => {
+    const view = state.diagramViewports.get(id);
+    if (!view?.dragging) return;
+    view.x = view.originX + event.clientX - view.dragStartX;
+    view.y = view.originY + event.clientY - view.dragStartY;
+    updateDiagramViewport(id);
+  });
+  const stopPanning = (event) => {
+    const view = state.diagramViewports.get(id);
+    if (view) {
+      view.dragging = false;
     }
-    stage.style.transform = `translate(${state.lightbox.x}px, ${state.lightbox.y}px)`;
-  }
-  els.diagramZoomLevel.textContent = `${Math.round(state.lightbox.scale * 100)}%`;
+    viewport.classList.remove("is-panning");
+    if (event?.pointerId != null && viewport.hasPointerCapture(event.pointerId)) {
+      viewport.releasePointerCapture(event.pointerId);
+    }
+  };
+  viewport.addEventListener("pointerup", stopPanning);
+  viewport.addEventListener("pointercancel", stopPanning);
 }
 
-function zoomLightbox(delta, clientX, clientY) {
-  const previous = state.lightbox.scale;
+function updateDiagramViewport(id) {
+  const view = state.diagramViewports.get(id);
+  if (!view) return;
+  const baseWidth = parseFloat(view.svg.dataset.baseWidth || "");
+  const baseHeight = parseFloat(view.svg.dataset.baseHeight || "");
+  if (baseWidth > 0 && baseHeight > 0) {
+    const renderWidth = Math.max(1, Math.round(baseWidth * view.scale));
+    const renderHeight = Math.max(1, Math.round(baseHeight * view.scale));
+    view.svg.setAttribute("width", String(renderWidth));
+    view.svg.setAttribute("height", String(renderHeight));
+    view.svg.style.width = `${renderWidth}px`;
+    view.svg.style.height = `${renderHeight}px`;
+  }
+  view.stage.style.transform = `translate(${view.x}px, ${view.y}px)`;
+  view.zoomLevel.textContent = `${Math.round(view.scale * 100)}%`;
+}
+
+function zoomDiagramViewport(id, delta, clientX, clientY) {
+  const view = state.diagramViewports.get(id);
+  if (!view) return;
+  const previous = view.scale;
   const next = Math.min(6, Math.max(0.2, previous * delta));
-  const rect = els.diagramLightboxContent.getBoundingClientRect();
+  const rect = view.viewport.getBoundingClientRect();
   const anchorX = clientX == null ? rect.left + rect.width / 2 : clientX;
   const anchorY = clientY == null ? rect.top + rect.height / 2 : clientY;
-  const localX = anchorX - rect.left - state.lightbox.x;
-  const localY = anchorY - rect.top - state.lightbox.y;
-  state.lightbox.x -= localX * (next / previous - 1);
-  state.lightbox.y -= localY * (next / previous - 1);
-  state.lightbox.scale = next;
-  updateLightboxTransform();
+  const localX = anchorX - rect.left - view.x;
+  const localY = anchorY - rect.top - view.y;
+  view.x -= localX * (next / previous - 1);
+  view.y -= localY * (next / previous - 1);
+  view.scale = next;
+  updateDiagramViewport(id);
 }
 
-function fitLightboxDiagram() {
-  const stage = els.diagramLightboxContent.querySelector(".diagram-lightbox__stage");
-  const svg = stage?.querySelector("svg");
-  if (!stage || !svg) return;
-  const diagramWidth = parseFloat(svg.dataset.baseWidth || "") || svgDiagramSize(svg).width;
-  const diagramHeight = parseFloat(svg.dataset.baseHeight || "") || svgDiagramSize(svg).height;
-  const viewport = els.diagramLightboxContent.getBoundingClientRect();
-  const stageStyles = getComputedStyle(stage);
+function resetDiagramViewport(id) {
+  const view = state.diagramViewports.get(id);
+  if (!view) return;
+  view.scale = 1;
+  centerDiagramViewport(id);
+}
+
+function fitDiagramViewport(id) {
+  const view = state.diagramViewports.get(id);
+  if (!view) return;
+  const diagramWidth = parseFloat(view.svg.dataset.baseWidth || "") || svgDiagramSize(view.svg).width;
+  const diagramHeight = parseFloat(view.svg.dataset.baseHeight || "") || svgDiagramSize(view.svg).height;
+  const viewport = view.viewport.getBoundingClientRect();
+  const stageStyles = getComputedStyle(view.stage);
   const horizontalChrome = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight) + 2;
   const verticalChrome = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom) + 2;
   const scale = Math.min(1, (viewport.width - 32 - horizontalChrome) / diagramWidth, (viewport.height - 32 - verticalChrome) / diagramHeight);
-  state.lightbox.scale = Math.max(0.2, scale);
-  const stageWidth = diagramWidth * state.lightbox.scale + horizontalChrome;
-  const stageHeight = diagramHeight * state.lightbox.scale + verticalChrome;
-  state.lightbox.x = Math.max(16, (viewport.width - stageWidth) / 2);
-  state.lightbox.y = Math.max(16, (viewport.height - stageHeight) / 2);
-  updateLightboxTransform();
+  view.scale = Math.max(0.2, scale);
+  centerDiagramViewport(id, horizontalChrome, verticalChrome);
+}
+
+function centerDiagramViewport(id, horizontalChrome, verticalChrome) {
+  const view = state.diagramViewports.get(id);
+  if (!view) return;
+  const diagramWidth = parseFloat(view.svg.dataset.baseWidth || "") || svgDiagramSize(view.svg).width;
+  const diagramHeight = parseFloat(view.svg.dataset.baseHeight || "") || svgDiagramSize(view.svg).height;
+  const viewport = view.viewport.getBoundingClientRect();
+  if (horizontalChrome == null || verticalChrome == null) {
+    const stageStyles = getComputedStyle(view.stage);
+    horizontalChrome = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight) + 2;
+    verticalChrome = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom) + 2;
+  }
+  const stageWidth = diagramWidth * view.scale + horizontalChrome;
+  const stageHeight = diagramHeight * view.scale + verticalChrome;
+  view.x = Math.max(16, (viewport.width - stageWidth) / 2);
+  view.y = Math.max(16, (viewport.height - stageHeight) / 2);
+  updateDiagramViewport(id);
 }
 
 async function postJSON(path, payload) {
@@ -813,55 +863,6 @@ window.addEventListener("popstate", () => {
 els.themeToggle.addEventListener("click", () => {
   applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true, rerender: true });
 });
-els.diagramLightboxClose.addEventListener("click", closeDiagramLightbox);
-els.diagramLightbox.addEventListener("click", (event) => {
-  if (event.target === els.diagramLightbox) {
-    closeDiagramLightbox();
-  }
-});
-els.diagramLightbox.addEventListener("close", () => {
-  els.diagramLightboxContent.innerHTML = "";
-});
-els.diagramZoomIn.addEventListener("click", () => zoomLightbox(1.18));
-els.diagramZoomOut.addEventListener("click", () => zoomLightbox(1 / 1.18));
-els.diagramZoomReset.addEventListener("click", resetLightboxTransform);
-els.diagramZoomFit.addEventListener("click", fitLightboxDiagram);
-els.diagramLightboxContent.addEventListener(
-  "wheel",
-  (event) => {
-    event.preventDefault();
-    zoomLightbox(event.deltaY < 0 ? 1.12 : 1 / 1.12, event.clientX, event.clientY);
-  },
-  { passive: false },
-);
-els.diagramLightboxContent.addEventListener("pointerdown", (event) => {
-  if (!els.diagramLightboxContent.querySelector(".diagram-lightbox__stage")) return;
-  state.lightbox.dragging = true;
-  state.lightbox.dragStartX = event.clientX;
-  state.lightbox.dragStartY = event.clientY;
-  state.lightbox.originX = state.lightbox.x;
-  state.lightbox.originY = state.lightbox.y;
-  els.diagramLightboxContent.classList.add("is-panning");
-  els.diagramLightboxContent.setPointerCapture(event.pointerId);
-});
-els.diagramLightboxContent.addEventListener("pointermove", (event) => {
-  if (!state.lightbox.dragging) return;
-  state.lightbox.x = state.lightbox.originX + event.clientX - state.lightbox.dragStartX;
-  state.lightbox.y = state.lightbox.originY + event.clientY - state.lightbox.dragStartY;
-  updateLightboxTransform();
-});
-els.diagramLightboxContent.addEventListener("pointerup", (event) => {
-  state.lightbox.dragging = false;
-  els.diagramLightboxContent.classList.remove("is-panning");
-  if (els.diagramLightboxContent.hasPointerCapture(event.pointerId)) {
-    els.diagramLightboxContent.releasePointerCapture(event.pointerId);
-  }
-});
-els.diagramLightboxContent.addEventListener("pointercancel", () => {
-  state.lightbox.dragging = false;
-  els.diagramLightboxContent.classList.remove("is-panning");
-});
-
 function getInitialTheme() {
   const stored = localStorage.getItem("spec-preview-theme");
   if (stored === "dark" || stored === "light") return stored;

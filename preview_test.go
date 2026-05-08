@@ -286,7 +286,7 @@ func TestPreviewUIUsesSafeScrollbars(t *testing.T) {
 	}
 }
 
-func TestPreviewUISupportsDiagramLightbox(t *testing.T) {
+func TestPreviewUIRendersMermaidWithInlineViewport(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -300,14 +300,19 @@ func TestPreviewUISupportsDiagramLightbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"id=\"diagramLightbox\"", "openDiagramLightbox", "decorateDiagram", "showModal()", "diagram-surface", "diagram-zoom", "diagram-lightbox__content"} {
+	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "diagram-stage", "diagramViewports"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram lightbox missing %s", want)
+			t.Fatalf("preview inline Mermaid viewport missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{"id=\"diagramLightbox\"", "openDiagramLightbox", "showModal()", "diagram-lightbox"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview Mermaid should not use lightbox anymore: %s", forbidden)
 		}
 	}
 }
 
-func TestPreviewDiagramLightboxSupportsZoomPan(t *testing.T) {
+func TestPreviewDiagramViewportSupportsZoomPan(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -321,46 +326,46 @@ func TestPreviewDiagramLightboxSupportsZoomPan(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"id=\"diagramZoomIn\"", "id=\"diagramZoomOut\"", "id=\"diagramZoomFit\"", "diagramZoomLevel", "zoomLightbox", "fitLightboxDiagram", "pointerdown", "wheel", "diagram-lightbox__stage", "is-panning"} {
+	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "zoomDiagramViewport", "fitDiagramViewport", "pointerdown", "wheel", "diagram-stage", "is-panning"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram lightbox zoom/pan missing %s", want)
+			t.Fatalf("preview inline Mermaid zoom/pan missing %s", want)
 		}
 	}
 }
 
-func TestPreviewDiagramLightboxZoomKeepsSvgSharp(t *testing.T) {
+func TestPreviewDiagramViewportZoomKeepsSvgSharp(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"dataset.baseWidth", "dataset.baseHeight", "renderWidth", "renderHeight", "stage.style.transform = `translate(${state.lightbox.x}px, ${state.lightbox.y}px)`"} {
+	for _, want := range []string{"dataset.baseWidth", "dataset.baseHeight", "renderWidth", "renderHeight", "view.stage.style.transform = `translate(${view.x}px, ${view.y}px)`"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram lightbox sharp SVG zoom missing %s", want)
+			t.Fatalf("preview inline Mermaid sharp SVG zoom missing %s", want)
 		}
 	}
-	if strings.Contains(text, "scale(${state.lightbox.scale})") {
-		t.Fatalf("preview diagram lightbox should resize SVG instead of CSS-scaling the stage")
+	if strings.Contains(text, "scale(${view.scale})") || strings.Contains(text, "scale(${state.lightbox.scale})") {
+		t.Fatalf("preview Mermaid should resize SVG instead of CSS-scaling the stage")
 	}
 }
 
-func TestPreviewDiagramLightboxPreservesSvgSize(t *testing.T) {
+func TestPreviewDiagramViewportPreservesSvgSize(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"svgDiagramSize", "clone.setAttribute(\"width\"", "clone.setAttribute(\"height\"", "clone.style.width", "clone.style.height"} {
+	for _, want := range []string{"svgDiagramSize", "svg.setAttribute(\"width\"", "svg.setAttribute(\"height\"", "svg.style.width", "svg.style.height"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram lightbox SVG sizing missing %s", want)
+			t.Fatalf("preview inline Mermaid SVG sizing missing %s", want)
 		}
 	}
-	if strings.Contains(text, "clone.removeAttribute(\"width\")") || strings.Contains(text, "clone.removeAttribute(\"height\")") {
-		t.Fatalf("preview diagram lightbox should preserve explicit SVG size")
+	if strings.Contains(text, "svg.removeAttribute(\"width\")") || strings.Contains(text, "svg.removeAttribute(\"height\")") {
+		t.Fatalf("preview Mermaid should preserve explicit SVG size")
 	}
 }
 
-func TestPreviewDiagramLightboxUsesHiddenOverflowAndBackground(t *testing.T) {
+func TestPreviewDiagramViewportUsesHiddenOverflowAndBackground(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -370,28 +375,25 @@ func TestPreviewDiagramLightboxUsesHiddenOverflowAndBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app) + "\n" + string(css)
-	for _, want := range []string{"overflow: hidden", "--diagram-lightbox-bg: #ffffff", "html[data-theme=\"dark\"]", "background-color: var(--diagram-lightbox-bg)", "--diagram-canvas-bg: #f3f4f6", "touch-action: none"} {
+	for _, want := range []string{"overflow: hidden", "html[data-theme=\"dark\"]", "background-color: var(--diagram-canvas-bg)", "--diagram-canvas-bg: #f3f4f6", "touch-action: none"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram lightbox hidden overflow/background missing %s", want)
+			t.Fatalf("preview inline Mermaid hidden overflow/background missing %s", want)
 		}
 	}
-	if strings.Contains(text, ".diagram-lightbox__stage") && strings.Contains(text, "box-shadow: 0 12px 36px") {
-		t.Fatalf("preview diagram lightbox stage should not have a diagram shadow")
+	if strings.Contains(text, ".diagram-stage") && strings.Contains(text, "box-shadow: 0 12px 36px") {
+		t.Fatalf("preview inline Mermaid stage should not have a diagram shadow")
 	}
 	for _, forbidden := range []string{"injectSvgBackground", "diagram-lightbox__svg-bg", "clone.style.background"} {
 		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview diagram lightbox should not add background to diagram SVG: %s", forbidden)
+			t.Fatalf("preview Mermaid should not add background to diagram SVG: %s", forbidden)
 		}
 	}
-	if strings.Contains(text, ".diagram-lightbox::backdrop {\n  background: rgb(0 0 0 / 0.62);\n  backdrop-filter") {
-		t.Fatalf("preview diagram lightbox backdrop should not use blur")
-	}
 	if strings.Contains(text, "scrollbar-gutter: stable both-edges") {
-		t.Fatalf("preview diagram lightbox viewport should not reserve scrollbar gutter")
+		t.Fatalf("preview Mermaid viewport should not reserve scrollbar gutter")
 	}
 }
 
-func TestPreviewDiagramLightboxCentersDiagram(t *testing.T) {
+func TestPreviewDiagramViewportCentersDiagram(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -401,14 +403,14 @@ func TestPreviewDiagramLightboxCentersDiagram(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app) + "\n" + string(css)
-	for _, want := range []string{"const stage = els.diagramLightboxContent.querySelector", "stageWidth", "stageHeight", "margin: 0 auto"} {
+	for _, want := range []string{"centerDiagramViewport", "stageWidth", "stageHeight", "view.x = Math.max"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram lightbox centering missing %s", want)
+			t.Fatalf("preview inline Mermaid centering missing %s", want)
 		}
 	}
 }
 
-func TestPreviewDiagramLightboxHasCanvasBackground(t *testing.T) {
+func TestPreviewDiagramViewportHasCanvasBackground(t *testing.T) {
 	css, err := os.ReadFile("preview_ui/style.css")
 	if err != nil {
 		t.Fatal(err)
@@ -416,7 +418,7 @@ func TestPreviewDiagramLightboxHasCanvasBackground(t *testing.T) {
 	text := string(css)
 	for _, want := range []string{"--diagram-canvas-bg", "--diagram-grid-line", "background-image:", "background-size: 24px 24px", "--diagram-stage-bg"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram lightbox background missing %s", want)
+			t.Fatalf("preview inline Mermaid background missing %s", want)
 		}
 	}
 }
