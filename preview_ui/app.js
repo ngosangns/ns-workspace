@@ -612,12 +612,16 @@ function routeFromLocation() {
 
 function updateRouteURL(tab) {
   if (state.applyingRoute) return;
-  const route = tab === "spec" ? `/spec/${encodeURIComponent(state.selectedId || defaultSpecId())}` : `/${tab}`;
+  const route = tab === "spec" ? `/spec/${encodeSpecPath(state.selectedId || defaultSpecId())}` : `/${tab}`;
   const next = `${window.location.pathname}${window.location.search}#${route}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next !== current) {
     window.history.pushState({ tab, spec: state.selectedId }, "", next);
   }
+}
+
+function encodeSpecPath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
 }
 
 async function applyRouteFromLocation() {

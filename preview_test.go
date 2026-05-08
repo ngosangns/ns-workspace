@@ -252,7 +252,7 @@ func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "#${route}", "popstate", "hashchange", "`/spec/${encodeURIComponent"} {
+	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "#${route}", "popstate", "hashchange", "encodeSpecPath", "join(\"/\")"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI route handling missing %s", want)
 		}
