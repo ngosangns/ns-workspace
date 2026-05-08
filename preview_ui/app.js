@@ -56,6 +56,28 @@ async function load() {
   }
 }
 
+async function reloadPreviewData() {
+  const previousSelection = state.selectedId;
+  const [project, specs, graph] = await Promise.all([
+    fetchJSON("/api/project"),
+    fetchJSON("/api/specs"),
+    fetchJSON("/api/graph"),
+  ]);
+  state.project = project;
+  state.specs = specs;
+  state.graph = graph;
+  state.selectedId = specs.some((spec) => spec.id === previousSelection)
+    ? previousSelection
+    : specs.find((spec) => spec.path === "overview.md")?.id || specs[0]?.id || "";
+  renderFilters();
+  renderOverview();
+  renderSpecList();
+  renderGraph();
+  if (state.selectedId) {
+    await selectSpec(state.selectedId, false);
+  }
+}
+
 async function fetchJSON(path) {
   const res = await fetch(path);
   if (!res.ok) throw new Error(await res.text());
@@ -462,6 +484,20 @@ function refreshIcons() {
 }
 
 refreshIcons();
+
+function connectHotReload() {
+  if (!window.EventSource) return;
+  const events = new EventSource("/api/events");
+  events.addEventListener("change", () => {
+    reloadPreviewData().catch(() => window.location.reload());
+  });
+  events.addEventListener("error", () => {
+    events.close();
+    setTimeout(connectHotReload, 1500);
+  });
+}
+
+connectHotReload();
 
 load().catch((err) => {
   els.pageTitle.textContent = "Failed to load specs";

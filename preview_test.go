@@ -72,6 +72,15 @@ overview → editor.core
 	if !hasEdge(graph.Edges, "overview", "editor.core") {
 		t.Fatalf("graph endpoint did not expose edge: %+v", graph.Edges)
 	}
+
+	res, err = http.Get(ts.URL + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if got := res.Header.Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+		t.Fatalf("events endpoint did not use SSE content type: %s", got)
+	}
 }
 
 func TestPreviewHelpIsAccepted(t *testing.T) {
@@ -145,6 +154,19 @@ func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 	for _, want := range []string{"lg:fixed", "buildSpecTree", "renderFolderNode", "folder-open", "data-lucide=\"file-text", "lucide.createIcons"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview sidebar missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIConnectsHotReload(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"new EventSource(\"/api/events\")", "reloadPreviewData", "addEventListener(\"change\""} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI hot reload missing %s", want)
 		}
 	}
 }
