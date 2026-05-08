@@ -1,18 +1,11 @@
 :root {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --diagram-canvas-bg: #f3f4f6;
-  --diagram-grid-line: rgb(17 24 39 / 0.08);
   --scrollbar-thumb: color-mix(in oklab, hsl(var(--bc)) 24%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--bc)) 34%, transparent);
   --scrollbar-track: color-mix(in oklab, hsl(var(--b2)) 78%, transparent);
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   scrollbar-width: thin;
-}
-
-html[data-theme="dark"] {
-  --diagram-canvas-bg: #0b1120;
-  --diagram-grid-line: rgb(229 231 235 / 0.1);
 }
 
 * {
@@ -63,153 +56,6 @@ figure,
   display: block;
 }
 
-.preview-layout {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.preview-sidebar {
-  display: flex;
-  max-height: 48vh;
-  min-width: 0;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.preview-content {
-  min-width: 0;
-}
-
-.sidebar-header,
-.sidebar-controls {
-  flex: 0 0 auto;
-}
-
-.gutter {
-  background: hsl(var(--b3));
-  flex: 0 0 auto;
-}
-
-.gutter.gutter-horizontal {
-  cursor: col-resize;
-  width: 1px;
-}
-
-.gutter.gutter-horizontal:hover {
-  background: hsl(var(--p) / 0.65);
-}
-
-.spec-tree {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
-  font-size: 0.875rem;
-}
-
-.spec-tree .jstree-container-ul,
-.spec-tree .jstree-children {
-  min-width: 0;
-}
-
-.spec-tree .jstree-node {
-  min-height: 2rem;
-  line-height: 2rem;
-  white-space: nowrap;
-}
-
-.spec-tree .jstree-anchor {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  height: 2rem;
-  align-items: center;
-  padding-right: 0.35rem;
-  border-radius: 0.45rem;
-  color: hsl(var(--bc));
-  line-height: 2rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: top;
-}
-
-.spec-tree .jstree-clicked,
-.spec-tree .jstree-hovered {
-  background: hsl(var(--b2));
-  box-shadow: none;
-}
-
-.spec-tree .jstree-icon {
-  color: hsl(var(--bc) / 0.55);
-  line-height: 2rem;
-}
-
-.spec-tree .jstree-wholerow {
-  height: 2rem;
-  border-radius: 0.45rem;
-}
-
-.spec-tree .jstree-wholerow-clicked,
-.spec-tree .jstree-wholerow-hovered {
-  background: hsl(var(--b2));
-}
-
-.ts-wrapper {
-  width: 100%;
-}
-
-.ts-wrapper.single .ts-control {
-  min-height: 2rem;
-  padding: 0.25rem 0.55rem;
-  border-color: hsl(var(--b3));
-  border-radius: var(--rounded-btn, 0.5rem);
-  background: hsl(var(--b1));
-  color: hsl(var(--bc));
-  font-size: 0.875rem;
-}
-
-.ts-wrapper.single .ts-control,
-.ts-dropdown {
-  box-shadow: none;
-}
-
-.ts-dropdown {
-  z-index: 50;
-  border-color: hsl(var(--b3));
-  background: hsl(var(--b1));
-  color: hsl(var(--bc));
-}
-
-.ts-dropdown .option {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ts-dropdown .active {
-  background: hsl(var(--b2));
-  color: hsl(var(--bc));
-}
-
-@media (min-width: 1024px) {
-  .preview-layout {
-    height: 100vh;
-    flex-direction: row;
-    overflow: hidden;
-  }
-
-  .preview-sidebar {
-    height: 100vh;
-    min-width: 16rem;
-    max-height: none;
-  }
-
-  .preview-content {
-    height: 100vh;
-    min-width: 0;
-    overflow: auto;
-  }
-}
-
 .diagram-surface {
   position: relative;
   overflow: hidden;
@@ -234,11 +80,6 @@ figure,
   height: min(54vh, 32rem);
   min-height: 18rem;
   overflow: hidden;
-  background-color: var(--diagram-canvas-bg);
-  background-image:
-    linear-gradient(var(--diagram-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--diagram-grid-line) 1px, transparent 1px);
-  background-size: 24px 24px;
   cursor: grab;
   touch-action: none;
 }
@@ -248,11 +89,6 @@ figure,
   width: 100%;
   height: 100%;
   max-width: none;
-}
-
-.graph-diagram .diagram-viewport {
-  height: min(62vh, 38rem);
-  min-height: 24rem;
 }
 
 .markdown {

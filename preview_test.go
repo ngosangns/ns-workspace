@@ -158,7 +158,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape", "svg-pan-zoom", "jstree", "FlexSearch", "tom-select", "TomSelect", "split.min.js"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape", "svg-pan-zoom"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -197,7 +197,7 @@ func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
 	}
 }
 
-func TestPreviewUsesDedicatedDocumentLayoutTreeSearchAndFilters(t *testing.T) {
+func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -206,19 +206,10 @@ func TestPreviewUsesDedicatedDocumentLayoutTreeSearchAndFilters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"id=\"appLayout\"", "id=\"sidebarPane\"", "id=\"contentPane\"", "Split([\"#sidebarPane\", \"#contentPane\"]", ".jstree(", "plugins: [\"wholerow\"]", "new FlexSearch.Document", "buildSearchIndex", "filteredSpecs", "new TomSelect", "initFilterControls", "spec-tree"} {
+	text := string(html) + "\n" + string(app)
+	for _, want := range []string{"lg:fixed", "buildSpecTree", "renderFolderNode", "folder-open", "data-lucide=\"file-text", "lucide.createIcons"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview dedicated document UI missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{"lg:fixed", "renderFolderNode", "renderFileNode", "buildSpecTree(specs)"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview should use dedicated document tree/layout libraries instead of %s", forbidden)
+			t.Fatalf("preview sidebar missing %s", want)
 		}
 	}
 }
@@ -335,7 +326,7 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "zoomScaleSensitivity: 0.2", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
+	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "zoomScaleSensitivity: 0.4", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom API missing %s", want)
 		}
@@ -381,7 +372,7 @@ func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
 	}
 }
 
-func TestPreviewDiagramViewportUsesHiddenOverflowAndBackground(t *testing.T) {
+func TestPreviewDiagramViewportUsesHiddenOverflowWithoutCustomBackground(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -391,30 +382,17 @@ func TestPreviewDiagramViewportUsesHiddenOverflowAndBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app) + "\n" + string(css)
-	for _, want := range []string{"overflow: hidden", "html[data-theme=\"dark\"]", "background-color: var(--diagram-canvas-bg)", "--diagram-canvas-bg: #f3f4f6", "touch-action: none"} {
+	for _, want := range []string{"overflow: hidden", "touch-action: none"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid hidden overflow/background missing %s", want)
+			t.Fatalf("preview inline Mermaid viewport behavior missing %s", want)
 		}
 	}
-	for _, forbidden := range []string{"injectSvgBackground", "diagram-lightbox__svg-bg", "clone.style.background"} {
+	for _, forbidden := range []string{"injectSvgBackground", "diagram-lightbox__svg-bg", "clone.style.background", "--diagram-canvas-bg", "--diagram-grid-line"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("preview Mermaid should not add background to diagram SVG: %s", forbidden)
 		}
 	}
 	if strings.Contains(text, "scrollbar-gutter: stable both-edges") {
 		t.Fatalf("preview Mermaid viewport should not reserve scrollbar gutter")
-	}
-}
-
-func TestPreviewDiagramViewportHasCanvasBackground(t *testing.T) {
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(css)
-	for _, want := range []string{"--diagram-canvas-bg", "--diagram-grid-line", "background-image:", "background-size: 24px 24px"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid background missing %s", want)
-		}
 	}
 }

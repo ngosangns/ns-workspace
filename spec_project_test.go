@@ -214,6 +214,42 @@ func TestScanSpecProjectSplitsRelationshipMapLists(t *testing.T) {
 	}
 }
 
+func TestScanSpecProjectParsesSpecMetadataAndContentConnections(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "specs/modules/editor-core.md", `# Editor Core
+
+## Meta
+
+- **Status**: Finalized
+- **Links**: [Data Models](../shared/data-models.md), [Portal](./portal/homepage.md)
+
+## Notes
+
+Runtime behavior also mentions turnstile-captcha.md in prose.
+`)
+	writeTestFile(t, root, "specs/shared/data-models.md", "# Data Models\n")
+	writeTestFile(t, root, "specs/modules/portal/homepage.md", "# Portal Homepage\n\nSee [Editor Core](../editor-core.md).\n")
+	writeTestFile(t, root, "specs/modules/turnstile-captcha.md", "# Turnstile Captcha\n")
+
+	project, err := scanSpecProject(root, "specs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, edge := range [][2]string{
+		{"editor-core", "data-models"},
+		{"editor-core", "homepage"},
+		{"editor-core", "turnstile-captcha"},
+		{"homepage", "editor-core"},
+	} {
+		if !hasRelationship(project.Graph.Relationships, edge[0], edge[1]) {
+			t.Fatalf("missing document connection %s -> %s in %+v", edge[0], edge[1], project.Graph.Relationships)
+		}
+	}
+	if !hasGraphNodeSpec(project.Graph.Nodes, "data-models", "shared/data-models.md") {
+		t.Fatalf("metadata-linked shared spec should remain clickable in graph: %+v", project.Graph.Nodes)
+	}
+}
+
 func TestScanSpecProjectFallsBackWithoutIndex(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "specs/modules/dev-tooling.md", `# Dev Tooling
