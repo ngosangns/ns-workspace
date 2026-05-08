@@ -95,16 +95,33 @@
 }
 
 .markdown table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: 0.875rem;
+  table-layout: fixed;
+  white-space: normal;
 }
 
 .markdown th,
 .markdown td {
+  min-width: 12rem;
+  max-width: 34rem;
   border: 1px solid hsl(var(--b3));
   padding: 0.5rem 0.625rem;
   vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  white-space: normal;
+}
+
+.markdown td code,
+.markdown th code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .markdown th {
