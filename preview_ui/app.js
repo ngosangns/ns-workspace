@@ -498,16 +498,22 @@ function zoomLightbox(delta, clientX, clientY) {
 }
 
 function fitLightboxDiagram() {
-  const svg = els.diagramLightboxContent.querySelector("svg");
-  if (!svg) return;
+  const stage = els.diagramLightboxContent.querySelector(".diagram-lightbox__stage");
+  const svg = stage?.querySelector("svg");
+  if (!stage || !svg) return;
   const viewBox = svg.viewBox?.baseVal;
   const diagramWidth = viewBox?.width || svg.getBoundingClientRect().width || 1000;
   const diagramHeight = viewBox?.height || svg.getBoundingClientRect().height || 700;
   const viewport = els.diagramLightboxContent.getBoundingClientRect();
-  const scale = Math.min(1, (viewport.width - 32) / diagramWidth, (viewport.height - 32) / diagramHeight);
+  const stageStyles = getComputedStyle(stage);
+  const horizontalChrome = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight) + 2;
+  const verticalChrome = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom) + 2;
+  const stageWidth = diagramWidth + horizontalChrome;
+  const stageHeight = diagramHeight + verticalChrome;
+  const scale = Math.min(1, (viewport.width - 32) / stageWidth, (viewport.height - 32) / stageHeight);
   state.lightbox.scale = Math.max(0.2, scale);
-  state.lightbox.x = Math.max(16, (viewport.width - diagramWidth * state.lightbox.scale) / 2);
-  state.lightbox.y = Math.max(16, (viewport.height - diagramHeight * state.lightbox.scale) / 2);
+  state.lightbox.x = Math.max(16, (viewport.width - stageWidth * state.lightbox.scale) / 2);
+  state.lightbox.y = Math.max(16, (viewport.height - stageHeight * state.lightbox.scale) / 2);
   updateLightboxTransform();
 }
 

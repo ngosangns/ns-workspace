@@ -134,6 +134,7 @@ figure,
 .diagram-lightbox__stage {
   width: max-content;
   min-width: min-content;
+  margin: 0 auto;
   border: 1px solid hsl(var(--b3));
   border-radius: 0.75rem;
   background: var(--diagram-stage-bg);
