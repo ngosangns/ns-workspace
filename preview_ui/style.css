@@ -146,7 +146,6 @@ figure,
   border-radius: 0.75rem;
   background: var(--diagram-stage-bg);
   padding: 1rem;
-  transform-origin: 0 0;
   will-change: transform;
   overflow: hidden;
 }
