@@ -1,0 +1,29 @@
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# Go build/test artifacts
+bin/
+dist/
+build/
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# Generated output
+graphify-out/
