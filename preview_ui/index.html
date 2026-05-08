@@ -96,18 +96,29 @@
         </section>
 
         <section id="graphTab" class="panel p-5">
-          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+          <div class="grid gap-4">
             <div class="card border-base-300 bg-base-100 border">
-              <div class="card-body p-0">
-                <div id="graphCanvas" class="h-[70vh] min-h-[34rem] w-full"></div>
+              <div class="card-body gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <h2 class="card-title text-base">Dependency Diagram</h2>
+                  <div id="graphStats" class="text-base-content/60 text-sm"></div>
+                </div>
+                <div id="graphDiagram" class="graph-diagram min-h-72 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4"></div>
               </div>
             </div>
-            <aside class="card border-base-300 bg-base-100 max-h-[70vh] border">
-              <div class="card-body overflow-auto">
-                <h2 class="card-title text-base">Relationships</h2>
-                <div id="relationships" class="divide-base-300 divide-y"></div>
+            <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+              <div class="card border-base-300 bg-base-100 border">
+                <div class="card-body p-0">
+                  <div id="graphCanvas" class="h-[70vh] min-h-[34rem] w-full"></div>
+                </div>
               </div>
-            </aside>
+              <aside class="card border-base-300 bg-base-100 max-h-[70vh] border">
+                <div class="card-body overflow-auto">
+                  <h2 class="card-title text-base">Relationships</h2>
+                  <div id="relationships" class="divide-base-300 divide-y"></div>
+                </div>
+              </aside>
+            </div>
           </div>
         </section>
 

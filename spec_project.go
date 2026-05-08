@@ -52,9 +52,10 @@ type specDocument struct {
 }
 
 type specGraph struct {
-	Nodes         []graphNode     `json:"nodes"`
-	Edges         []graphEdge     `json:"edges"`
-	Relationships []graphRelation `json:"relationships"`
+	Nodes             []graphNode     `json:"nodes"`
+	Edges             []graphEdge     `json:"edges"`
+	Relationships     []graphRelation `json:"relationships"`
+	DependencyDiagram string          `json:"dependencyDiagram,omitempty"`
 }
 
 type graphNode struct {
@@ -312,6 +313,12 @@ func parseSyncState(markdown string) map[string]string {
 func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 	nodes := map[string]graphNode{}
 	specByModule := map[string]specDocument{}
+	dependencyDiagram := fencedBlockAfterHeading(indexRaw, "Dependency Graph")
+	diagramLabels := parseMermaidNodeAliases(dependencyDiagram)
+	diagramLabelSet := map[string]bool{}
+	for _, label := range diagramLabels {
+		diagramLabelSet[label] = true
+	}
 	for _, doc := range docs {
 		name := moduleIDFromPath(doc.Path)
 		if name == "" {
@@ -320,7 +327,8 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		for _, alias := range specAliasesForDoc(name, doc) {
 			specByModule[alias] = doc
 		}
-		nodes[name] = graphNode{ID: name, Label: doc.Title, SpecID: doc.ID, Category: doc.Category, Status: doc.Status}
+		nodeID := canonicalSpecNodeID(name, doc, diagramLabelSet)
+		nodes[nodeID] = graphNode{ID: nodeID, Label: doc.Title, SpecID: doc.ID, Category: doc.Category, Status: doc.Status}
 	}
 
 	edges := []graphEdge{}
@@ -334,7 +342,10 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		}
 	}
 	relationships := parseRelationships(indexRaw)
-	for _, rel := range relationships {
+	for i, rel := range relationships {
+		rel.From = canonicalGraphEndpoint(rel.From, specByModule, diagramLabelSet)
+		rel.To = canonicalGraphEndpoint(rel.To, specByModule, diagramLabelSet)
+		relationships[i] = rel
 		if _, ok := nodes[rel.From]; !ok {
 			nodes[rel.From] = graphNode{ID: rel.From, Label: rel.From}
 		}
@@ -359,7 +370,7 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		}
 		return edges[i].From < edges[j].From
 	})
-	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: relationships}
+	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: relationships, DependencyDiagram: dependencyDiagram}
 }
 
 func specAliasesForDoc(name string, doc specDocument) []string {
@@ -376,9 +387,33 @@ func specAliasesForDoc(name string, doc specDocument) []string {
 	add(name)
 	add(strings.ReplaceAll(name, "-", "."))
 	add(strings.ReplaceAll(name, ".", "-"))
+	pathAlias := strings.TrimSuffix(doc.Path, ".md")
+	add(pathAlias)
+	add(strings.TrimPrefix(pathAlias, "modules/"))
+	add(strings.ToLower(doc.Title))
 	add(strings.ToLower(strings.ReplaceAll(doc.Title, " ", "-")))
 	add(strings.ToLower(strings.ReplaceAll(doc.Title, " ", ".")))
 	return out
+}
+
+func canonicalGraphEndpoint(value string, specs map[string]specDocument, diagramLabelSet map[string]bool) string {
+	if doc, ok := specs[value]; ok {
+		return canonicalSpecNodeID(moduleIDFromPath(doc.Path), doc, diagramLabelSet)
+	}
+	lower := strings.ToLower(value)
+	if doc, ok := specs[lower]; ok {
+		return canonicalSpecNodeID(moduleIDFromPath(doc.Path), doc, diagramLabelSet)
+	}
+	return value
+}
+
+func canonicalSpecNodeID(name string, doc specDocument, diagramLabelSet map[string]bool) string {
+	for _, alias := range specAliasesForDoc(name, doc) {
+		if diagramLabelSet[alias] {
+			return alias
+		}
+	}
+	return name
 }
 
 func parseDependencyEdges(markdown string) []graphEdge {
@@ -502,16 +537,29 @@ func parseRelationships(markdown string) []graphRelation {
 		if len(leftRight) != 2 {
 			continue
 		}
-		from := cleanNodeName(leftRight[0])
 		desc := ""
 		toPart := leftRight[1]
 		if idx := strings.Index(toPart, ":"); idx >= 0 {
 			desc = strings.TrimSpace(toPart[idx+1:])
 			toPart = toPart[:idx]
 		}
-		to := cleanNodeName(toPart)
-		if from != "" && to != "" {
-			out = append(out, graphRelation{From: from, To: to, Description: desc, Section: section})
+		for _, from := range splitNodeList(leftRight[0]) {
+			for _, to := range splitNodeList(toPart) {
+				if from != "" && to != "" {
+					out = append(out, graphRelation{From: from, To: to, Description: desc, Section: section})
+				}
+			}
+		}
+	}
+	return out
+}
+
+func splitNodeList(value string) []string {
+	out := []string{}
+	for _, part := range strings.Split(value, ",") {
+		node := cleanNodeName(part)
+		if node != "" {
+			out = append(out, node)
 		}
 	}
 	return out

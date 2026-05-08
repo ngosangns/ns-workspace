@@ -85,6 +85,7 @@ func TestScanSpecProjectParsesMermaidDependencyGraph(t *testing.T) {
 | ------ | --------- | ------ | ------- | ---------- | -------- |
 | Editor Core | [editor-core.md](./modules/editor-core.md) | Finalized | v1.5 | Unchecked | P0 |
 | Portal Homepage | [portal-homepage.md](./modules/portal/portal-homepage.md) | Draft | v1.0 | Unchecked | P1 |
+| Data Models | [data-models.md](./shared/data-models.md) | Finalized | v1.0 | Unchecked | P1 |
 
 ## Dependency Graph
 
@@ -101,13 +102,18 @@ flowchart LR
     subgraph Tooling
         dev_tooling["dev-tooling"]
     end
+    subgraph Shared
+        shared_models["shared/data-models"]
+    end
     editor_word --> editor_core
+    editor_core --> shared_models
     portal_homepage --> editor_core
     dev_tooling --> specs_root["root specs"]
 `+"```"+`
 `)
 	writeTestFile(t, root, "specs/modules/editor-core.md", "# Editor Core\n")
 	writeTestFile(t, root, "specs/modules/portal/portal-homepage.md", "# Portal Homepage\n")
+	writeTestFile(t, root, "specs/shared/data-models.md", "# Data Models\n")
 
 	project, err := scanSpecProject(root, "specs")
 	if err != nil {
@@ -115,6 +121,7 @@ flowchart LR
 	}
 	for _, edge := range [][2]string{
 		{"editor-word", "editor-core"},
+		{"editor-core", "shared/data-models"},
 		{"portal.homepage", "editor-core"},
 		{"dev-tooling", "root specs"},
 	} {
@@ -124,6 +131,42 @@ flowchart LR
 	}
 	if !hasGraphNode(project.Graph.Nodes, "root specs") {
 		t.Fatalf("missing inline mermaid node: %+v", project.Graph.Nodes)
+	}
+	if !hasGraphNode(project.Graph.Nodes, "portal.homepage") || hasGraphNode(project.Graph.Nodes, "portal-homepage") {
+		t.Fatalf("expected Mermaid label to be the canonical graph node: %+v", project.Graph.Nodes)
+	}
+	if !hasGraphNode(project.Graph.Nodes, "shared/data-models") || hasGraphNode(project.Graph.Nodes, "data-models") {
+		t.Fatalf("expected shared path label to be the canonical graph node: %+v", project.Graph.Nodes)
+	}
+	if !strings.Contains(project.Graph.DependencyDiagram, `subgraph Editors`) || !strings.Contains(project.Graph.DependencyDiagram, `editor_word --> editor_core`) {
+		t.Fatalf("dependency diagram source not preserved: %s", project.Graph.DependencyDiagram)
+	}
+}
+
+func TestScanSpecProjectSplitsRelationshipMapLists(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "specs/_index.md", `# Spec Index
+
+## Relationship Map
+
+### API Dependencies
+
+- portal.homepage, portal.classrooms, ww → config.server: runtime editor lookup
+`)
+	writeTestFile(t, root, "specs/overview.md", "# Overview\n")
+
+	project, err := scanSpecProject(root, "specs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, edge := range [][2]string{
+		{"portal.homepage", "config.server"},
+		{"portal.classrooms", "config.server"},
+		{"ww", "config.server"},
+	} {
+		if !hasRelationship(project.Graph.Relationships, edge[0], edge[1]) {
+			t.Fatalf("missing relationship %s -> %s in %+v", edge[0], edge[1], project.Graph.Relationships)
+		}
 	}
 }
 
@@ -200,6 +243,15 @@ func hasEdge(edges []graphEdge, from, to string) bool {
 func hasGraphNode(nodes []graphNode, id string) bool {
 	for _, node := range nodes {
 		if node.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRelationship(relationships []graphRelation, from, to string) bool {
+	for _, rel := range relationships {
+		if rel.From == from && rel.To == to {
 			return true
 		}
 	}
