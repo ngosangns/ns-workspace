@@ -83,6 +83,35 @@ overview → editor.core
 	}
 }
 
+func TestPreviewLikeC4RenderHandler(t *testing.T) {
+	server := newPreviewServer(previewOptions{projectRoot: t.TempDir(), specsDir: "specs", addr: "127.0.0.1:0"})
+	server.likeC4Renderer = func(_ context.Context, source string) ([]likeC4Diagram, error) {
+		if !strings.Contains(source, "workspace") {
+			t.Fatalf("renderer did not receive source: %s", source)
+		}
+		return []likeC4Diagram{{Name: "index", Mermaid: "graph TB\n  A-->B\n"}}, nil
+	}
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Post(ts.URL+"/api/render/likec4", "application/json", strings.NewReader(`{"source":"workspace { }"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status: %s", res.Status)
+	}
+	var body likeC4RenderResponse
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Diagrams) != 1 || body.Diagrams[0].Name != "index" || !strings.Contains(body.Diagrams[0].Mermaid, "A-->B") {
+		t.Fatalf("unexpected LikeC4 response: %+v", body)
+	}
+}
+
 func TestPreviewHelpIsAccepted(t *testing.T) {
 	if err := run([]string{"preview", "--help"}); err != nil {
 		t.Fatalf("preview help failed: %v", err)
@@ -167,6 +196,19 @@ func TestPreviewUIConnectsHotReload(t *testing.T) {
 	for _, want := range []string{"new EventSource(\"/api/events\")", "reloadPreviewData", "addEventListener(\"change\""} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI hot reload missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUISupportsLikeC4Blocks(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"renderLikeC4Blocks", "/api/render/likec4", "language-likec4", "language-c4", "workflow"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI LikeC4 support missing %s", want)
 		}
 	}
 }
