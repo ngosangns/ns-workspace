@@ -1,15 +1,21 @@
 :root {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --diagram-canvas-bg: color-mix(in oklab, hsl(var(--b2)) 86%, hsl(var(--bc)) 4%);
-  --diagram-grid-line: color-mix(in oklab, hsl(var(--bc)) 9%, transparent);
-  --diagram-lightbox-bg: hsl(var(--b1));
+  --diagram-lightbox-bg: #ffffff;
+  --diagram-canvas-bg: #f3f4f6;
+  --diagram-grid-line: rgb(17 24 39 / 0.08);
   --diagram-stage-bg: transparent;
   --scrollbar-thumb: color-mix(in oklab, hsl(var(--bc)) 24%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--bc)) 34%, transparent);
   --scrollbar-track: color-mix(in oklab, hsl(var(--b2)) 78%, transparent);
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   scrollbar-width: thin;
+}
+
+html[data-theme="dark"] {
+  --diagram-lightbox-bg: #111827;
+  --diagram-canvas-bg: #0b1120;
+  --diagram-grid-line: rgb(229 231 235 / 0.1);
 }
 
 * {
@@ -89,6 +95,7 @@ figure,
   border: 1px solid hsl(var(--b3));
   border-radius: 0.75rem;
   background: var(--diagram-lightbox-bg);
+  background-color: var(--diagram-lightbox-bg);
   color: hsl(var(--bc));
   padding: 0;
   box-shadow: 0 24px 80px rgb(0 0 0 / 0.38);
@@ -138,7 +145,6 @@ figure,
   border: 1px solid hsl(var(--b3));
   border-radius: 0.75rem;
   background: var(--diagram-stage-bg);
-  box-shadow: 0 12px 36px rgb(0 0 0 / 0.16);
   padding: 1rem;
   transform-origin: 0 0;
   will-change: transform;
