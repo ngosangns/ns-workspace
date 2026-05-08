@@ -317,7 +317,9 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		if name == "" {
 			continue
 		}
-		specByModule[name] = doc
+		for _, alias := range specAliasesForDoc(name, doc) {
+			specByModule[alias] = doc
+		}
 		nodes[name] = graphNode{ID: name, Label: doc.Title, SpecID: doc.ID, Category: doc.Category, Status: doc.Status}
 	}
 
@@ -360,12 +362,38 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: relationships}
 }
 
+func specAliasesForDoc(name string, doc specDocument) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			return
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	add(name)
+	add(strings.ReplaceAll(name, "-", "."))
+	add(strings.ReplaceAll(name, ".", "-"))
+	add(strings.ToLower(strings.ReplaceAll(doc.Title, " ", "-")))
+	add(strings.ToLower(strings.ReplaceAll(doc.Title, " ", ".")))
+	return out
+}
+
 func parseDependencyEdges(markdown string) []graphEdge {
 	block := fencedBlockAfterHeading(markdown, "Dependency Graph")
+	aliases := parseMermaidNodeAliases(block)
 	edges := []graphEdge{}
 	for _, line := range strings.Split(block, "\n") {
 		clean := cleanGraphLine(line)
+		if clean == "" || strings.HasPrefix(clean, "%%") || strings.HasPrefix(strings.ToLower(clean), "flowchart ") || strings.HasPrefix(strings.ToLower(clean), "graph ") || strings.HasPrefix(strings.ToLower(clean), "subgraph ") || strings.EqualFold(clean, "end") {
+			continue
+		}
 		if !strings.Contains(clean, "→") {
+			if from, to, ok := parseMermaidEdge(clean, aliases); ok {
+				edges = append(edges, graphEdge{From: from, To: to, Label: "depends"})
+			}
 			continue
 		}
 		parts := strings.SplitN(clean, "→", 2)
@@ -378,6 +406,74 @@ func parseDependencyEdges(markdown string) []graphEdge {
 		}
 	}
 	return edges
+}
+
+func parseMermaidNodeAliases(block string) map[string]string {
+	aliases := map[string]string{}
+	re := regexp.MustCompile(`([A-Za-z][A-Za-z0-9_.-]*)\s*(?:@\{[^}]*\}\s*)?\[\s*"?([^"\]]+)"?\s*\]`)
+	for _, match := range re.FindAllStringSubmatch(block, -1) {
+		if len(match) != 3 {
+			continue
+		}
+		alias := cleanNodeName(match[1])
+		label := cleanNodeName(match[2])
+		if alias != "" && label != "" {
+			aliases[alias] = label
+		}
+	}
+	return aliases
+}
+
+func parseMermaidEdge(line string, aliases map[string]string) (string, string, bool) {
+	for _, arrow := range []string{"-.->", "-->", "==>"} {
+		idx := strings.Index(line, arrow)
+		if idx < 0 {
+			continue
+		}
+		left := strings.TrimSpace(line[:idx])
+		right := strings.TrimSpace(line[idx+len(arrow):])
+		if labelIdx := strings.Index(left, " -- "); labelIdx >= 0 {
+			left = strings.TrimSpace(left[:labelIdx])
+		}
+		from := resolveMermaidEndpoint(left, aliases)
+		to := resolveMermaidEndpoint(right, aliases)
+		return from, to, from != "" && to != ""
+	}
+	return "", "", false
+}
+
+func resolveMermaidEndpoint(value string, aliases map[string]string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if idx := strings.Index(value, ":::"); idx >= 0 {
+		value = value[:idx]
+	}
+	if idx := strings.Index(value, "["); idx >= 0 {
+		alias := cleanNodeName(value[:idx])
+		label := extractMermaidInlineLabel(value[idx:])
+		if alias != "" && label != "" {
+			aliases[alias] = label
+			return label
+		}
+		return alias
+	}
+	value = strings.Fields(value)[0]
+	id := cleanNodeName(value)
+	if label, ok := aliases[id]; ok {
+		return label
+	}
+	return id
+}
+
+func extractMermaidInlineLabel(value string) string {
+	re := regexp.MustCompile(`\[\s*"?([^"\]]+)"?\s*\]`)
+	match := re.FindStringSubmatch(value)
+	if len(match) == 2 {
+		return cleanNodeName(match[1])
+	}
+	return cleanNodeName(value)
 }
 
 func parseRelationships(markdown string) []graphRelation {
