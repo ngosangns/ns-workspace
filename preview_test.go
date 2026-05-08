@@ -305,3 +305,16 @@ func TestPreviewUISupportsDarkMode(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewUIUsesSafeScrollbars(t *testing.T) {
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(css)
+	for _, want := range []string{"scrollbar-gutter: stable", "scrollbar-width: thin", "::-webkit-scrollbar-thumb", "--scrollbar-thumb", "background-clip: padding-box"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview safe scrollbar CSS missing %s", want)
+		}
+	}
+}
