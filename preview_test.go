@@ -275,3 +275,16 @@ func TestPreviewUIHasLikeC4ModelsTab(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewDiagramSanitizerKeepsMermaidLabels(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"USE_PROFILES", "foreignObject", "\"div\"", "\"span\"", "\"style\""} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram sanitizer missing %s, Mermaid/LikeC4 labels may be stripped", want)
+		}
+	}
+}
