@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -87,6 +88,7 @@ func newPreviewServer(opt previewOptions) *previewServer {
 	mux.HandleFunc("/api/specs", ps.handleSpecs)
 	mux.HandleFunc("/api/specs/", ps.handleSpec)
 	mux.HandleFunc("/api/graph", ps.handleGraph)
+	mux.HandleFunc("/api/events", ps.handleEvents)
 	static, _ := fs.Sub(previewUIFS, "preview_ui")
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	ps.srv = &http.Server{
@@ -172,6 +174,91 @@ func (ps *previewServer) handleGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, project.Graph)
+}
+
+func (ps *previewServer) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	last := ps.changeToken()
+	fmt.Fprintf(w, "event: ready\ndata: %s\n\n", strconv.Quote(last))
+	flusher.Flush()
+
+	ticker := time.NewTicker(900 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			next := ps.changeToken()
+			if next == last {
+				fmt.Fprint(w, ": heartbeat\n\n")
+				flusher.Flush()
+				continue
+			}
+			last = next
+			fmt.Fprintf(w, "event: change\ndata: %s\n\n", strconv.Quote(next))
+			flusher.Flush()
+		}
+	}
+}
+
+func (ps *previewServer) changeToken() string {
+	specRoot := specsRoot(ps.opt.projectRoot, ps.opt.specsDir)
+	specToken := newestModToken(specRoot)
+	staticToken := newestEmbeddedModToken()
+	return specToken + "|" + staticToken
+}
+
+func newestModToken(root string) string {
+	var newest int64
+	var count int
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		count++
+		if mod := info.ModTime().UnixNano(); mod > newest {
+			newest = mod
+		}
+		return nil
+	})
+	return fmt.Sprintf("%d:%d", newest, count)
+}
+
+func newestEmbeddedModToken() string {
+	var newest int64
+	var count int
+	_ = fs.WalkDir(previewUIFS, "preview_ui", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		count++
+		if mod := info.ModTime().UnixNano(); mod > newest {
+			newest = mod
+		}
+		return nil
+	})
+	return fmt.Sprintf("%d:%d", newest, count)
 }
 
 func writeJSON(w http.ResponseWriter, value any) {
