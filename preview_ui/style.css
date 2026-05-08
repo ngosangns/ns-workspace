@@ -75,6 +75,15 @@ figure,
   max-width: none;
 }
 
+.graph-diagram .diagram-surface {
+  min-width: max-content;
+}
+
+.graph-diagram svg {
+  display: block;
+  margin: 0 auto;
+}
+
 .diagram-zoom {
   position: sticky;
   top: 0.25rem;

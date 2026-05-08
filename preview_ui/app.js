@@ -3,6 +3,7 @@ const state = {
   specs: [],
   graph: null,
   graphInstance: null,
+  graphDiagramRenderId: 0,
   likec4: null,
   likec4Loading: false,
   theme: getInitialTheme(),
@@ -34,6 +35,8 @@ const els = {
   syncState: document.querySelector("#syncState"),
   warnings: document.querySelector("#warnings"),
   specContent: document.querySelector("#specContent"),
+  graphDiagram: document.querySelector("#graphDiagram"),
+  graphStats: document.querySelector("#graphStats"),
   graphCanvas: document.querySelector("#graphCanvas"),
   relationships: document.querySelector("#relationships"),
   likec4Models: document.querySelector("#likec4Models"),
@@ -650,10 +653,21 @@ async function renderLikeC4Models() {
 function renderGraph() {
   const { nodes, edges, relationships } = state.graph;
   const palette = graphPalette();
+  renderDependencyDiagram();
+  els.graphStats.textContent = `${nodes.length} nodes, ${edges.length} dependencies, ${relationships.length} relationships`;
   if (state.graphInstance) {
     state.graphInstance.destroy();
     state.graphInstance = null;
   }
+  const relationshipEdges = relationships.map((rel, index) => ({
+    data: {
+      id: `relationship-${index}-${rel.from}-${rel.to}`,
+      source: rel.from,
+      target: rel.to,
+      label: rel.section || "relationship",
+      kind: "relationship",
+    },
+  }));
   const elements = [
     ...nodes.map((node) => ({
       data: {
@@ -671,8 +685,10 @@ function renderGraph() {
         source: edge.from,
         target: edge.to,
         label: edge.label || "",
+        kind: "dependency",
       },
     })),
+    ...relationshipEdges,
   ];
 
   state.graphInstance = cytoscape({
@@ -726,6 +742,15 @@ function renderGraph() {
         },
       },
       {
+        selector: "edge[kind = 'relationship']",
+        style: {
+          "line-style": "dashed",
+          "line-color": palette.relationshipEdge,
+          "target-arrow-color": palette.relationshipEdge,
+          opacity: 0.72,
+        },
+      },
+      {
         selector: ".selected",
         style: {
           "border-color": palette.selected,
@@ -753,11 +778,25 @@ function renderGraph() {
   renderRelationships(relationships);
 }
 
+async function renderDependencyDiagram() {
+  const source = state.graph?.dependencyDiagram?.trim();
+  const renderId = ++state.graphDiagramRenderId;
+  els.graphDiagram.innerHTML = "";
+  if (!source) {
+    els.graphDiagram.innerHTML = '<div class="alert py-3 text-sm">No dependency diagram source found.</div>';
+    return;
+  }
+  const host = document.createElement("div");
+  els.graphDiagram.append(host);
+  await renderMermaidDiagram(host, `dependency-graph-${renderId}`, source, "Dependency graph", "Dependency graph", false);
+}
+
 function graphPalette() {
   if (state.theme === "dark") {
     return {
       text: "#e5e7eb",
       edge: "#7b8494",
+      relationshipEdge: "#a78bfa",
       nodeBorder: "#111827",
       selected: "#60a5fa",
       modules: "#1d4ed8",
@@ -769,6 +808,7 @@ function graphPalette() {
   return {
     text: "#232529",
     edge: "#aab1ba",
+    relationshipEdge: "#8b5cf6",
     nodeBorder: "#ffffff",
     selected: "#2563eb",
     modules: "#dbeafe",
