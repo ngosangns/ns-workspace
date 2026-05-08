@@ -118,3 +118,16 @@ func TestPreviewUIPrefersServerRenderedMarkdownHTML(t *testing.T) {
 		t.Fatalf("preview UI should prefer server-rendered Markdown HTML so GFM tables stay consistent")
 	}
 }
+
+func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(css)
+	for _, want := range []string{".markdown td code", "overflow-wrap: anywhere", "word-break: break-word", "overflow-x: auto"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview table CSS missing %s", want)
+		}
+	}
+}
