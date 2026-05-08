@@ -250,6 +250,42 @@ Runtime behavior also mentions turnstile-captcha.md in prose.
 	}
 }
 
+func TestScanSpecProjectParsesKnownsStyleDocReferences(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "specs/specs/auth.md", `# Auth Spec
+
+## Meta
+
+- **Status**: Draft
+- **Links**: @doc/shared/data-models{depends}
+
+## Notes
+
+Implements login with [Session](session.md) and verifies @doc/shared/data-models{verifies}.
+`)
+	writeTestFile(t, root, "specs/specs/session.md", "# Session Spec\n")
+	writeTestFile(t, root, "specs/shared/data-models.md", "# Data Models\n")
+
+	project, err := scanSpecProject(root, "specs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, edge := range []struct {
+		from   string
+		to     string
+		typ    string
+		origin string
+	}{
+		{"auth", "data-models", "depends", "metadata"},
+		{"auth", "data-models", "verifies", "inline"},
+		{"auth", "session", "references", "inline"},
+	} {
+		if !hasTypedEdge(project.Graph.Edges, edge.from, edge.to, edge.typ, edge.origin) {
+			t.Fatalf("missing typed edge %+v in %+v", edge, project.Graph.Edges)
+		}
+	}
+}
+
 func TestScanSpecProjectFallsBackWithoutIndex(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "specs/modules/dev-tooling.md", `# Dev Tooling
@@ -341,6 +377,15 @@ func hasGraphNodeSpec(nodes []graphNode, id, specID string) bool {
 func hasRelationship(relationships []graphRelation, from, to string) bool {
 	for _, rel := range relationships {
 		if rel.From == from && rel.To == to {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTypedEdge(edges []graphEdge, from, to, typ, origin string) bool {
+	for _, edge := range edges {
+		if edge.From == from && edge.To == to && edge.Type == typ && edge.Origin == origin {
 			return true
 		}
 	}

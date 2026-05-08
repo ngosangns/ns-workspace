@@ -62,15 +62,20 @@ type specGraph struct {
 type graphNode struct {
 	ID       string `json:"id"`
 	Label    string `json:"label"`
+	Type     string `json:"type,omitempty"`
+	Path     string `json:"path,omitempty"`
 	SpecID   string `json:"specId,omitempty"`
 	Category string `json:"category,omitempty"`
 	Status   string `json:"status,omitempty"`
 }
 
 type graphEdge struct {
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Label string `json:"label,omitempty"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Label  string `json:"label,omitempty"`
+	Type   string `json:"type,omitempty"`
+	Origin string `json:"origin,omitempty"`
+	Raw    string `json:"raw,omitempty"`
 }
 
 type graphRelation struct {
@@ -95,6 +100,34 @@ type moduleMeta struct {
 	Compliance string
 	Priority   string
 }
+
+type semanticSpecRef struct {
+	Raw              string
+	Type             string
+	Target           string
+	Relation         string
+	ExplicitRelation bool
+	ValidRelation    bool
+}
+
+const defaultSpecRelation = "references"
+
+var (
+	semanticSpecRefRE    = regexp.MustCompile(`@(doc|spec)/([^\s\)]+)`)
+	allowedSpecRelations = map[string]bool{
+		"references": true,
+		"implements": true,
+		"depends":    true,
+		"blocks":     true,
+		"blocked-by": true,
+		"follows":    true,
+		"related":    true,
+		"supersedes": true,
+		"verifies":   true,
+		"provides":   true,
+		"consumes":   true,
+	}
+)
 
 func scanSpecProject(projectRoot, specsDir string) (specProject, error) {
 	specsRoot := specsRoot(projectRoot, specsDir)
@@ -154,10 +187,6 @@ func scanSpecDocuments(specsRoot string, table map[string]moduleMeta) ([]specDoc
 		if meta.Path == "" {
 			meta = parseDocumentMeta(rel, raw)
 		}
-		html, err := renderMarkdown(rawBytes)
-		if err != nil {
-			return err
-		}
 		docs = append(docs, specDocument{
 			ID:         rel,
 			Title:      firstNonEmpty(meta.Title, titleFromMarkdown(raw), rel),
@@ -168,7 +197,6 @@ func scanSpecDocuments(specsRoot string, table map[string]moduleMeta) ([]specDoc
 			Compliance: meta.Compliance,
 			Priority:   meta.Priority,
 			Raw:        raw,
-			HTML:       html,
 		})
 		return nil
 	})
@@ -340,30 +368,31 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 			specByModule[alias] = doc
 		}
 		nodeID := canonicalSpecNodeID(name, doc, diagramLabelSet)
-		nodes[nodeID] = graphNode{ID: nodeID, Label: doc.Title, SpecID: doc.ID, Category: doc.Category, Status: doc.Status}
+		nodes[nodeID] = graphNode{ID: nodeID, Label: doc.Title, Type: "doc", Path: doc.Path, SpecID: doc.ID, Category: doc.Category, Status: doc.Status}
 	}
 
 	edges := []graphEdge{}
 	for _, edge := range parseDependencyEdges(indexRaw) {
 		edges = append(edges, edge)
 		if _, ok := nodes[edge.From]; !ok {
-			nodes[edge.From] = graphNode{ID: edge.From, Label: edge.From}
+			nodes[edge.From] = graphNode{ID: edge.From, Label: edge.From, Type: "external"}
 		}
 		if _, ok := nodes[edge.To]; !ok {
-			nodes[edge.To] = graphNode{ID: edge.To, Label: edge.To}
+			nodes[edge.To] = graphNode{ID: edge.To, Label: edge.To, Type: "external"}
 		}
 	}
-	relationships := parseRelationships(indexRaw)
-	relationships = append(relationships, parseDocumentConnections(docs, docByPath, diagramLabelSet)...)
-	for i, rel := range relationships {
-		rel.From = canonicalGraphEndpoint(rel.From, specByModule, diagramLabelSet)
-		rel.To = canonicalGraphEndpoint(rel.To, specByModule, diagramLabelSet)
-		relationships[i] = rel
-		if _, ok := nodes[rel.From]; !ok {
-			nodes[rel.From] = graphNode{ID: rel.From, Label: rel.From}
+	for _, edge := range parseRelationshipEdges(indexRaw) {
+		edge.From = canonicalGraphEndpoint(edge.From, specByModule, diagramLabelSet)
+		edge.To = canonicalGraphEndpoint(edge.To, specByModule, diagramLabelSet)
+		edges = append(edges, edge)
+	}
+	edges = append(edges, parseDocumentConnectionEdges(docs, docByPath, diagramLabelSet)...)
+	for _, edge := range edges {
+		if _, ok := nodes[edge.From]; !ok {
+			nodes[edge.From] = graphNode{ID: edge.From, Label: edge.From, Type: "external"}
 		}
-		if _, ok := nodes[rel.To]; !ok {
-			nodes[rel.To] = graphNode{ID: rel.To, Label: rel.To}
+		if _, ok := nodes[edge.To]; !ok {
+			nodes[edge.To] = graphNode{ID: edge.To, Label: edge.To, Type: "external"}
 		}
 	}
 	constraints := parseForbiddenDependencies(indexRaw)
@@ -372,10 +401,14 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 	for _, node := range nodes {
 		if doc, ok := specByModule[node.ID]; ok {
 			node.SpecID = doc.ID
+			node.Path = doc.Path
+			node.Type = firstNonEmpty(node.Type, "doc")
 			node.Category = doc.Category
 			node.Status = doc.Status
 		} else if doc, ok := docByNodeID[node.ID]; ok {
 			node.SpecID = doc.ID
+			node.Path = doc.Path
+			node.Type = firstNonEmpty(node.Type, "doc")
 			node.Category = doc.Category
 			node.Status = doc.Status
 			node.Label = firstNonEmpty(node.Label, doc.Title)
@@ -389,7 +422,8 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		}
 		return edges[i].From < edges[j].From
 	})
-	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: dedupeRelationships(relationships), Constraints: constraints, DependencyDiagram: dependencyDiagram}
+	dedupedEdges := dedupeEdges(edges)
+	return specGraph{Nodes: list, Edges: dedupedEdges, Relationships: relationshipsFromEdges(dedupedEdges), Constraints: constraints, DependencyDiagram: dependencyDiagram}
 }
 
 func documentGraphID(doc specDocument, diagramLabelSet map[string]bool) string {
@@ -484,7 +518,7 @@ func parseDependencyEdges(markdown string) []graphEdge {
 		}
 		if !strings.Contains(clean, "→") {
 			if from, to, ok := parseMermaidEdge(clean, aliases); ok {
-				edges = append(edges, graphEdge{From: from, To: to, Label: "depends"})
+				edges = append(edges, graphEdge{From: from, To: to, Label: "depends", Type: "depends", Origin: "index"})
 			}
 			continue
 		}
@@ -493,7 +527,7 @@ func parseDependencyEdges(markdown string) []graphEdge {
 		for _, target := range strings.Split(parts[1], ",") {
 			to := cleanNodeName(target)
 			if from != "" && to != "" {
-				edges = append(edges, graphEdge{From: from, To: to, Label: "depends"})
+				edges = append(edges, graphEdge{From: from, To: to, Label: "depends", Type: "depends", Origin: "index"})
 			}
 		}
 	}
@@ -568,11 +602,11 @@ func extractMermaidInlineLabel(value string) string {
 	return cleanNodeName(value)
 }
 
-func parseRelationships(markdown string) []graphRelation {
+func parseRelationshipEdges(markdown string) []graphEdge {
 	lines := strings.Split(markdown, "\n")
 	inMap := false
 	section := ""
-	out := []graphRelation{}
+	out := []graphEdge{}
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "## ") {
@@ -603,7 +637,8 @@ func parseRelationships(markdown string) []graphRelation {
 		for _, from := range splitNodeList(leftRight[0]) {
 			for _, to := range splitNodeList(toPart) {
 				if from != "" && to != "" {
-					out = append(out, graphRelation{From: from, To: to, Description: desc, Section: section})
+					relationType := relationTypeFromText(firstNonEmpty(section, desc, "related"))
+					out = append(out, graphEdge{From: from, To: to, Label: firstNonEmpty(desc, relationType), Type: relationType, Origin: "relationship-map", Raw: item})
 				}
 			}
 		}
@@ -611,23 +646,15 @@ func parseRelationships(markdown string) []graphRelation {
 	return out
 }
 
-func parseDocumentConnections(docs []specDocument, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphRelation {
-	out := []graphRelation{}
+func parseDocumentConnectionEdges(docs []specDocument, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
+	out := []graphEdge{}
 	for _, doc := range docs {
 		if isSpecControlFile(doc.Path) {
 			continue
 		}
 		from := documentGraphID(doc, diagramLabelSet)
-		for _, target := range parseDocumentMetadataLinks(doc, docByPath, diagramLabelSet) {
-			if from != target {
-				out = append(out, graphRelation{From: from, To: target, Description: "linked in metadata", Section: "Metadata Links"})
-			}
-		}
-		for _, target := range parseDocumentContentLinks(doc, docByPath, diagramLabelSet) {
-			if from != target {
-				out = append(out, graphRelation{From: from, To: target, Description: "linked or mentioned in content", Section: "Content References"})
-			}
-		}
+		out = append(out, parseDocumentMetadataEdges(doc, from, docByPath, diagramLabelSet)...)
+		out = append(out, parseDocumentContentEdges(doc, from, docByPath, diagramLabelSet)...)
 	}
 	return out
 }
@@ -637,27 +664,31 @@ func isSpecControlFile(path string) bool {
 	return base == "_index.md" || base == "_sync.md"
 }
 
-func parseDocumentMetadataLinks(doc specDocument, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
+func parseDocumentMetadataEdges(doc specDocument, from string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
 	meta := metadataBlock(doc.Raw)
 	if meta == "" {
 		return nil
 	}
-	targets := targetsFromMarkdownLinks(doc.Path, meta, docByPath, diagramLabelSet)
+	edges := edgesFromMarkdownLinks(doc.Path, from, meta, "related", "metadata", docByPath, diagramLabelSet)
+	edges = append(edges, edgesFromSemanticReferences(doc.Path, from, meta, "metadata", docByPath, diagramLabelSet)...)
 	for _, line := range strings.Split(meta, "\n") {
 		key, value, ok := splitMetadataLine(line)
 		if !ok || !isSpecLinkMetadataKey(key) {
 			continue
 		}
-		targets = append(targets, targetsFromReferenceText(doc.Path, value, docByPath, diagramLabelSet)...)
+		relationType := relationTypeFromText(key)
+		edges = append(edges, edgesFromMarkdownLinks(doc.Path, from, value, relationType, "metadata", docByPath, diagramLabelSet)...)
+		edges = append(edges, edgesFromPlainDocPaths(doc.Path, from, value, relationType, "metadata", docByPath, diagramLabelSet)...)
 	}
-	return uniqueStrings(targets)
+	return dedupeEdges(edges)
 }
 
-func parseDocumentContentLinks(doc specDocument, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
+func parseDocumentContentEdges(doc specDocument, from string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
 	content := contentWithoutMetadata(doc.Raw)
-	targets := targetsFromMarkdownLinks(doc.Path, content, docByPath, diagramLabelSet)
-	targets = append(targets, targetsFromReferenceText(doc.Path, content, docByPath, diagramLabelSet)...)
-	return uniqueStrings(targets)
+	edges := edgesFromSemanticReferences(doc.Path, from, content, "inline", docByPath, diagramLabelSet)
+	edges = append(edges, edgesFromMarkdownLinks(doc.Path, from, content, defaultSpecRelation, "inline", docByPath, diagramLabelSet)...)
+	edges = append(edges, edgesFromPlainDocPaths(doc.Path, from, content, defaultSpecRelation, "inline", docByPath, diagramLabelSet)...)
+	return dedupeEdges(edges)
 }
 
 func metadataBlock(raw string) string {
@@ -759,52 +790,121 @@ func isSpecLinkMetadataKey(key string) bool {
 	return strings.Contains(key, "spec") && (strings.Contains(key, "link") || strings.Contains(key, "related"))
 }
 
-func targetsFromMarkdownLinks(sourcePath, text string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
-	out := []string{}
+func edgesFromMarkdownLinks(sourcePath, from, text, relationType, origin string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
+	out := []graphEdge{}
 	re := regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
 	for _, match := range re.FindAllStringSubmatch(text, -1) {
 		if len(match) != 2 {
 			continue
 		}
 		if target, ok := resolveSpecReference(sourcePath, match[1], docByPath, diagramLabelSet); ok {
-			out = append(out, target)
+			if from != target {
+				out = append(out, graphEdge{From: from, To: target, Label: relationType, Type: relationType, Origin: origin, Raw: match[0]})
+			}
 		}
 	}
 	return out
 }
 
-func targetsFromReferenceText(sourcePath, text string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
+func edgesFromSemanticReferences(sourcePath, from, text, origin string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
+	out := []graphEdge{}
+	for _, ref := range extractSemanticSpecRefs(text) {
+		if !ref.ValidRelation {
+			continue
+		}
+		if target, ok := resolveSpecReference(sourcePath, ref.Target, docByPath, diagramLabelSet); ok && from != target {
+			out = append(out, graphEdge{From: from, To: target, Label: ref.Relation, Type: ref.Relation, Origin: origin, Raw: ref.Raw})
+		}
+	}
+	return out
+}
+
+func edgesFromPlainDocPaths(sourcePath, from, text, relationType, origin string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
+	out := []graphEdge{}
+	for _, token := range extractPlainSpecPathRefs(text) {
+		if target, ok := resolveSpecReference(sourcePath, token, docByPath, diagramLabelSet); ok && from != target {
+			out = append(out, graphEdge{From: from, To: target, Label: relationType, Type: relationType, Origin: origin, Raw: token})
+		}
+	}
+	return out
+}
+
+func extractSemanticSpecRefs(text string) []semanticSpecRef {
+	out := []semanticSpecRef{}
+	for _, match := range semanticSpecRefRE.FindAllStringSubmatch(text, -1) {
+		if len(match) != 3 {
+			continue
+		}
+		raw := strings.TrimRight(match[0], ".,;")
+		body := strings.TrimRight(match[2], ".,;")
+		relation := defaultSpecRelation
+		explicitRelation := false
+		if open := strings.LastIndex(body, "{"); open >= 0 && strings.HasSuffix(body, "}") {
+			relation = body[open+1 : len(body)-1]
+			body = body[:open]
+			explicitRelation = true
+		}
+		body = trimDocFragment(body)
+		if body == "" {
+			continue
+		}
+		out = append(out, semanticSpecRef{
+			Raw:              raw,
+			Type:             match[1],
+			Target:           body,
+			Relation:         relation,
+			ExplicitRelation: explicitRelation,
+			ValidRelation:    allowedSpecRelations[relation],
+		})
+	}
+	return out
+}
+
+func extractPlainSpecPathRefs(text string) []string {
+	re := regexp.MustCompile(`(?:^|[\s(["'])((?:\.{1,2}/|specs/)?[A-Za-z0-9_./-]+\.md)(?:#[A-Za-z0-9_-]+)?`)
 	out := []string{}
-	lowerText := strings.ToLower(text)
-	for path, targetDoc := range docByPath {
-		if path == sourcePath || isSpecControlFile(path) {
-			continue
-		}
-		if mentionsSpecPath(lowerText, path) || mentionsSpecTitle(lowerText, targetDoc.Title) {
-			out = append(out, documentGraphID(targetDoc, diagramLabelSet))
-			continue
-		}
-		if target, ok := resolveSpecReference(sourcePath, path, docByPath, diagramLabelSet); ok && strings.Contains(lowerText, strings.ToLower(target)) {
-			out = append(out, target)
+	for _, match := range re.FindAllStringSubmatch(text, -1) {
+		if len(match) == 2 {
+			out = append(out, match[1])
 		}
 	}
-	return out
+	return uniqueStrings(out)
 }
 
-func mentionsSpecPath(lowerText, path string) bool {
-	lowerPath := strings.ToLower(path)
-	base := strings.ToLower(filepath.Base(path))
-	return strings.Contains(lowerText, lowerPath) ||
-		strings.Contains(lowerText, "specs/"+lowerPath) ||
-		(base != "" && base != "_overview.md" && strings.Contains(lowerText, base))
-}
-
-func mentionsSpecTitle(lowerText, title string) bool {
-	title = strings.ToLower(strings.TrimSpace(title))
-	if len(title) < 6 || title == "overview" {
-		return false
+func trimDocFragment(value string) string {
+	if idx := strings.IndexAny(value, "?#"); idx >= 0 {
+		value = value[:idx]
 	}
-	return regexp.MustCompile(`(^|[^a-z0-9])`+regexp.QuoteMeta(title)+`([^a-z0-9]|$)`).FindStringIndex(lowerText) != nil
+	if match := regexp.MustCompile(`:\d+(?:-\d+)?$`).FindString(value); match != "" {
+		value = strings.TrimSuffix(value, match)
+	}
+	return strings.TrimSpace(value)
+}
+
+func relationTypeFromText(value string) string {
+	value = strings.ToLower(stripMarkdown(value))
+	value = strings.ReplaceAll(value, "_", " ")
+	value = strings.ReplaceAll(value, "-", " ")
+	switch {
+	case strings.Contains(value, "implement"):
+		return "implements"
+	case strings.Contains(value, "depend"):
+		return "depends"
+	case strings.Contains(value, "block"):
+		return "blocked-by"
+	case strings.Contains(value, "follow"):
+		return "follows"
+	case strings.Contains(value, "supersede"):
+		return "supersedes"
+	case strings.Contains(value, "verif") || strings.Contains(value, "test"):
+		return "verifies"
+	case strings.Contains(value, "provide"):
+		return "provides"
+	case strings.Contains(value, "consume"):
+		return "consumes"
+	default:
+		return "related"
+	}
 }
 
 func resolveSpecReference(sourcePath, target string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) (string, bool) {
@@ -816,11 +916,21 @@ func resolveSpecReference(sourcePath, target string, docByPath map[string]specDo
 		target = target[:idx]
 	}
 	candidates := []string{target}
+	if !strings.HasSuffix(target, ".md") && !strings.Contains(filepath.Base(target), ".") {
+		candidates = append(candidates, target+".md")
+	}
 	if !strings.HasPrefix(target, "/") {
 		candidates = append(candidates, filepath.ToSlash(filepath.Join(filepath.Dir(sourcePath), target)))
+		if !strings.HasSuffix(target, ".md") && !strings.Contains(filepath.Base(target), ".") {
+			candidates = append(candidates, filepath.ToSlash(filepath.Join(filepath.Dir(sourcePath), target+".md")))
+		}
 	}
 	for _, candidate := range candidates {
-		path := normalizeSpecPath(strings.TrimPrefix(candidate, "/"))
+		cleanCandidate := filepath.ToSlash(filepath.Clean(strings.TrimPrefix(candidate, "/")))
+		if doc, ok := docByPath[cleanCandidate]; ok {
+			return documentGraphID(doc, diagramLabelSet), true
+		}
+		path := normalizeSpecPath(cleanCandidate)
 		if doc, ok := docByPath[path]; ok {
 			return documentGraphID(doc, diagramLabelSet), true
 		}
@@ -1123,6 +1233,25 @@ func dedupeRelationships(relationships []graphRelation) []graphRelation {
 		out = append(out, rel)
 	}
 	return out
+}
+
+func relationshipsFromEdges(edges []graphEdge) []graphRelation {
+	out := []graphRelation{}
+	for _, edge := range edges {
+		if edge.From == "" || edge.To == "" {
+			continue
+		}
+		if edge.Type == "depends" && edge.Origin == "index" {
+			continue
+		}
+		out = append(out, graphRelation{
+			From:        edge.From,
+			To:          edge.To,
+			Description: firstNonEmpty(edge.Label, edge.Type, defaultSpecRelation),
+			Section:     edge.Origin,
+		})
+	}
+	return dedupeRelationships(out)
 }
 
 func uniqueStrings(values []string) []string {

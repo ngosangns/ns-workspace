@@ -56,8 +56,8 @@ overview → editor.core
 	if err := json.NewDecoder(res.Body).Decode(&doc); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(doc.HTML, "<strong>specs</strong>") {
-		t.Fatalf("markdown was not rendered: %s", doc.HTML)
+	if !strings.Contains(doc.Raw, "Hello **specs**.") || doc.HTML != "" {
+		t.Fatalf("spec endpoint should return raw Markdown for client-side rendering: raw=%q html=%q", doc.Raw, doc.HTML)
 	}
 
 	res, err = http.Get(ts.URL + "/api/graph")
@@ -93,37 +93,14 @@ overview → editor.core
 	if got := res.Header.Get("Content-Type"); !strings.Contains(got, "text/html") {
 		t.Fatalf("preview app fallback should return HTML, got %s", got)
 	}
-}
 
-func TestPreviewMermaidRenderHandler(t *testing.T) {
-	server := newPreviewServer(previewOptions{projectRoot: t.TempDir(), specsDir: "specs", addr: "127.0.0.1:0"})
-	server.mermaidRenderer = func(_ context.Context, source, theme string) (string, error) {
-		if !strings.Contains(source, "A-->B") {
-			t.Fatalf("renderer did not receive source: %s", source)
-		}
-		if theme != "dark" {
-			t.Fatalf("renderer did not receive theme: %s", theme)
-		}
-		return `<svg viewBox="0 0 10 10"><text>A</text></svg>`, nil
-	}
-	ts := httptest.NewServer(server.srv.Handler)
-	defer ts.Close()
-	defer func() { _ = server.shutdown(context.Background()) }()
-
-	res, err := http.Post(ts.URL+"/api/render/mermaid", "application/json", strings.NewReader(`{"source":"graph TB\nA-->B","theme":"dark"}`))
+	res, err = http.Get(ts.URL + "/js/graph.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status: %s", res.Status)
-	}
-	var body mermaidRenderResponse
-	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(body.SVG, "<svg") || !strings.Contains(body.SVG, "<text>A</text>") {
-		t.Fatalf("unexpected Mermaid response: %+v", body)
+		t.Fatalf("preview graph module was not served: %s", res.Status)
 	}
 }
 
@@ -158,29 +135,67 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape", "svg-pan-zoom"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "d3.min.js"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
 	}
-	if strings.Contains(htmlText, "mermaid.min.js") || strings.Contains(appText, "mermaid.render") || strings.Contains(appText, "mermaid.initialize") {
-		t.Fatalf("preview UI should render Mermaid on the server side")
+	if strings.Contains(htmlText, "/api/render/mermaid") || strings.Contains(appText, "/api/render/mermaid") {
+		t.Fatalf("preview UI should render Mermaid client-side")
 	}
-	for _, forbidden := range []string{"data-ui-kit=\"treact\"", "Treact-style component primitives"} {
+	for _, forbidden := range []string{"data-ui-kit=\"treact\"", "Treact-style component primitives", "cytoscape"} {
 		if strings.Contains(htmlText, forbidden) || strings.Contains(appText, forbidden) {
-			t.Fatalf("preview UI should use full DaisyUI instead of %s", forbidden)
+			t.Fatalf("preview UI should not include %s", forbidden)
 		}
 	}
 }
 
-func TestPreviewUIPrefersServerRenderedMarkdownHTML(t *testing.T) {
+func TestPreviewUIRendersDocsGraphWithD3(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graphJS, err := os.ReadFile("preview_ui/js/graph.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(graphJS) + "\n" + string(css)
+	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "d3.forceSimulation", "normalizedGraphData", "graphSelectedId", "graph-details"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview docs graph UI missing %s", want)
+		}
+	}
+}
+
+func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(css)
+	for _, want := range []string{`[data-theme="dark"] .graph-node text`, "fill: #f8fafc", "stroke: #020617"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview graph label dark mode contrast missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	if !strings.Contains(text, "if (fallbackHTML)") || !strings.Contains(text, "DOMPurify.sanitize(fallbackHTML)") {
-		t.Fatalf("preview UI should prefer server-rendered Markdown HTML so GFM tables stay consistent")
+	if strings.Contains(text, "fallbackHTML") || !strings.Contains(text, "markdownRenderer.render(raw)") {
+		t.Fatalf("preview UI should render Markdown from raw content on the client")
 	}
 }
 
@@ -266,7 +281,7 @@ func TestPreviewUISupportsDarkMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app)
-	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "graphPalette", "theme: state.theme"} {
+	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "theme: state.theme"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI dark mode missing %s", want)
 		}
