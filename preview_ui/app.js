@@ -3,6 +3,7 @@ const state = {
   specs: [],
   graph: null,
   graphInstance: null,
+  expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
 };
@@ -148,27 +149,119 @@ function renderSpecList() {
     );
   });
 
+  const tree = buildSpecTree(specs);
+  autoExpandForSelection();
+  if (query || category || status || compliance) {
+    expandAllVisibleFolders(tree);
+  }
   els.specList.innerHTML = "";
-  let lastCategory = "";
+  renderTreeNodes(tree.children, els.specList, 0);
+  refreshIcons();
+}
+
+function buildSpecTree(specs) {
+  const root = { name: "", path: "", type: "folder", children: new Map() };
   specs.forEach((spec) => {
-    if (spec.category !== lastCategory) {
-      lastCategory = spec.category;
-      const label = document.createElement("div");
-      label.className = "px-2 pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-base-content/50";
-      label.textContent = lastCategory;
-      els.specList.append(label);
+    const parts = spec.path.split("/");
+    let cursor = root;
+    parts.forEach((part, index) => {
+      const isFile = index === parts.length - 1;
+      const path = parts.slice(0, index + 1).join("/");
+      if (!cursor.children.has(part)) {
+        cursor.children.set(part, isFile ? { name: part, path, type: "file", spec } : { name: part, path, type: "folder", children: new Map() });
+      }
+      cursor = cursor.children.get(part);
+      if (isFile) {
+        cursor.spec = spec;
+      }
+    });
+  });
+  sortTree(root);
+  return root;
+}
+
+function sortTree(node) {
+  if (!node.children) return;
+  node.children = new Map(
+    [...node.children.entries()].sort(([, a], [, b]) => {
+      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    }),
+  );
+  node.children.forEach(sortTree);
+}
+
+function renderTreeNodes(children, parent, depth) {
+  children.forEach((node) => {
+    if (node.type === "folder") {
+      renderFolderNode(node, parent, depth);
+      if (state.expandedPaths.has(node.path)) {
+        renderTreeNodes(node.children, parent, depth + 1);
+      }
+      return;
     }
-    const button = document.createElement("button");
-    button.className = [
-      "btn btn-ghost btn-sm grid h-auto min-h-9 w-full grid-cols-[minmax(0,1fr)_auto] justify-start gap-2 px-2 text-left font-normal",
-      spec.id === state.selectedId ? "btn-active" : "",
-    ].join(" ");
-    button.innerHTML = `
-      <span class="truncate">${escapeHTML(spec.title)}</span>
-      ${spec.status ? `<span class="badge badge-ghost badge-sm">${escapeHTML(spec.status)}</span>` : ""}
-    `;
-    button.addEventListener("click", () => selectSpec(spec.id, true));
-    els.specList.append(button);
+    renderFileNode(node.spec, parent, depth);
+  });
+}
+
+function renderFolderNode(node, parent, depth) {
+  const expanded = state.expandedPaths.has(node.path);
+  const button = document.createElement("button");
+  button.className = "tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 px-2 text-left font-medium";
+  button.style.paddingLeft = `${8 + depth * 16}px`;
+  button.innerHTML = `
+    <i data-lucide="chevron-right" class="tree-chevron h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}"></i>
+    <i data-lucide="${expanded ? "folder-open" : "folder"}" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+    <span class="truncate">${escapeHTML(node.name)}</span>
+  `;
+  button.addEventListener("click", () => {
+    if (expanded) {
+      state.expandedPaths.delete(node.path);
+    } else {
+      state.expandedPaths.add(node.path);
+    }
+    renderSpecList();
+  });
+  parent.append(button);
+}
+
+function renderFileNode(spec, parent, depth) {
+  const button = document.createElement("button");
+  button.className = [
+    "tree-row btn btn-ghost btn-sm grid h-auto min-h-8 w-full grid-cols-[auto_minmax(0,1fr)_auto] justify-start gap-2 px-2 text-left font-normal",
+    spec.id === state.selectedId ? "btn-active" : "",
+  ].join(" ");
+  button.style.paddingLeft = `${24 + depth * 16}px`;
+  button.innerHTML = `
+    <i data-lucide="file-text" class="h-4 w-4 shrink-0 text-base-content/55"></i>
+    <span class="truncate">${escapeHTML(displaySpecName(spec))}</span>
+    ${spec.status ? `<span class="badge badge-ghost badge-sm max-w-24 truncate">${escapeHTML(spec.status)}</span>` : ""}
+  `;
+  button.addEventListener("click", () => selectSpec(spec.id, true));
+  parent.append(button);
+}
+
+function displaySpecName(spec) {
+  const base = spec.path.split("/").pop() || spec.title;
+  if (base === "_overview.md") return spec.title;
+  return spec.title || base;
+}
+
+function autoExpandForSelection() {
+  if (!state.selectedId) return;
+  const parts = state.selectedId.split("/");
+  for (let index = 1; index < parts.length; index++) {
+    state.expandedPaths.add(parts.slice(0, index).join("/"));
+  }
+}
+
+function expandAllVisibleFolders(node) {
+  if (!node.children) return;
+  node.children.forEach((child) => {
+    if (child.type === "folder") {
+      state.expandedPaths.add(child.path);
+      expandAllVisibleFolders(child);
+    }
   });
 }
 
@@ -333,7 +426,11 @@ function renderRelationships(relationships) {
     const item = document.createElement("div");
     item.className = "py-3 text-sm";
     item.innerHTML = `
-      <div class="font-semibold">${escapeHTML(rel.from)} → ${escapeHTML(rel.to)}</div>
+      <div class="flex items-center gap-2 font-semibold">
+        <span>${escapeHTML(rel.from)}</span>
+        <i data-lucide="arrow-right" class="h-4 w-4 shrink-0 text-base-content/45"></i>
+        <span>${escapeHTML(rel.to)}</span>
+      </div>
       <div class="text-base-content/60">${escapeHTML(rel.description || rel.section || "")}</div>
     `;
     els.relationships.append(item);
@@ -341,6 +438,7 @@ function renderRelationships(relationships) {
   if (relationships.length === 0) {
     els.relationships.innerHTML = '<p class="text-sm text-base-content/60">No relationship map entries found.</p>';
   }
+  refreshIcons();
 }
 
 function highlightGraphNode(specId) {
@@ -356,6 +454,14 @@ function escapeHTML(value) {
 
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 [els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => el.addEventListener("input", renderSpecList));
+
+function refreshIcons() {
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+}
+
+refreshIcons();
 
 load().catch((err) => {
   els.pageTitle.textContent = "Failed to load specs";

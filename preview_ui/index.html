@@ -22,10 +22,10 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body class="min-h-screen bg-base-200 text-base-content">
-    <div class="grid min-h-screen grid-cols-1 lg:grid-cols-[22rem_minmax(0,1fr)]">
-      <aside class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:h-screen lg:max-h-none lg:border-b-0 lg:border-r">
+    <div class="min-h-screen lg:pl-[22rem]">
+      <aside class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[22rem] lg:max-h-none lg:border-b-0 lg:border-r">
         <div class="mb-4 flex items-center gap-3">
-          <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-sm font-bold text-neutral-content">SP</div>
+          <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content"><i data-lucide="book-open-text" class="h-5 w-5"></i></div>
           <div class="min-w-0">
             <div class="font-bold">Spec Preview</div>
             <div id="projectName" class="text-base-content/60 truncate text-sm">Loading</div>
@@ -33,7 +33,7 @@
         </div>
 
         <label class="input input-bordered mb-3 flex h-10 items-center gap-2">
-          <span class="text-base-content/50">Search</span>
+          <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
           <input id="search" class="grow" placeholder="Spec name, path, status" />
         </label>
 
@@ -99,6 +99,7 @@
       </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>

@@ -101,7 +101,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "markdown-it", "DOMPurify", "mermaid", "cytoscape"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "mermaid", "cytoscape"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -128,6 +128,23 @@ func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
 	for _, want := range []string{".markdown td code", "overflow-wrap: anywhere", "word-break: break-word", "overflow-x: auto"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview table CSS missing %s", want)
+		}
+	}
+}
+
+func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app)
+	for _, want := range []string{"lg:fixed", "buildSpecTree", "renderFolderNode", "folder-open", "data-lucide=\"file-text", "lucide.createIcons"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview sidebar missing %s", want)
 		}
 	}
 }
