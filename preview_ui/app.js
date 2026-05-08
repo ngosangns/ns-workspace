@@ -450,14 +450,28 @@ function openDiagramLightbox(title, svg) {
   resetLightboxTransform();
   const stage = document.createElement("div");
   stage.className = "diagram-lightbox__stage";
+  const size = svgDiagramSize(svg);
   const clone = svg.cloneNode(true);
-  clone.removeAttribute("width");
-  clone.removeAttribute("height");
+  clone.setAttribute("width", String(size.width));
+  clone.setAttribute("height", String(size.height));
+  clone.style.width = `${size.width}px`;
+  clone.style.height = `${size.height}px`;
   clone.classList.add("diagram-lightbox__svg");
   stage.append(clone);
   els.diagramLightboxContent.append(stage);
   els.diagramLightbox.showModal();
   requestAnimationFrame(fitLightboxDiagram);
+}
+
+function svgDiagramSize(svg) {
+  const viewBox = svg.viewBox?.baseVal;
+  const attrWidth = parseFloat(svg.getAttribute("width") || "");
+  const attrHeight = parseFloat(svg.getAttribute("height") || "");
+  const rect = svg.getBoundingClientRect();
+  return {
+    width: Math.max(1, viewBox?.width || attrWidth || rect.width || 1000),
+    height: Math.max(1, viewBox?.height || attrHeight || rect.height || 700),
+  };
 }
 
 function closeDiagramLightbox() {
@@ -501,9 +515,7 @@ function fitLightboxDiagram() {
   const stage = els.diagramLightboxContent.querySelector(".diagram-lightbox__stage");
   const svg = stage?.querySelector("svg");
   if (!stage || !svg) return;
-  const viewBox = svg.viewBox?.baseVal;
-  const diagramWidth = viewBox?.width || svg.getBoundingClientRect().width || 1000;
-  const diagramHeight = viewBox?.height || svg.getBoundingClientRect().height || 700;
+  const { width: diagramWidth, height: diagramHeight } = svgDiagramSize(svg);
   const viewport = els.diagramLightboxContent.getBoundingClientRect();
   const stageStyles = getComputedStyle(stage);
   const horizontalChrome = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight) + 2;
