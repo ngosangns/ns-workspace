@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -97,6 +98,19 @@ func TestScanSpecProjectFallsBackWithoutIndex(t *testing.T) {
 	doc := project.Documents[0]
 	if doc.Title != "Dev Tooling" || doc.Status != "Draft" || doc.Version != "v1.14" {
 		t.Fatalf("fallback metadata not parsed: %+v", doc)
+	}
+}
+
+func TestRenderMarkdownSupportsGFMTables(t *testing.T) {
+	html, err := renderMarkdown([]byte(`| File | Description |
+| ---- | ----------- |
+| ` + "`a/b.ts`" + ` | table cell |
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "<table>") || !strings.Contains(html, "<td><code>a/b.ts</code></td>") {
+		t.Fatalf("expected GFM table HTML, got: %s", html)
 	}
 }
 

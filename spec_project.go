@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 type specProject struct {
@@ -422,7 +423,8 @@ func parseRelationships(markdown string) []graphRelation {
 
 func renderMarkdown(data []byte) (string, error) {
 	var buf bytes.Buffer
-	if err := goldmark.Convert(data, &buf); err != nil {
+	md := goldmark.New(goldmark.WithExtensions(extension.GFM))
+	if err := md.Convert(data, &buf); err != nil {
 		return "", err
 	}
 	return buf.String(), nil

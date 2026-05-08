@@ -24,9 +24,10 @@ const els = {
   relationships: document.querySelector("#relationships"),
 };
 
-marked.use({
-  gfm: true,
-  breaks: false,
+const markdownRenderer = window.markdownit({
+  html: false,
+  linkify: true,
+  typographer: false,
 });
 
 mermaid.initialize({
@@ -187,7 +188,7 @@ function renderMarkdown(raw, fallbackHTML) {
   if (!raw) {
     return fallbackHTML || "<p>No content.</p>";
   }
-  return DOMPurify.sanitize(marked.parse(raw));
+  return DOMPurify.sanitize(markdownRenderer.render(raw));
 }
 
 async function renderMermaidBlocks(root) {
