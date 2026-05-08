@@ -454,28 +454,13 @@ function openDiagramLightbox(title, svg) {
   const clone = svg.cloneNode(true);
   clone.setAttribute("width", String(size.width));
   clone.setAttribute("height", String(size.height));
-  clone.style.background = "var(--diagram-stage-bg)";
   clone.style.width = `${size.width}px`;
   clone.style.height = `${size.height}px`;
   clone.classList.add("diagram-lightbox__svg");
-  injectSvgBackground(clone, size);
   stage.append(clone);
   els.diagramLightboxContent.append(stage);
   els.diagramLightbox.showModal();
   requestAnimationFrame(fitLightboxDiagram);
-}
-
-function injectSvgBackground(svg, size) {
-  const namespace = "http://www.w3.org/2000/svg";
-  const background = document.createElementNS(namespace, "rect");
-  const viewBox = svg.viewBox?.baseVal;
-  background.setAttribute("class", "diagram-lightbox__svg-bg");
-  background.setAttribute("x", String(viewBox?.x || 0));
-  background.setAttribute("y", String(viewBox?.y || 0));
-  background.setAttribute("width", String(viewBox?.width || size.width));
-  background.setAttribute("height", String(viewBox?.height || size.height));
-  background.setAttribute("fill", "var(--diagram-stage-bg)");
-  svg.insertBefore(background, svg.firstChild);
 }
 
 function svgDiagramSize(svg) {

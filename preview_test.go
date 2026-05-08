@@ -387,9 +387,14 @@ func TestPreviewDiagramLightboxUsesHiddenOverflowAndBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app) + "\n" + string(css)
-	for _, want := range []string{"overflow: hidden", "clone.style.background", "injectSvgBackground", "diagram-lightbox__svg-bg", "background: var(--diagram-stage-bg)", "touch-action: none"} {
+	for _, want := range []string{"overflow: hidden", "--diagram-lightbox-bg", "background: var(--diagram-lightbox-bg)", "--diagram-canvas-bg", "touch-action: none"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview diagram lightbox hidden overflow/background missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{"injectSvgBackground", "diagram-lightbox__svg-bg", "clone.style.background"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview diagram lightbox should not add background to diagram SVG: %s", forbidden)
 		}
 	}
 	if strings.Contains(text, ".diagram-lightbox::backdrop {\n  background: rgb(0 0 0 / 0.62);\n  backdrop-filter") {
