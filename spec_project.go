@@ -321,6 +321,8 @@ func parseSyncState(markdown string) map[string]string {
 func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 	nodes := map[string]graphNode{}
 	specByModule := map[string]specDocument{}
+	docByNodeID := map[string]specDocument{}
+	docByPath := map[string]specDocument{}
 	dependencyDiagram := fencedBlockAfterHeading(indexRaw, "Dependency Graph")
 	diagramLabels := parseMermaidNodeAliases(dependencyDiagram)
 	diagramLabelSet := map[string]bool{}
@@ -328,6 +330,8 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		diagramLabelSet[label] = true
 	}
 	for _, doc := range docs {
+		docByPath[doc.Path] = doc
+		docByNodeID[documentGraphID(doc, diagramLabelSet)] = doc
 		name := moduleIDFromPath(doc.Path)
 		if name == "" {
 			continue
@@ -350,6 +354,7 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		}
 	}
 	relationships := parseRelationships(indexRaw)
+	relationships = append(relationships, parseDocumentConnections(docs, docByPath, diagramLabelSet)...)
 	for i, rel := range relationships {
 		rel.From = canonicalGraphEndpoint(rel.From, specByModule, diagramLabelSet)
 		rel.To = canonicalGraphEndpoint(rel.To, specByModule, diagramLabelSet)
@@ -369,6 +374,11 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 			node.SpecID = doc.ID
 			node.Category = doc.Category
 			node.Status = doc.Status
+		} else if doc, ok := docByNodeID[node.ID]; ok {
+			node.SpecID = doc.ID
+			node.Category = doc.Category
+			node.Status = doc.Status
+			node.Label = firstNonEmpty(node.Label, doc.Title)
 		}
 		list = append(list, node)
 	}
@@ -379,7 +389,14 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		}
 		return edges[i].From < edges[j].From
 	})
-	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: relationships, Constraints: constraints, DependencyDiagram: dependencyDiagram}
+	return specGraph{Nodes: list, Edges: dedupeEdges(edges), Relationships: dedupeRelationships(relationships), Constraints: constraints, DependencyDiagram: dependencyDiagram}
+}
+
+func documentGraphID(doc specDocument, diagramLabelSet map[string]bool) string {
+	if name := moduleIDFromPath(doc.Path); name != "" {
+		return canonicalSpecNodeID(name, doc, diagramLabelSet)
+	}
+	return strings.TrimSuffix(doc.Path, ".md")
 }
 
 func specAliasesForDoc(name string, doc specDocument) []string {
@@ -592,6 +609,223 @@ func parseRelationships(markdown string) []graphRelation {
 		}
 	}
 	return out
+}
+
+func parseDocumentConnections(docs []specDocument, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphRelation {
+	out := []graphRelation{}
+	for _, doc := range docs {
+		if isSpecControlFile(doc.Path) {
+			continue
+		}
+		from := documentGraphID(doc, diagramLabelSet)
+		for _, target := range parseDocumentMetadataLinks(doc, docByPath, diagramLabelSet) {
+			if from != target {
+				out = append(out, graphRelation{From: from, To: target, Description: "linked in metadata", Section: "Metadata Links"})
+			}
+		}
+		for _, target := range parseDocumentContentLinks(doc, docByPath, diagramLabelSet) {
+			if from != target {
+				out = append(out, graphRelation{From: from, To: target, Description: "linked or mentioned in content", Section: "Content References"})
+			}
+		}
+	}
+	return out
+}
+
+func isSpecControlFile(path string) bool {
+	base := filepath.Base(path)
+	return base == "_index.md" || base == "_sync.md"
+}
+
+func parseDocumentMetadataLinks(doc specDocument, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
+	meta := metadataBlock(doc.Raw)
+	if meta == "" {
+		return nil
+	}
+	targets := targetsFromMarkdownLinks(doc.Path, meta, docByPath, diagramLabelSet)
+	for _, line := range strings.Split(meta, "\n") {
+		key, value, ok := splitMetadataLine(line)
+		if !ok || !isSpecLinkMetadataKey(key) {
+			continue
+		}
+		targets = append(targets, targetsFromReferenceText(doc.Path, value, docByPath, diagramLabelSet)...)
+	}
+	return uniqueStrings(targets)
+}
+
+func parseDocumentContentLinks(doc specDocument, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
+	content := contentWithoutMetadata(doc.Raw)
+	targets := targetsFromMarkdownLinks(doc.Path, content, docByPath, diagramLabelSet)
+	targets = append(targets, targetsFromReferenceText(doc.Path, content, docByPath, diagramLabelSet)...)
+	return uniqueStrings(targets)
+}
+
+func metadataBlock(raw string) string {
+	lines := strings.Split(raw, "\n")
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		var buf strings.Builder
+		for _, line := range lines[1:] {
+			if strings.TrimSpace(line) == "---" {
+				return buf.String()
+			}
+			buf.WriteString(line)
+			buf.WriteByte('\n')
+		}
+	}
+	inMeta := false
+	var buf strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			level := headingLevel(trimmed)
+			title := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			if level <= 2 && strings.EqualFold(title, "Meta") {
+				inMeta = true
+				continue
+			}
+			if inMeta && level <= 2 {
+				break
+			}
+		}
+		if inMeta {
+			buf.WriteString(line)
+			buf.WriteByte('\n')
+		}
+	}
+	return buf.String()
+}
+
+func contentWithoutMetadata(raw string) string {
+	lines := strings.Split(raw, "\n")
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i, line := range lines[1:] {
+			if strings.TrimSpace(line) == "---" {
+				return strings.Join(lines[i+2:], "\n")
+			}
+		}
+	}
+	inMeta := false
+	out := []string{}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			level := headingLevel(trimmed)
+			title := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			if level <= 2 && strings.EqualFold(title, "Meta") {
+				inMeta = true
+				continue
+			}
+			if inMeta && level <= 2 {
+				inMeta = false
+			}
+		}
+		if !inMeta {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func headingLevel(line string) int {
+	level := 0
+	for _, r := range line {
+		if r != '#' {
+			break
+		}
+		level++
+	}
+	return level
+}
+
+func splitMetadataLine(line string) (string, string, bool) {
+	trimmed := strings.TrimSpace(strings.TrimLeft(line, "-* "))
+	if strings.HasPrefix(trimmed, "#") || !strings.Contains(trimmed, ":") {
+		return "", "", false
+	}
+	parts := strings.SplitN(trimmed, ":", 2)
+	key := stripMarkdown(strings.TrimSpace(parts[0]))
+	return key, strings.TrimSpace(parts[1]), key != ""
+}
+
+func isSpecLinkMetadataKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	key = strings.ReplaceAll(key, "_", " ")
+	key = strings.ReplaceAll(key, "-", " ")
+	for _, token := range []string{"link", "links", "related", "related specs", "spec links", "dependencies", "depends on", "consumes", "provides"} {
+		if key == token {
+			return true
+		}
+	}
+	return strings.Contains(key, "spec") && (strings.Contains(key, "link") || strings.Contains(key, "related"))
+}
+
+func targetsFromMarkdownLinks(sourcePath, text string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
+	out := []string{}
+	re := regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
+	for _, match := range re.FindAllStringSubmatch(text, -1) {
+		if len(match) != 2 {
+			continue
+		}
+		if target, ok := resolveSpecReference(sourcePath, match[1], docByPath, diagramLabelSet); ok {
+			out = append(out, target)
+		}
+	}
+	return out
+}
+
+func targetsFromReferenceText(sourcePath, text string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []string {
+	out := []string{}
+	lowerText := strings.ToLower(text)
+	for path, targetDoc := range docByPath {
+		if path == sourcePath || isSpecControlFile(path) {
+			continue
+		}
+		if mentionsSpecPath(lowerText, path) || mentionsSpecTitle(lowerText, targetDoc.Title) {
+			out = append(out, documentGraphID(targetDoc, diagramLabelSet))
+			continue
+		}
+		if target, ok := resolveSpecReference(sourcePath, path, docByPath, diagramLabelSet); ok && strings.Contains(lowerText, strings.ToLower(target)) {
+			out = append(out, target)
+		}
+	}
+	return out
+}
+
+func mentionsSpecPath(lowerText, path string) bool {
+	lowerPath := strings.ToLower(path)
+	base := strings.ToLower(filepath.Base(path))
+	return strings.Contains(lowerText, lowerPath) ||
+		strings.Contains(lowerText, "specs/"+lowerPath) ||
+		(base != "" && base != "_overview.md" && strings.Contains(lowerText, base))
+}
+
+func mentionsSpecTitle(lowerText, title string) bool {
+	title = strings.ToLower(strings.TrimSpace(title))
+	if len(title) < 6 || title == "overview" {
+		return false
+	}
+	return regexp.MustCompile(`(^|[^a-z0-9])`+regexp.QuoteMeta(title)+`([^a-z0-9]|$)`).FindStringIndex(lowerText) != nil
+}
+
+func resolveSpecReference(sourcePath, target string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) (string, bool) {
+	target = strings.TrimSpace(stripMarkdown(target))
+	if target == "" || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") || strings.HasPrefix(target, "#") {
+		return "", false
+	}
+	if idx := strings.IndexAny(target, "?#"); idx >= 0 {
+		target = target[:idx]
+	}
+	candidates := []string{target}
+	if !strings.HasPrefix(target, "/") {
+		candidates = append(candidates, filepath.ToSlash(filepath.Join(filepath.Dir(sourcePath), target)))
+	}
+	for _, candidate := range candidates {
+		path := normalizeSpecPath(strings.TrimPrefix(candidate, "/"))
+		if doc, ok := docByPath[path]; ok {
+			return documentGraphID(doc, diagramLabelSet), true
+		}
+	}
+	return "", false
 }
 
 func splitNodeList(value string) []string {
@@ -873,6 +1107,33 @@ func dedupeEdges(edges []graphEdge) []graphEdge {
 		}
 		seen[key] = true
 		out = append(out, edge)
+	}
+	return out
+}
+
+func dedupeRelationships(relationships []graphRelation) []graphRelation {
+	seen := map[string]bool{}
+	out := []graphRelation{}
+	for _, rel := range relationships {
+		key := rel.From + "\x00" + rel.To + "\x00" + rel.Description + "\x00" + rel.Section
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, rel)
+	}
+	return out
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
 	}
 	return out
 }

@@ -66,6 +66,8 @@ Mọi yêu cầu viết code / thêm tính năng từ user đều phải tuân t
 
 - **Các loại**: Phụ thuộc dữ liệu (`reads`), API (`calls`), Shared model (dùng chung entity), Sự kiện (`emits`), Chuỗi quy tắc.
 - Phải đảm bảo cập nhật mối quan hệ liên kết 2 chiều (Bidirectional) khi làm Bước 5 ở trên. Thay đổi module nào cần trace sang cập nhật spec của module phụ thuộc tương ứng.
+- Mỗi spec phải có metadata links đến các spec liên quan trực tiếp. Dùng mục `Links` trong `## Meta`, ưu tiên Markdown link tương đối tới file spec đích (ví dụ `[Data Models](../shared/data-models.md)`).
+- Nội dung spec được phép nhắc đến spec khác bằng Markdown link hoặc đường dẫn file spec. Preview sẽ parse các metadata links và content references này ở server side để dựng graph connections, vì vậy link/mention phải trỏ đến file `.md` thật trong `specs/`.
 
 ---
 
@@ -80,7 +82,7 @@ Output cực kỳ ngắn gọn lúc có mâu thuẫn:
 
 ```markdown
 # [Tên Module]
-- **Meta**: Trạng thái (Status), Phiên bản (Version), Đánh giá tuân thủ (Compliance)
+- **Meta**: Trạng thái (Status), Phiên bản (Version), Đánh giá tuân thủ (Compliance), Links đến specs liên quan
 1. Tổng quan (Overview)
 2. Yêu cầu chức năng & Phi chức năng
 3. Data Models (Mô hình Dữ liệu) & APIs

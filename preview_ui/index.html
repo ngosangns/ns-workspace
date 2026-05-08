@@ -26,14 +26,12 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/themes/default/style.min.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.default.min.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="min-h-screen overflow-x-hidden bg-base-200 text-base-content">
-    <div id="appLayout" class="preview-layout min-h-screen">
-      <aside id="sidebarPane" class="preview-sidebar border-base-300 bg-base-100 border-b lg:border-b-0 lg:border-r">
-        <div class="sidebar-header flex items-center gap-3 p-4 pb-3">
+  <body class="min-h-screen bg-base-200 text-base-content">
+    <div class="min-h-screen lg:pl-[22rem]">
+      <aside class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[22rem] lg:max-h-none lg:border-b-0 lg:border-r">
+        <div class="mb-4 flex items-center gap-3">
           <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content"><i data-lucide="book-open-text" class="h-5 w-5"></i></div>
           <div class="min-w-0">
             <div class="font-bold">Spec Preview</div>
@@ -41,23 +39,21 @@
           </div>
         </div>
 
-        <div class="sidebar-controls px-4 pb-3">
-          <label class="input input-bordered mb-3 flex h-10 items-center gap-2">
-            <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
-            <input id="search" class="min-w-0 grow" placeholder="Spec name, path, status" />
-          </label>
+        <label class="input input-bordered mb-3 flex h-10 items-center gap-2">
+          <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
+          <input id="search" class="grow" placeholder="Spec name, path, status" />
+        </label>
 
-          <div class="grid gap-2">
-            <select id="categoryFilter" class="select select-bordered select-sm w-full"><option value="">All categories</option></select>
-            <select id="statusFilter" class="select select-bordered select-sm w-full"><option value="">All statuses</option></select>
-            <select id="complianceFilter" class="select select-bordered select-sm w-full"><option value="">All compliance</option></select>
-          </div>
+        <div class="mb-4 grid gap-2">
+          <select id="categoryFilter" class="select select-bordered select-sm w-full"><option value="">All categories</option></select>
+          <select id="statusFilter" class="select select-bordered select-sm w-full"><option value="">All statuses</option></select>
+          <select id="complianceFilter" class="select select-bordered select-sm w-full"><option value="">All compliance</option></select>
         </div>
 
-        <nav id="specList" class="spec-tree px-2 pb-4"></nav>
+        <nav id="specList" class="space-y-1"></nav>
       </aside>
 
-      <main id="contentPane" class="preview-content min-w-0">
+      <main class="min-w-0">
         <header class="bg-base-200/90 border-base-300 sticky top-0 z-10 flex flex-col gap-4 border-b px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div class="min-w-0">
             <h1 id="pageTitle" class="truncate text-2xl font-bold tracking-normal">Overview</h1>
@@ -100,40 +96,21 @@
 
         <section id="graphTab" class="panel p-5">
           <div class="grid gap-4">
-            <div class="card border-base-300 bg-base-100 border">
-              <div class="card-body gap-3">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <h2 class="card-title text-base">Dependency Diagram</h2>
-                  <div id="graphStats" class="text-base-content/60 text-sm"></div>
-                </div>
-                <div id="graphDiagram" class="graph-diagram min-h-72 overflow-auto rounded-lg border border-base-300 bg-base-100 p-4"></div>
-              </div>
+            <div class="flex flex-wrap items-center justify-end gap-3">
+              <div id="graphStats" class="text-base-content/60 text-sm"></div>
             </div>
-            <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+            <div class="grid gap-4">
               <div class="card border-base-300 bg-base-100 border">
                 <div class="card-body p-0">
                   <div id="graphCanvas" class="h-[70vh] min-h-[34rem] w-full"></div>
                 </div>
               </div>
-              <aside class="card border-base-300 bg-base-100 max-h-[70vh] border">
-                <div class="card-body overflow-auto">
-                  <h2 class="card-title text-base">Relationships</h2>
-                  <div id="relationships" class="divide-base-300 divide-y"></div>
-                  <h2 class="card-title mt-4 text-base">Forbidden Rules</h2>
-                  <div id="constraints" class="grid gap-2"></div>
-                </div>
-              </aside>
             </div>
           </div>
         </section>
       </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/jstree.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flexsearch@0.7.43/dist/flexsearch.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/split.js@1.6.5/dist/split.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
