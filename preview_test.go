@@ -362,12 +362,12 @@ func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"svg.setAttribute(\"width\", \"100%\")", "svg.setAttribute(\"height\", \"100%\")", "svg.classList.add(\"diagram-svg\")"} {
+	for _, want := range []string{"svgDiagramSize", "svg.setAttribute(\"width\", String(size.width))", "svg.setAttribute(\"height\", String(size.height))", "svg.style.width = \"100%\"", "svg.style.height = \"100%\"", "svg.style.maxWidth = \"none\"", "svg.setAttribute(\"preserveAspectRatio\"", "svg.classList.add(\"diagram-svg\")", "prepareSvgPanZoomViewport", "svg-pan-zoom_viewport", "viewportSelector: \".svg-pan-zoom_viewport\""} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid SVG library preparation missing %s", want)
 		}
 	}
-	if strings.Contains(text, "svgDiagramSize") || strings.Contains(text, "svg.removeAttribute(\"width\")") || strings.Contains(text, "svg.removeAttribute(\"height\")") {
+	if strings.Contains(text, "svg.removeAttribute(\"width\")") || strings.Contains(text, "svg.removeAttribute(\"height\")") {
 		t.Fatalf("preview Mermaid should let svg-pan-zoom manage rendered SVG sizing")
 	}
 }
