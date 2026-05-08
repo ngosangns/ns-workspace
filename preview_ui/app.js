@@ -454,6 +454,8 @@ function openDiagramLightbox(title, svg) {
   const clone = svg.cloneNode(true);
   clone.setAttribute("width", String(size.width));
   clone.setAttribute("height", String(size.height));
+  clone.dataset.baseWidth = String(size.width);
+  clone.dataset.baseHeight = String(size.height);
   clone.style.width = `${size.width}px`;
   clone.style.height = `${size.height}px`;
   clone.classList.add("diagram-lightbox__svg");
@@ -492,7 +494,18 @@ function resetLightboxTransform() {
 function updateLightboxTransform() {
   const stage = els.diagramLightboxContent.querySelector(".diagram-lightbox__stage");
   if (stage) {
-    stage.style.transform = `translate(${state.lightbox.x}px, ${state.lightbox.y}px) scale(${state.lightbox.scale})`;
+    const svg = stage.querySelector("svg");
+    const baseWidth = parseFloat(svg?.dataset.baseWidth || "");
+    const baseHeight = parseFloat(svg?.dataset.baseHeight || "");
+    if (svg && baseWidth > 0 && baseHeight > 0) {
+      const renderWidth = Math.max(1, Math.round(baseWidth * state.lightbox.scale));
+      const renderHeight = Math.max(1, Math.round(baseHeight * state.lightbox.scale));
+      svg.setAttribute("width", String(renderWidth));
+      svg.setAttribute("height", String(renderHeight));
+      svg.style.width = `${renderWidth}px`;
+      svg.style.height = `${renderHeight}px`;
+    }
+    stage.style.transform = `translate(${state.lightbox.x}px, ${state.lightbox.y}px)`;
   }
   els.diagramZoomLevel.textContent = `${Math.round(state.lightbox.scale * 100)}%`;
 }
@@ -515,17 +528,18 @@ function fitLightboxDiagram() {
   const stage = els.diagramLightboxContent.querySelector(".diagram-lightbox__stage");
   const svg = stage?.querySelector("svg");
   if (!stage || !svg) return;
-  const { width: diagramWidth, height: diagramHeight } = svgDiagramSize(svg);
+  const diagramWidth = parseFloat(svg.dataset.baseWidth || "") || svgDiagramSize(svg).width;
+  const diagramHeight = parseFloat(svg.dataset.baseHeight || "") || svgDiagramSize(svg).height;
   const viewport = els.diagramLightboxContent.getBoundingClientRect();
   const stageStyles = getComputedStyle(stage);
   const horizontalChrome = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight) + 2;
   const verticalChrome = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom) + 2;
-  const stageWidth = diagramWidth + horizontalChrome;
-  const stageHeight = diagramHeight + verticalChrome;
-  const scale = Math.min(1, (viewport.width - 32) / stageWidth, (viewport.height - 32) / stageHeight);
+  const scale = Math.min(1, (viewport.width - 32 - horizontalChrome) / diagramWidth, (viewport.height - 32 - verticalChrome) / diagramHeight);
   state.lightbox.scale = Math.max(0.2, scale);
-  state.lightbox.x = Math.max(16, (viewport.width - stageWidth * state.lightbox.scale) / 2);
-  state.lightbox.y = Math.max(16, (viewport.height - stageHeight * state.lightbox.scale) / 2);
+  const stageWidth = diagramWidth * state.lightbox.scale + horizontalChrome;
+  const stageHeight = diagramHeight * state.lightbox.scale + verticalChrome;
+  state.lightbox.x = Math.max(16, (viewport.width - stageWidth) / 2);
+  state.lightbox.y = Math.max(16, (viewport.height - stageHeight) / 2);
   updateLightboxTransform();
 }
 

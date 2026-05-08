@@ -361,6 +361,22 @@ func TestPreviewDiagramLightboxSupportsZoomPan(t *testing.T) {
 	}
 }
 
+func TestPreviewDiagramLightboxZoomKeepsSvgSharp(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"dataset.baseWidth", "dataset.baseHeight", "renderWidth", "renderHeight", "stage.style.transform = `translate(${state.lightbox.x}px, ${state.lightbox.y}px)`"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram lightbox sharp SVG zoom missing %s", want)
+		}
+	}
+	if strings.Contains(text, "scale(${state.lightbox.scale})") {
+		t.Fatalf("preview diagram lightbox should resize SVG instead of CSS-scaling the stage")
+	}
+}
+
 func TestPreviewDiagramLightboxPreservesSvgSize(t *testing.T) {
 	app, err := os.ReadFile("preview_ui/app.js")
 	if err != nil {
