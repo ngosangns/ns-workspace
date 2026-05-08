@@ -337,7 +337,7 @@ function specTreeNode(node) {
   if (node.type === "file") {
     return {
       id: specTreeNodeId(node.spec.id),
-      text: node.spec.status ? `${node.text} · ${node.spec.status}` : node.text,
+      text: node.spec.status ? `${node.text} - ${node.spec.status}` : node.text,
       icon: "jstree-file",
       data: { specId: node.spec.id },
     };
@@ -640,6 +640,7 @@ function switchTab(name, options = {}) {
   if (updateURL) {
     updateRouteURL(name);
   }
+  initDocumentLayout();
 }
 
 function routeFromLocation() {
@@ -968,11 +969,19 @@ function refreshIcons() {
 }
 
 function initDocumentLayout() {
-  if (!window.Split || state.layoutSplit || !window.matchMedia("(min-width: 1024px)").matches) return;
+  const desktop = window.matchMedia("(min-width: 1024px)").matches;
+  if (!window.Split || !desktop) {
+    if (state.layoutSplit) {
+      state.layoutSplit.destroy();
+      state.layoutSplit = null;
+    }
+    return;
+  }
+  if (state.layoutSplit) return;
   state.layoutSplit = Split(["#sidebarPane", "#contentPane"], {
-    sizes: [24, 76],
-    minSize: [280, 520],
-    gutterSize: 1,
+    sizes: [26, 74],
+    minSize: [300, 560],
+    gutterSize: 8,
     snapOffset: 0,
     onDragEnd: () => {
       if (state.graphInstance) {
@@ -984,7 +993,7 @@ function initDocumentLayout() {
   });
 }
 
-initDocumentLayout();
+window.addEventListener("resize", initDocumentLayout);
 refreshIcons();
 
 function connectHotReload() {

@@ -66,14 +66,29 @@ figure,
 .preview-layout {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .preview-sidebar {
+  display: flex;
+  max-height: 48vh;
   min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.preview-content {
+  min-width: 0;
+}
+
+.sidebar-header,
+.sidebar-controls {
+  flex: 0 0 auto;
 }
 
 .gutter {
   background: hsl(var(--b3));
+  flex: 0 0 auto;
 }
 
 .gutter.gutter-horizontal {
@@ -86,15 +101,36 @@ figure,
 }
 
 .spec-tree {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
   font-size: 0.875rem;
+}
+
+.spec-tree .jstree-container-ul,
+.spec-tree .jstree-children {
+  min-width: 0;
+}
+
+.spec-tree .jstree-node {
+  min-height: 2rem;
+  line-height: 2rem;
+  white-space: nowrap;
 }
 
 .spec-tree .jstree-anchor {
   display: inline-flex;
+  min-width: 0;
   max-width: 100%;
+  height: 2rem;
   align-items: center;
+  padding-right: 0.35rem;
   border-radius: 0.45rem;
   color: hsl(var(--bc));
+  line-height: 2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
 }
 
 .spec-tree .jstree-clicked,
@@ -105,10 +141,26 @@ figure,
 
 .spec-tree .jstree-icon {
   color: hsl(var(--bc) / 0.55);
+  line-height: 2rem;
+}
+
+.spec-tree .jstree-wholerow {
+  height: 2rem;
+  border-radius: 0.45rem;
+}
+
+.spec-tree .jstree-wholerow-clicked,
+.spec-tree .jstree-wholerow-hovered {
+  background: hsl(var(--b2));
+}
+
+.ts-wrapper {
+  width: 100%;
 }
 
 .ts-wrapper.single .ts-control {
   min-height: 2rem;
+  padding: 0.25rem 0.55rem;
   border-color: hsl(var(--b3));
   border-radius: var(--rounded-btn, 0.5rem);
   background: hsl(var(--b1));
@@ -122,9 +174,15 @@ figure,
 }
 
 .ts-dropdown {
+  z-index: 50;
   border-color: hsl(var(--b3));
   background: hsl(var(--b1));
   color: hsl(var(--bc));
+}
+
+.ts-dropdown .option {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ts-dropdown .active {
@@ -134,17 +192,21 @@ figure,
 
 @media (min-width: 1024px) {
   .preview-layout {
+    height: 100vh;
     flex-direction: row;
+    overflow: hidden;
   }
 
   .preview-sidebar {
     height: 100vh;
     min-width: 16rem;
+    max-height: none;
   }
 
-  #contentPane {
-    min-height: 100vh;
+  .preview-content {
+    height: 100vh;
     min-width: 0;
+    overflow: auto;
   }
 }
 
