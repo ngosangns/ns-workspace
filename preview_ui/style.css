@@ -95,7 +95,6 @@ figure,
 
 .diagram-lightbox::backdrop {
   background: rgb(0 0 0 / 0.62);
-  backdrop-filter: blur(6px);
 }
 
 .diagram-lightbox__panel {
