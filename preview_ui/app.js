@@ -39,6 +39,7 @@ const els = {
   graphStats: document.querySelector("#graphStats"),
   graphCanvas: document.querySelector("#graphCanvas"),
   relationships: document.querySelector("#relationships"),
+  constraints: document.querySelector("#constraints"),
   likec4Models: document.querySelector("#likec4Models"),
   themeToggle: document.querySelector("#themeToggle"),
   themeLabel: document.querySelector("#themeLabel"),
@@ -651,10 +652,10 @@ async function renderLikeC4Models() {
 }
 
 function renderGraph() {
-  const { nodes, edges, relationships } = state.graph;
+  const { nodes, edges, relationships, constraints = [] } = state.graph;
   const palette = graphPalette();
   renderDependencyDiagram();
-  els.graphStats.textContent = `${nodes.length} nodes, ${edges.length} dependencies, ${relationships.length} relationships`;
+  els.graphStats.textContent = `${nodes.length} nodes, ${edges.length} dependencies, ${relationships.length} relationships, ${constraints.length} rules`;
   if (state.graphInstance) {
     state.graphInstance.destroy();
     state.graphInstance = null;
@@ -776,6 +777,7 @@ function renderGraph() {
   });
   highlightGraphNode(state.selectedId);
   renderRelationships(relationships);
+  renderConstraints(constraints);
 }
 
 async function renderDependencyDiagram() {
@@ -835,6 +837,28 @@ function renderRelationships(relationships) {
   });
   if (relationships.length === 0) {
     els.relationships.innerHTML = '<p class="text-sm text-base-content/60">No relationship map entries found.</p>';
+  }
+  refreshIcons();
+}
+
+function renderConstraints(constraints) {
+  els.constraints.innerHTML = "";
+  constraints.forEach((rule) => {
+    const item = document.createElement("div");
+    item.className = "rounded-lg border border-error/25 bg-error/5 p-3 text-sm";
+    item.innerHTML = `
+      <div class="flex items-center gap-2 font-semibold text-error">
+        <i data-lucide="ban" class="h-4 w-4 shrink-0"></i>
+        <span>${escapeHTML(rule.from || "Forbidden")}</span>
+        <i data-lucide="arrow-right" class="h-4 w-4 shrink-0"></i>
+        <span>${escapeHTML(rule.to || "")}</span>
+      </div>
+      <div class="mt-1 text-base-content/65">${escapeHTML(rule.description || rule.raw || "")}</div>
+    `;
+    els.constraints.append(item);
+  });
+  if (constraints.length === 0) {
+    els.constraints.innerHTML = '<p class="text-sm text-base-content/60">No forbidden dependency rules found.</p>';
   }
   refreshIcons();
 }

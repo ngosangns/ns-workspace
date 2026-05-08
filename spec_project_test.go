@@ -84,6 +84,9 @@ func TestScanSpecProjectParsesMermaidDependencyGraph(t *testing.T) {
 | Module | Spec File | Status | Version | Compliance | Priority |
 | ------ | --------- | ------ | ------- | ---------- | -------- |
 | Editor Core | [editor-core.md](./modules/editor-core.md) | Finalized | v1.5 | Unchecked | P0 |
+| MFE & WW | [mfe.md](./modules/mfe.md) | Finalized | v1.0 | Unchecked | P0 |
+| Editor UI | [editorui/](./modules/editorui/_overview.md) | Finalized | v1.0 | Unchecked | P0 |
+| Turnstile Captcha | [turnstile-captcha.md](./modules/turnstile-captcha.md) | Finalized | v1.0 | Unchecked | P1 |
 | Portal Homepage | [portal-homepage.md](./modules/portal/portal-homepage.md) | Draft | v1.0 | Unchecked | P1 |
 | Data Models | [data-models.md](./shared/data-models.md) | Finalized | v1.0 | Unchecked | P1 |
 
@@ -102,16 +105,36 @@ flowchart LR
     subgraph Tooling
         dev_tooling["dev-tooling"]
     end
+    subgraph Runtime
+        mfe["mfe"]
+        ww["ww"]
+    end
+    subgraph EditorUI
+        editorui_common["editorui.common"]
+    end
+    subgraph Shared
+        turnstile["turnstile-captcha"]
+    end
     subgraph Shared
         shared_models["shared/data-models"]
     end
     editor_word --> editor_core
     editor_core --> shared_models
+    editorui_common --> editor_core
+    ww --> mfe
+    portal_homepage --> turnstile
     portal_homepage --> editor_core
     dev_tooling --> specs_root["root specs"]
 `+"```"+`
+
+FORBIDDEN:
+- editor.core -> editor.* (core cannot depend on specific editor)
+- portal.* -> editor.* directly for normal document loading (portal must go through MFE/config)
 `)
 	writeTestFile(t, root, "specs/modules/editor-core.md", "# Editor Core\n")
+	writeTestFile(t, root, "specs/modules/mfe.md", "# MFE & Web Wrappers\n")
+	writeTestFile(t, root, "specs/modules/editorui/_overview.md", "# EditorUI Module\n")
+	writeTestFile(t, root, "specs/modules/turnstile-captcha.md", "# Turnstile Captcha\n")
 	writeTestFile(t, root, "specs/modules/portal/portal-homepage.md", "# Portal Homepage\n")
 	writeTestFile(t, root, "specs/shared/data-models.md", "# Data Models\n")
 
@@ -122,6 +145,9 @@ flowchart LR
 	for _, edge := range [][2]string{
 		{"editor-word", "editor-core"},
 		{"editor-core", "shared/data-models"},
+		{"editorui.common", "editor-core"},
+		{"ww", "mfe"},
+		{"portal.homepage", "turnstile-captcha"},
 		{"portal.homepage", "editor-core"},
 		{"dev-tooling", "root specs"},
 	} {
@@ -138,8 +164,26 @@ flowchart LR
 	if !hasGraphNode(project.Graph.Nodes, "shared/data-models") || hasGraphNode(project.Graph.Nodes, "data-models") {
 		t.Fatalf("expected shared path label to be the canonical graph node: %+v", project.Graph.Nodes)
 	}
+	for _, node := range []struct {
+		id     string
+		specID string
+	}{
+		{"ww", "modules/mfe.md"},
+		{"editorui.common", "modules/editorui/_overview.md"},
+		{"turnstile-captcha", "modules/turnstile-captcha.md"},
+	} {
+		if !hasGraphNodeSpec(project.Graph.Nodes, node.id, node.specID) {
+			t.Fatalf("expected graph node %s to link to %s: %+v", node.id, node.specID, project.Graph.Nodes)
+		}
+	}
 	if !strings.Contains(project.Graph.DependencyDiagram, `subgraph Editors`) || !strings.Contains(project.Graph.DependencyDiagram, `editor_word --> editor_core`) {
 		t.Fatalf("dependency diagram source not preserved: %s", project.Graph.DependencyDiagram)
+	}
+	if len(project.Graph.Constraints) != 2 || project.Graph.Constraints[0].From != "editor.core" || project.Graph.Constraints[0].To != "editor.*" {
+		t.Fatalf("forbidden dependency rules not parsed: %+v", project.Graph.Constraints)
+	}
+	if project.Graph.Constraints[1].From != "portal.*" || project.Graph.Constraints[1].To != "editor.*" {
+		t.Fatalf("forbidden dependency target was not cleaned: %+v", project.Graph.Constraints[1])
 	}
 }
 
@@ -243,6 +287,15 @@ func hasEdge(edges []graphEdge, from, to string) bool {
 func hasGraphNode(nodes []graphNode, id string) bool {
 	for _, node := range nodes {
 		if node.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func hasGraphNodeSpec(nodes []graphNode, id, specID string) bool {
+	for _, node := range nodes {
+		if node.ID == id && node.SpecID == specID {
 			return true
 		}
 	}
