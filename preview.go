@@ -48,6 +48,21 @@ type likeC4RenderResponse struct {
 	Diagrams []likeC4Diagram `json:"diagrams"`
 }
 
+type likeC4ModelsResponse struct {
+	Projects []likeC4ModelProject `json:"projects"`
+}
+
+type likeC4ModelProject struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Root        string          `json:"root"`
+	SourceFiles []string        `json:"sourceFiles"`
+	Generated   bool            `json:"generated"`
+	Source      string          `json:"source,omitempty"`
+	Diagrams    []likeC4Diagram `json:"diagrams,omitempty"`
+	Error       string          `json:"error,omitempty"`
+}
+
 type likeC4Diagram struct {
 	Name    string `json:"name"`
 	Mermaid string `json:"mermaid"`
@@ -106,6 +121,7 @@ func newPreviewServer(opt previewOptions) *previewServer {
 	mux.HandleFunc("/api/specs", ps.handleSpecs)
 	mux.HandleFunc("/api/specs/", ps.handleSpec)
 	mux.HandleFunc("/api/graph", ps.handleGraph)
+	mux.HandleFunc("/api/likec4", ps.handleLikeC4Models)
 	mux.HandleFunc("/api/render/likec4", ps.handleRenderLikeC4)
 	mux.HandleFunc("/api/events", ps.handleEvents)
 	static, _ := fs.Sub(previewUIFS, "preview_ui")
@@ -221,6 +237,42 @@ func (ps *previewServer) handleRenderLikeC4(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, likeC4RenderResponse{Diagrams: diagrams})
 }
 
+func (ps *previewServer) handleLikeC4Models(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	project, err := ps.load()
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	models := discoverLikeC4ModelProjects(ps.opt.projectRoot)
+	if len(models) == 0 {
+		if generated := buildSpecLikeC4ModelProject(project); generated.Source != "" {
+			diagrams, err := ps.likeC4Renderer(ctx, generated.Source)
+			if err != nil {
+				generated.Error = err.Error()
+			} else {
+				generated.Diagrams = diagrams
+			}
+			models = append(models, generated)
+		}
+	} else {
+		for i := range models {
+			diagrams, err := renderLikeC4Workspace(ctx, models[i].Root)
+			if err != nil {
+				models[i].Error = err.Error()
+				continue
+			}
+			models[i].Diagrams = diagrams
+		}
+	}
+	writeJSON(w, likeC4ModelsResponse{Projects: models})
+}
+
 func (ps *previewServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -317,8 +369,18 @@ func renderLikeC4Mermaid(ctx context.Context, source string) ([]likeC4Diagram, e
 	if err := os.WriteFile(sourcePath, []byte(source), 0o600); err != nil {
 		return nil, err
 	}
+	return renderLikeC4Workspace(ctx, tmpDir)
+}
+
+func renderLikeC4Workspace(ctx context.Context, workspaceDir string) ([]likeC4Diagram, error) {
+	tmpDir, err := os.MkdirTemp("", "ns-workspace-likec4-out-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+
 	outDir := filepath.Join(tmpDir, "out")
-	cmd := exec.CommandContext(ctx, "npx", "--yes", "likec4", "gen", "mermaid", tmpDir, "-o", outDir)
+	cmd := exec.CommandContext(ctx, "npx", "--yes", "likec4", "gen", "mermaid", workspaceDir, "-o", outDir)
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output
