@@ -300,7 +300,7 @@ func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "diagramPanZoomInstances", "window.svgPanZoom"} {
+	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "diagramPanZoomInstances", "diagramPanZoomTargets", "window.svgPanZoom"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom integration missing %s", want)
 		}
@@ -326,7 +326,7 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "zoomScaleSensitivity: 0.2", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
+	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "zoomScaleSensitivity: 0.2", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom API missing %s", want)
 		}
@@ -344,7 +344,7 @@ func TestPreviewDiagramPanZoomLifecycleIsManaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"destroyDiagramPanZoom", "instance.destroy()", "state.diagramPanZoomInstances.set", "state.diagramPanZoomInstances.delete"} {
+	for _, want := range []string{"destroyDiagramPanZoom", "destroyDiagramsIn", "instance.destroy()", "state.diagramPanZoomInstances.set", "state.diagramPanZoomInstances.delete", "state.diagramPanZoomTargets.delete"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom lifecycle missing %s", want)
 		}
@@ -362,7 +362,7 @@ func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"svgDiagramSize", "svg.setAttribute(\"width\", String(size.width))", "svg.setAttribute(\"height\", String(size.height))", "svg.style.width = \"100%\"", "svg.style.height = \"100%\"", "svg.style.maxWidth = \"none\"", "svg.setAttribute(\"preserveAspectRatio\"", "svg.classList.add(\"diagram-svg\")", "prepareSvgPanZoomViewport", "svg-pan-zoom_viewport", "viewportSelector: \".svg-pan-zoom_viewport\""} {
+	for _, want := range []string{"svgDiagramSize", "svg.setAttribute(\"width\", String(size.width))", "svg.setAttribute(\"height\", String(size.height))", "svg.style.width = \"100%\"", "svg.style.height = \"100%\"", "svg.style.maxWidth = \"none\"", "svg.setAttribute(\"preserveAspectRatio\"", "svg.classList.add(\"diagram-svg\")", "prepareSvgPanZoomViewport", "svg-pan-zoom_viewport"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid SVG library preparation missing %s", want)
 		}
