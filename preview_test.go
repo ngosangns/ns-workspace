@@ -360,3 +360,16 @@ func TestPreviewDiagramLightboxSupportsZoomPan(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewDiagramLightboxHasCanvasBackground(t *testing.T) {
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(css)
+	for _, want := range []string{"--diagram-canvas-bg", "--diagram-grid-line", "background-image:", "background-size: 24px 24px", "--diagram-stage-bg"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram lightbox background missing %s", want)
+		}
+	}
+}
