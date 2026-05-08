@@ -7,6 +7,9 @@ const state = {
   theme: getInitialTheme(),
   diagramPanZoomInstances: new Map(),
   diagramPanZoomTargets: new Map(),
+  searchIndex: null,
+  layoutSplit: null,
+  renderingTree: false,
   expandedPaths: new Set(),
   selectedId: "",
   tab: "overview",
@@ -58,6 +61,7 @@ async function load() {
   state.project = project;
   state.specs = specs;
   state.graph = graph;
+  buildSearchIndex();
   const route = routeFromLocation();
   state.selectedId = validSpecId(route.spec) || defaultSpecId();
   renderFilters();
@@ -81,6 +85,7 @@ async function reloadPreviewData() {
   state.project = project;
   state.specs = specs;
   state.graph = graph;
+  buildSearchIndex();
   state.selectedId = validSpecId(route.spec) || validSpecId(previousSelection) || defaultSpecId();
   renderFilters();
   renderOverview();
@@ -115,12 +120,53 @@ function renderFilters() {
     "All compliance",
     unique(state.specs.map((spec) => spec.compliance).filter(Boolean)),
   );
+  initFilterControls();
+}
+
+function buildSearchIndex() {
+  if (!window.FlexSearch) {
+    state.searchIndex = null;
+    return;
+  }
+  const index = new FlexSearch.Document({
+    tokenize: "forward",
+    document: {
+      id: "id",
+      index: ["title", "path", "category", "status", "compliance", "priority"],
+    },
+  });
+  state.specs.forEach((spec) => index.add({
+    id: spec.id,
+    title: spec.title || "",
+    path: spec.path || "",
+    category: spec.category || "",
+    status: spec.status || "",
+    compliance: spec.compliance || "",
+    priority: spec.priority || "",
+  }));
+  state.searchIndex = index;
 }
 
 function fillSelect(select, label, values) {
+  if (select.tomselect) {
+    select.tomselect.destroy();
+  }
   select.innerHTML = "";
   select.append(new Option(label, ""));
   values.forEach((value) => select.append(new Option(value, value)));
+}
+
+function initFilterControls() {
+  if (!window.TomSelect) return;
+  [els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((select) => {
+    new TomSelect(select, {
+      allowEmptyOption: true,
+      create: false,
+      controlInput: null,
+      hideSelected: false,
+      plugins: ["clear_button"],
+    });
+  });
 }
 
 function unique(values) {
@@ -180,32 +226,88 @@ function renderOverview() {
 }
 
 function renderSpecList() {
-  const query = els.search.value.toLowerCase().trim();
+  const specs = filteredSpecs();
+  const treeData = buildSpecTreeData(specs);
+  state.renderingTree = true;
+  const tree = $(els.specList);
+  tree.off(".specTree");
+  if (tree.jstree(true)) {
+    tree.jstree("destroy");
+  }
+  tree
+    .on("ready.jstree.specTree", () => {
+      const instance = tree.jstree(true);
+      openSelectedSpecParents(instance);
+      if (els.search.value || els.categoryFilter.value || els.statusFilter.value || els.complianceFilter.value) {
+        instance.open_all();
+      }
+      if (state.selectedId) {
+        instance.deselect_all(true);
+        instance.select_node(specTreeNodeId(state.selectedId), false, true);
+      }
+      state.renderingTree = false;
+    })
+    .on("select_node.jstree.specTree", (_event, data) => {
+      if (state.renderingTree) return;
+      const specId = data.node?.data?.specId;
+      if (specId) {
+        selectSpec(specId, true);
+      }
+    })
+    .on("open_node.jstree.specTree", (_event, data) => {
+      const path = String(data.node.id || "").replace(/^folder:/, "");
+      if (path && path !== data.node.id) {
+        state.expandedPaths.add(path);
+      }
+    })
+    .on("close_node.jstree.specTree", (_event, data) => {
+      const path = String(data.node.id || "").replace(/^folder:/, "");
+      if (path && path !== data.node.id) {
+        state.expandedPaths.delete(path);
+      }
+    })
+    .jstree({
+      core: {
+        data: treeData,
+        multiple: false,
+        themes: {
+          dots: false,
+          icons: true,
+          responsive: true,
+        },
+      },
+      plugins: ["wholerow"],
+    });
+}
+
+function filteredSpecs() {
+  const query = els.search.value.trim();
   const category = els.categoryFilter.value;
   const status = els.statusFilter.value;
   const compliance = els.complianceFilter.value;
-  const specs = state.specs.filter((spec) => {
-    const haystack = `${spec.title} ${spec.path} ${spec.status} ${spec.compliance}`.toLowerCase();
-    return (
-      (!query || haystack.includes(query)) &&
-      (!category || spec.category === category) &&
-      (!status || spec.status === status) &&
-      (!compliance || spec.compliance === compliance)
-    );
-  });
-
-  const tree = buildSpecTree(specs);
-  autoExpandForSelection();
-  if (query || category || status || compliance) {
-    expandAllVisibleFolders(tree);
-  }
-  els.specList.innerHTML = "";
-  renderTreeNodes(tree.children, els.specList, 0);
-  refreshIcons();
+  const ids = query ? searchSpecIds(query) : null;
+  return state.specs.filter((spec) => (
+    (!ids || ids.has(spec.id)) &&
+    (!category || spec.category === category) &&
+    (!status || spec.status === status) &&
+    (!compliance || spec.compliance === compliance)
+  ));
 }
 
-function buildSpecTree(specs) {
-  const root = { name: "", path: "", type: "folder", children: new Map() };
+function searchSpecIds(query) {
+  if (!state.searchIndex) {
+    const needle = query.toLowerCase();
+    return new Set(state.specs.filter((spec) => `${spec.title} ${spec.path} ${spec.status} ${spec.compliance} ${spec.category} ${spec.priority}`.toLowerCase().includes(needle)).map((spec) => spec.id));
+  }
+  const ids = new Set();
+  state.searchIndex.search(query, { enrich: true, suggest: true }).forEach((field) => {
+    field.result.forEach((hit) => ids.add(hit.id));
+  });
+  return ids;
+}
+
+function buildSpecTreeData(specs) {
+  const root = { children: new Map() };
   specs.forEach((spec) => {
     const parts = spec.path.split("/");
     let cursor = root;
@@ -213,7 +315,7 @@ function buildSpecTree(specs) {
       const isFile = index === parts.length - 1;
       const path = parts.slice(0, index + 1).join("/");
       if (!cursor.children.has(part)) {
-        cursor.children.set(part, isFile ? { name: part, path, type: "file", spec } : { name: part, path, type: "folder", children: new Map() });
+        cursor.children.set(part, isFile ? { text: displaySpecName(spec), path, type: "file", spec } : { text: part, path, type: "folder", children: new Map() });
       }
       cursor = cursor.children.get(part);
       if (isFile) {
@@ -221,93 +323,52 @@ function buildSpecTree(specs) {
       }
     });
   });
-  sortTree(root);
-  return root;
+  return sortSpecTreeNodes(root.children).map(specTreeNode);
 }
 
-function sortTree(node) {
-  if (!node.children) return;
-  node.children = new Map(
-    [...node.children.entries()].sort(([, a], [, b]) => {
-      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    }),
-  );
-  node.children.forEach(sortTree);
-}
-
-function renderTreeNodes(children, parent, depth) {
-  children.forEach((node) => {
-    if (node.type === "folder") {
-      renderFolderNode(node, parent, depth);
-      if (state.expandedPaths.has(node.path)) {
-        renderTreeNodes(node.children, parent, depth + 1);
-      }
-      return;
-    }
-    renderFileNode(node.spec, parent, depth);
+function sortSpecTreeNodes(children) {
+  return [...children.values()].sort((a, b) => {
+    if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+    return a.text.localeCompare(b.text);
   });
 }
 
-function renderFolderNode(node, parent, depth) {
-  const expanded = state.expandedPaths.has(node.path);
-  const button = document.createElement("button");
-  button.className = "tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 px-2 text-left font-medium";
-  button.style.paddingLeft = `${8 + depth * 16}px`;
-  button.innerHTML = `
-    <i data-lucide="chevron-right" class="tree-chevron h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}"></i>
-    <i data-lucide="${expanded ? "folder-open" : "folder"}" class="h-4 w-4 shrink-0 text-base-content/60"></i>
-    <span class="truncate">${escapeHTML(node.name)}</span>
-  `;
-  button.addEventListener("click", () => {
-    if (expanded) {
-      state.expandedPaths.delete(node.path);
-    } else {
-      state.expandedPaths.add(node.path);
-    }
-    renderSpecList();
-  });
-  parent.append(button);
+function specTreeNode(node) {
+  if (node.type === "file") {
+    return {
+      id: specTreeNodeId(node.spec.id),
+      text: node.spec.status ? `${node.text} · ${node.spec.status}` : node.text,
+      icon: "jstree-file",
+      data: { specId: node.spec.id },
+    };
+  }
+  return {
+    id: `folder:${node.path}`,
+    text: node.text,
+    state: { opened: state.expandedPaths.has(node.path) },
+    children: sortSpecTreeNodes(node.children).map(specTreeNode),
+  };
 }
 
-function renderFileNode(spec, parent, depth) {
-  const button = document.createElement("button");
-  button.className = [
-    "tree-row btn btn-ghost btn-sm grid h-auto min-h-8 w-full grid-cols-[auto_minmax(0,1fr)_auto] justify-start gap-2 px-2 text-left font-normal",
-    spec.id === state.selectedId ? "btn-active" : "",
-  ].join(" ");
-  button.style.paddingLeft = `${24 + depth * 16}px`;
-  button.innerHTML = `
-    <i data-lucide="file-text" class="h-4 w-4 shrink-0 text-base-content/55"></i>
-    <span class="truncate">${escapeHTML(displaySpecName(spec))}</span>
-    ${spec.status ? `<span class="badge badge-ghost badge-sm max-w-24 truncate">${escapeHTML(spec.status)}</span>` : ""}
-  `;
-  button.addEventListener("click", () => selectSpec(spec.id, true));
-  parent.append(button);
+function specTreeNodeId(specId) {
+  return `spec:${specId}`;
+}
+
+function openSelectedSpecParents(instance) {
+  const spec = state.specs.find((item) => item.id === state.selectedId);
+  if (!spec) return;
+  const parts = spec.path.split("/");
+  for (let index = 1; index < parts.length; index++) {
+    const folderPath = parts.slice(0, index).join("/");
+    state.expandedPaths.add(folderPath);
+    instance.open_node(`folder:${folderPath}`);
+  }
 }
 
 function displaySpecName(spec) {
   const base = spec.path.split("/").pop() || spec.title;
   if (base === "_overview.md") return spec.title;
   return spec.title || base;
-}
-
-function autoExpandForSelection() {
-  if (!state.selectedId) return;
-  const parts = state.selectedId.split("/");
-  for (let index = 1; index < parts.length; index++) {
-    state.expandedPaths.add(parts.slice(0, index).join("/"));
-  }
-}
-
-function expandAllVisibleFolders(node) {
-  if (!node.children) return;
-  node.children.forEach((child) => {
-    if (child.type === "folder") {
-      state.expandedPaths.add(child.path);
-      expandAllVisibleFolders(child);
-    }
-  });
 }
 
 async function selectSpec(id, showSpecTab, options = {}) {
@@ -855,7 +916,10 @@ document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click",
 window.addEventListener("popstate", () => {
   applyRouteFromLocation().catch(() => {});
 });
-[els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => el.addEventListener("input", renderSpecList));
+[els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => {
+  el.addEventListener("input", renderSpecList);
+  el.addEventListener("change", renderSpecList);
+});
 els.themeToggle.addEventListener("click", () => {
   applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true, rerender: true });
 });
@@ -903,6 +967,24 @@ function refreshIcons() {
   }
 }
 
+function initDocumentLayout() {
+  if (!window.Split || state.layoutSplit || !window.matchMedia("(min-width: 1024px)").matches) return;
+  state.layoutSplit = Split(["#sidebarPane", "#contentPane"], {
+    sizes: [24, 76],
+    minSize: [280, 520],
+    gutterSize: 1,
+    snapOffset: 0,
+    onDragEnd: () => {
+      if (state.graphInstance) {
+        state.graphInstance.resize();
+        state.graphInstance.fit(undefined, 36);
+      }
+      initVisibleDiagramPanZooms();
+    },
+  });
+}
+
+initDocumentLayout();
 refreshIcons();
 
 function connectHotReload() {

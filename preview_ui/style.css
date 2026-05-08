@@ -63,6 +63,91 @@ figure,
   display: block;
 }
 
+.preview-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-sidebar {
+  min-width: 0;
+}
+
+.gutter {
+  background: hsl(var(--b3));
+}
+
+.gutter.gutter-horizontal {
+  cursor: col-resize;
+  width: 1px;
+}
+
+.gutter.gutter-horizontal:hover {
+  background: hsl(var(--p) / 0.65);
+}
+
+.spec-tree {
+  font-size: 0.875rem;
+}
+
+.spec-tree .jstree-anchor {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  border-radius: 0.45rem;
+  color: hsl(var(--bc));
+}
+
+.spec-tree .jstree-clicked,
+.spec-tree .jstree-hovered {
+  background: hsl(var(--b2));
+  box-shadow: none;
+}
+
+.spec-tree .jstree-icon {
+  color: hsl(var(--bc) / 0.55);
+}
+
+.ts-wrapper.single .ts-control {
+  min-height: 2rem;
+  border-color: hsl(var(--b3));
+  border-radius: var(--rounded-btn, 0.5rem);
+  background: hsl(var(--b1));
+  color: hsl(var(--bc));
+  font-size: 0.875rem;
+}
+
+.ts-wrapper.single .ts-control,
+.ts-dropdown {
+  box-shadow: none;
+}
+
+.ts-dropdown {
+  border-color: hsl(var(--b3));
+  background: hsl(var(--b1));
+  color: hsl(var(--bc));
+}
+
+.ts-dropdown .active {
+  background: hsl(var(--b2));
+  color: hsl(var(--bc));
+}
+
+@media (min-width: 1024px) {
+  .preview-layout {
+    flex-direction: row;
+  }
+
+  .preview-sidebar {
+    height: 100vh;
+    min-width: 16rem;
+  }
+
+  #contentPane {
+    min-height: 100vh;
+    min-width: 0;
+  }
+}
+
 .diagram-surface {
   position: relative;
   overflow: hidden;

@@ -158,7 +158,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape", "svg-pan-zoom"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "/api/render/mermaid", "cytoscape", "svg-pan-zoom", "jstree", "FlexSearch", "tom-select", "TomSelect", "split.min.js"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -197,7 +197,7 @@ func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
 	}
 }
 
-func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
+func TestPreviewUsesDedicatedDocumentLayoutTreeSearchAndFilters(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -206,10 +206,19 @@ func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html) + "\n" + string(app)
-	for _, want := range []string{"lg:fixed", "buildSpecTree", "renderFolderNode", "folder-open", "data-lucide=\"file-text", "lucide.createIcons"} {
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(css)
+	for _, want := range []string{"id=\"appLayout\"", "id=\"sidebarPane\"", "id=\"contentPane\"", "Split([\"#sidebarPane\", \"#contentPane\"]", ".jstree(", "plugins: [\"wholerow\"]", "new FlexSearch.Document", "buildSearchIndex", "filteredSpecs", "new TomSelect", "initFilterControls", "spec-tree"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview sidebar missing %s", want)
+			t.Fatalf("preview dedicated document UI missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{"lg:fixed", "renderFolderNode", "renderFileNode", "buildSpecTree(specs)"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview should use dedicated document tree/layout libraries instead of %s", forbidden)
 		}
 	}
 }
