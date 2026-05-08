@@ -26,11 +26,13 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/themes/default/style.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.default.min.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body class="min-h-screen bg-base-200 text-base-content">
-    <div class="min-h-screen lg:pl-[22rem]">
-      <aside class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[22rem] lg:max-h-none lg:border-b-0 lg:border-r">
+    <div id="appLayout" class="preview-layout min-h-screen">
+      <aside id="sidebarPane" class="preview-sidebar border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:max-h-none lg:border-b-0 lg:border-r">
         <div class="mb-4 flex items-center gap-3">
           <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content"><i data-lucide="book-open-text" class="h-5 w-5"></i></div>
           <div class="min-w-0">
@@ -50,10 +52,10 @@
           <select id="complianceFilter" class="select select-bordered select-sm w-full"><option value="">All compliance</option></select>
         </div>
 
-        <nav id="specList" class="space-y-1"></nav>
+        <nav id="specList" class="spec-tree"></nav>
       </aside>
 
-      <main class="min-w-0">
+      <main id="contentPane" class="min-w-0">
         <header class="bg-base-200/90 border-base-300 sticky top-0 z-10 flex flex-col gap-4 border-b px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div class="min-w-0">
             <h1 id="pageTitle" class="truncate text-2xl font-bold tracking-normal">Overview</h1>
@@ -125,6 +127,11 @@
       </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/jstree.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flexsearch@0.7.43/dist/flexsearch.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/split.js@1.6.5/dist/split.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
