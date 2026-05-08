@@ -81,6 +81,18 @@ overview → editor.core
 	if got := res.Header.Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
 		t.Fatalf("events endpoint did not use SSE content type: %s", got)
 	}
+
+	res, err = http.Get(ts.URL + "/spec/modules/example.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("preview app fallback failed: %s", res.Status)
+	}
+	if got := res.Header.Get("Content-Type"); !strings.Contains(got, "text/html") {
+		t.Fatalf("preview app fallback should return HTML, got %s", got)
+	}
 }
 
 func TestPreviewLikeC4RenderHandler(t *testing.T) {
@@ -252,10 +264,13 @@ func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "#${route}", "popstate", "hashchange", "encodeSpecPath", "join(\"/\")"} {
+	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "window.location.pathname", "popstate", "encodeSpecPath", "join(\"/\")"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI route handling missing %s", want)
 		}
+	}
+	if strings.Contains(text, "hashchange") || strings.Contains(text, "window.location.hash") {
+		t.Fatalf("preview UI should use path routing without hash fragments")
 	}
 }
 

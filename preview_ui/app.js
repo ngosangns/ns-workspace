@@ -593,8 +593,8 @@ function switchTab(name, options = {}) {
 }
 
 function routeFromLocation() {
-  const hash = decodeURIComponent(window.location.hash || "").replace(/^#\/?/, "");
-  const [tab = "", ...rest] = hash.split("/");
+  const routePath = decodeURIComponent(window.location.pathname).replace(/^\/+/, "");
+  const [tab = "", ...rest] = routePath.split("/");
   if (["overview", "graph", "models"].includes(tab)) {
     return { tab };
   }
@@ -613,8 +613,8 @@ function routeFromLocation() {
 function updateRouteURL(tab) {
   if (state.applyingRoute) return;
   const route = tab === "spec" ? `/spec/${encodeSpecPath(state.selectedId || defaultSpecId())}` : `/${tab}`;
-  const next = `${window.location.pathname}${window.location.search}#${route}`;
-  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const next = `${route}${window.location.search}`;
+  const current = `${window.location.pathname}${window.location.search}`;
   if (next !== current) {
     window.history.pushState({ tab, spec: state.selectedId }, "", next);
   }
@@ -943,9 +943,6 @@ function escapeHTML(value) {
 
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 window.addEventListener("popstate", () => {
-  applyRouteFromLocation().catch(() => {});
-});
-window.addEventListener("hashchange", () => {
   applyRouteFromLocation().catch(() => {});
 });
 [els.search, els.categoryFilter, els.statusFilter, els.complianceFilter].forEach((el) => el.addEventListener("input", renderSpecList));
