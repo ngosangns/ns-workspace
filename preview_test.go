@@ -126,13 +126,15 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "data-ui-kit=\"treact\"", "lucide", "markdown-it", "DOMPurify", "mermaid", "cytoscape", "Treact-style component primitives"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "mermaid", "cytoscape"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
 	}
-	if strings.Contains(htmlText, "daisyui") {
-		t.Fatalf("preview UI should use Treact-style primitives instead of DaisyUI")
+	for _, forbidden := range []string{"data-ui-kit=\"treact\"", "Treact-style component primitives"} {
+		if strings.Contains(htmlText, forbidden) || strings.Contains(appText, forbidden) {
+			t.Fatalf("preview UI should use full DaisyUI instead of %s", forbidden)
+		}
 	}
 }
 
