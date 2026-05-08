@@ -361,6 +361,23 @@ func TestPreviewDiagramLightboxSupportsZoomPan(t *testing.T) {
 	}
 }
 
+func TestPreviewDiagramLightboxCentersDiagram(t *testing.T) {
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app) + "\n" + string(css)
+	for _, want := range []string{"const stage = els.diagramLightboxContent.querySelector", "stageWidth", "stageHeight", "margin: 0 auto"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram lightbox centering missing %s", want)
+		}
+	}
+}
+
 func TestPreviewDiagramLightboxHasCanvasBackground(t *testing.T) {
 	css, err := os.ReadFile("preview_ui/style.css")
 	if err != nil {
