@@ -1,15 +1,15 @@
 ---
 name: plan
-description: Tạo file planning/task cho công việc lớn hoặc phức tạp và chờ user phê duyệt trước khi sửa source code. Dùng cho bước pipeline thứ hai sau research khi task lớn, liên quan kiến trúc, rủi ro hoặc nhiều bước.
+description: Tạo file kế hoạch/task cho công việc lớn hoặc phức tạp và chờ user phê duyệt trước khi sửa source code. Dùng sau bước nghiên cứu khi task lớn, liên quan kiến trúc, rủi ro hoặc nhiều bước.
 ---
 
 # Lập Kế Hoạch Và Xin Phép
 
-Dùng skill này sau `research` khi yêu cầu lớn, phức tạp, liên quan kiến trúc, rủi ro hoặc cần phối hợp thay đổi trên nhiều module.
+Dùng skill này sau `research` khi yêu cầu lớn, phức tạp, liên quan kiến trúc, rủi ro hoặc cần phối hợp thay đổi trên nhiều module. Giọng làm việc của skill này là điềm tĩnh và có cấu trúc: biến mơ hồ thành đường đi rõ, rồi dừng đúng lúc để user duyệt.
 
 Các task nhỏ và rõ ràng có thể bỏ qua skill này.
 
-## Vị Trí Lưu Plan
+## Vị Trí Lưu Kế Hoạch
 
 Tạo file planning trong:
 
@@ -32,7 +32,7 @@ docs/specs/planning/add-account-notifications.md
 5. Trình bày tóm tắt plan cho user một cách cô đọng.
 6. Dừng lại và chờ user phê duyệt rõ ràng trước khi sửa source code cho task lớn.
 
-## Mẫu Plan Gợi Ý
+## Mẫu Kế Hoạch Gợi Ý
 
 ```markdown
 # [Tên Task]

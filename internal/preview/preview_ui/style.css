@@ -350,10 +350,10 @@ figure,
   overflow: auto;
   border-radius: 0.5rem;
   background: #101318;
-  padding: 1rem;
+  padding: 0.625rem 0.75rem;
   color: #eef2f7;
-  font-size: 0.82rem;
-  line-height: 1.55;
+  font-size: 0.8rem;
+  line-height: 1.18;
 }
 
 .code-preview code,
@@ -368,13 +368,13 @@ figure,
 
 .code-line {
   display: block;
-  min-height: 1.55em;
+  min-height: 1.18em;
 }
 
 .code-line-number {
   display: inline-block;
   width: 3rem;
-  margin-right: 1rem;
+  margin-right: 0.625rem;
   user-select: none;
   color: rgb(148 163 184);
   text-align: right;
@@ -386,6 +386,16 @@ figure,
 
 .code-line-target {
   background: rgb(250 204 21 / 0.16);
+}
+
+.selection-context-menu {
+  position: fixed;
+  z-index: 60;
+  border: 1px solid hsl(var(--b3));
+  border-radius: 0.5rem;
+  padding: 0.35rem;
+  background: hsl(var(--b1));
+  box-shadow: 0 16px 36px hsl(var(--bc) / 0.18);
 }
 
 @media (min-width: 1024px) {
@@ -531,6 +541,13 @@ figure,
 .markdown th {
   background: hsl(var(--b2));
   font-weight: 700;
+  text-align: left;
+}
+
+.metadata-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 .markdown blockquote {

@@ -107,7 +107,7 @@ func (ps *previewServer) handleFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "file not found", http.StatusNotFound)
 		return
 	}
-	if info.Size() > maxSearchFileBytes || !isPreviewableFilePath(absPath) {
+	if info.Size() > maxSearchFileBytes {
 		http.Error(w, "file is not previewable", http.StatusBadRequest)
 		return
 	}
@@ -120,12 +120,33 @@ func (ps *previewServer) handleFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "file is not valid UTF-8", http.StatusBadRequest)
 		return
 	}
+	if !isPreviewableFilePath(absPath) && !isPathInside(absPath, docsRoot(ps.opt.projectRoot, ps.opt.docsDir)) {
+		http.Error(w, "file is not previewable", http.StatusBadRequest)
+		return
+	}
 	writeJSON(w, previewFileResponse{
 		Path:     filepath.ToSlash(rel),
 		Title:    filepath.Base(absPath),
 		Language: languageForPath(absPath),
 		Raw:      string(data),
 	})
+}
+
+func isPathInside(path, root string) bool {
+	if path == "" || root == "" {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	absPath = filepath.Clean(absPath)
+	absRoot = filepath.Clean(absRoot)
+	return absPath == absRoot || strings.HasPrefix(absPath, absRoot+string(filepath.Separator))
 }
 
 func (ps *previewServer) handleGraph(w http.ResponseWriter, r *http.Request) {

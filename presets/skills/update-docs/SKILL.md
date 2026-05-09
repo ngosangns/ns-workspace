@@ -1,17 +1,17 @@
 ---
 name: update-docs
-description: Giữ docs/specs của dự án đồng bộ với codebase hiện tại. Dùng khi user yêu cầu cập nhật docs, sync specs, refresh tài liệu kiến trúc, document implementation đã hoàn thành, tạo hoặc cập nhật docs/specs/features/research/learnings, hoặc khi thay đổi code cần được phản ánh vào knowledge base và sync state của repo.
+description: Giữ docs/specs của dự án đồng bộ với codebase hiện tại. Dùng khi user yêu cầu cập nhật tài liệu, sync specs, làm mới tài liệu kiến trúc, ghi lại implementation đã hoàn thành, tạo hoặc cập nhật docs/specs/features/research/learnings, hoặc khi thay đổi code cần được phản ánh vào knowledge base và trạng thái sync của repo.
 ---
 
-# Cập Nhật Docs
+# Cập Nhật Tài Liệu
 
-Dùng skill này để cập nhật knowledge base của repo sau research hoặc implementation. Ưu tiên guidance của chính repo trước: đọc `AGENTS.md` hoặc `presets/agents/AGENTS.md` khi có, sau đó làm theo kiến trúc docs/specs bên dưới trừ khi repo quy định khác.
+Dùng skill này để cập nhật knowledge base của repo sau nghiên cứu hoặc implementation. Ưu tiên hướng dẫn của chính repo trước: đọc `AGENTS.md` hoặc `presets/agents/AGENTS.md` khi có, sau đó làm theo kiến trúc docs/specs bên dưới trừ khi repo quy định khác. Giọng làm việc của skill này là sạch sẽ và hiện tại: docs phải nói đúng trạng thái mới nhất, không cất giữ lịch sử thừa trong góc tối.
 
 ## Nguyên Tắc Bắt Buộc
 
-- **Current-state only:** Không lưu sync history, increment history, changelog, commit-history table hoặc version snapshots trong docs/specs. Docs/specs phải mô tả trạng thái/thiết kế hiện tại; `docs/_sync.md` chỉ giữ metadata sync hiện tại.
-- **Transparent-compact:** Giao tiếp thẳng thắn, báo cáo cô đọng, đi vào trọng tâm.
-- **Concise-update:** Khi cập nhật specs phải đảm bảo nội dung tinh gọn, phản ánh thiết kế/logic mới nhất. BẮT BUỘC xóa bỏ các nội dung cũ không còn chính xác, KHÔNG ĐƯỢC giữ lại thông tin cũ rồi gióng ngoặc hoặc ghi thêm cập nhật bên cạnh.
+- **Chỉ mô tả trạng thái hiện tại:** Không lưu lịch sử sync, incremental history, changelog, bảng commit history hoặc version snapshot trong docs/specs. Docs/specs phải mô tả trạng thái/thiết kế hiện tại; `docs/_sync.md` chỉ giữ metadata sync hiện tại.
+- **Báo cáo cô đọng:** Giao tiếp thẳng thắn, đi vào trọng tâm, nêu rõ docs nào đã đổi và validation nào đã chạy.
+- **Cập nhật tinh gọn:** Khi cập nhật specs, nội dung phải phản ánh thiết kế/logic mới nhất. Bắt buộc xóa nội dung cũ không còn chính xác, không giữ lại rồi thêm correction bên cạnh.
 
 ## Quy Ước Thư Mục
 
@@ -62,6 +62,66 @@ Quy tắc nhanh: trước khi code thì ghi vào `docs/specs/`; sau khi code shi
 - Dùng Markdown link tương đối thật tới file `.md` hiện có, ví dụ `[Data Models](../shared/data-models.md)` từ `docs/modules/` hoặc `[Auth Spec](../specs/auth.md)` từ `docs/features/`.
 - Nếu target được link chưa tồn tại, hoặc tạo nó khi task yêu cầu, hoặc để lại note known-unsynced ngắn trong `docs/_sync.md`. Không tạo docs placeholder rỗng.
 
+## Metadata Chuẩn
+
+Metadata giúp agent hiểu tài liệu hiện đang mô tả cái gì, trạng thái nào, và liên quan trực tiếp tới phần nào của codebase. Metadata không phải changelog; chỉ ghi trạng thái hiện tại của doc tại thời điểm sync.
+
+### Frontmatter Markdown
+
+Dùng YAML frontmatter cho docs mới hoặc docs đã có frontmatter. Với docs cũ không có frontmatter, chỉ thêm khi việc đó giúp index/search/sync rõ hơn; không rewrite hàng loạt chỉ để chuẩn hóa.
+
+```yaml
+---
+title: "[Tên ngắn, rõ nghĩa]"
+description: "[Một câu mô tả phạm vi tài liệu]"
+type: spec | feature | module | architecture | decision | pattern | shared | development | research | learning | compliance | index | sync
+status: draft | proposed | approved | implemented | active | deprecated | archived
+tags: ["tag-ngan", "domain"]
+owners: ["team-or-area"]
+source_paths:
+  - "internal/example/example.go"
+related:
+  - "../modules/example.md"
+---
+```
+
+Các field:
+
+- `title`: Tên hiển thị của doc. Nên trùng hoặc gần trùng với H1.
+- `description`: Một câu mô tả phạm vi hiện tại của doc, không ghi lịch sử thay đổi.
+- `type`: Loại tài liệu. Chọn đúng một giá trị trong danh sách chuẩn để index và search ổn định.
+- `status`: Trạng thái hiện tại của nội dung. Với docs shipped dùng `implemented` hoặc `active`; với planning/spec chưa duyệt dùng `draft` hoặc `proposed`; với nội dung không còn dùng nữa chỉ đặt `deprecated` hoặc `archived` khi doc vẫn cần giữ.
+- `tags`: Nhãn ngắn cho domain, module, capability hoặc workflow. Dùng lowercase/kebab-case khi có thể.
+- `owners`: Nhóm, module hoặc area chịu trách nhiệm. Bỏ qua nếu repo không có ownership rõ.
+- `source_paths`: Code path chính mà doc mô tả. Chỉ liệt kê path ổn định và trực tiếp, không liệt kê mọi file phụ.
+- `related`: Markdown path tương đối tới docs liên quan trực tiếp. Chỉ link tài liệu tồn tại.
+
+Không dùng frontmatter để lưu `last_updated`, commit history, version timeline, migration notes hoặc danh sách commit. Sync commit thuộc về `docs/_sync.md`.
+
+### Khối `## Meta`
+
+Với module, feature, architecture, shared, research và compliance docs, thêm `## Meta` ngay sau H1 khi doc cần quan hệ rõ cho agent. Khối này dễ đọc bằng mắt hơn frontmatter và nên dùng cho metadata giàu ngữ nghĩa.
+
+```markdown
+## Meta
+
+- Trạng thái: active | implemented | draft | deprecated | archived
+- Phạm vi: [module/capability/workflow mà doc mô tả]
+- Nguồn code: `path/to/file.go`, `path/to/dir`
+- Tuân thủ: [policy/spec/pattern liên quan hoặc "Không áp dụng"]
+- Links: [Tên Doc](../path/doc.md), [Doc Khác](../path/other.md)
+```
+
+Các field:
+
+- `Trạng thái`: Trạng thái hiện tại của doc, cùng nghĩa với `status` trong frontmatter. Nếu có cả hai, phải nhất quán.
+- `Phạm vi`: Ranh giới nội dung mà doc chịu trách nhiệm. Dùng để tránh duplicate hoặc viết lan sang module khác.
+- `Nguồn code`: Path code chính đang được mô tả. Dùng inline code path; giữ danh sách ngắn.
+- `Tuân thủ`: Quy định, quyết định kiến trúc, security/compliance rule hoặc convention mà doc cần bám theo. Ghi `Không áp dụng` nếu không có.
+- `Links`: Quan hệ trực tiếp tới docs hiện có. Dùng Markdown link tương đối thật; không ghi link placeholder.
+
+Không thêm field nếu không có giá trị thật. Không tạo bảng metadata lớn cho docs nhỏ; ưu tiên một khối ngắn và ổn định.
+
 ## Quy Trình
 
 1. Kiểm tra trạng thái hiện tại bằng `git status --short` và định vị docs hiện có bằng `rg --files docs` khi `docs/` tồn tại.
@@ -94,6 +154,28 @@ Luôn duy trì sync state trong `docs/_sync.md` khi cây docs tồn tại hoặc
 - Sync timestamp nếu hữu ích.
 - Phạm vi docs đã kiểm tra hoặc cập nhật.
 - Bất kỳ khu vực known-unsynced nào dưới dạng note ngắn.
+
+Khuyến nghị dùng cấu trúc sau:
+
+```markdown
+# Docs Sync State
+
+## Meta
+
+- Synced commit: `<commit-sha-or-HEAD>`
+- Synced at: `YYYY-MM-DDTHH:MM:SSZ`
+- Scope: [docs/code area đã kiểm tra]
+- Status: synced | partially-synced | unsynced
+- Known unsynced: Không có | [note ngắn]
+```
+
+Các field:
+
+- `Synced commit`: Commit hoặc `HEAD` mà docs hiện phản ánh. Đây là mốc để lần sau chạy `git log` và `git diff`.
+- `Synced at`: Timestamp ISO-8601 nếu hữu ích. Dùng timezone rõ ràng; bỏ qua nếu repo không muốn timestamp.
+- `Scope`: Phạm vi docs/code đã kiểm tra hoặc cập nhật trong lần sync hiện tại, ví dụ `preview UI`, `agent presets`, hoặc `docs tree`.
+- `Status`: `synced` khi docs phản ánh target commit; `partially-synced` khi còn known-unsynced có chủ ý; `unsynced` khi mới bootstrap hoặc chưa thể xác minh.
+- `Known unsynced`: Note ngắn về phần chưa sync, có path hoặc area cụ thể. Ghi `Không có` nếu không còn khu vực lệch đã biết.
 
 Khi cập nhật docs, dùng previous synced commit từ `docs/_sync.md` để inspect `git log` và `git diff` đến target commit. Nếu range có nhiều commit, duyệt chúng theo thứ tự thời gian từ `<synced-commit>+1` đến `<target-commit>` để hiểu intermediate renames, removals và semantic shifts. Chỉ dùng history đó làm input để tổng hợp. Không copy commit list, diff timeline, incremental notes, legacy notes, history, migration logs hoặc changelogs vào docs.
 
