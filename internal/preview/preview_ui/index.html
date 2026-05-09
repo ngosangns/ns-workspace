@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Docs Preview</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <script>
       (() => {
         const stored = localStorage.getItem("spec-preview-theme");
@@ -31,9 +32,13 @@
   </head>
   <body class="min-h-screen bg-base-200 text-base-content">
     <div class="min-h-screen lg:pl-[22rem]">
-      <aside class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[22rem] lg:max-h-none lg:border-b-0 lg:border-r">
+      <aside
+        class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[22rem] lg:max-h-none lg:border-b-0 lg:border-r"
+      >
         <div class="mb-4 flex items-center gap-3">
-          <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content"><i data-lucide="book-open-text" class="h-5 w-5"></i></div>
+          <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content">
+            <i data-lucide="book-open-text" class="h-5 w-5"></i>
+          </div>
           <div class="min-w-0">
             <div class="font-bold">Docs Preview</div>
             <div id="projectName" class="text-base-content/60 truncate text-sm">Loading</div>
@@ -49,42 +54,27 @@
       </aside>
 
       <main class="min-w-0">
-        <header class="bg-base-200/90 border-base-300 sticky top-0 z-10 flex flex-col gap-4 border-b px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+        <header
+          class="bg-base-200/90 border-base-300 sticky top-0 z-10 flex flex-col gap-4 border-b px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between"
+        >
           <div class="min-w-0">
-            <h1 id="pageTitle" class="truncate text-2xl font-bold tracking-normal">Overview</h1>
+            <h1 id="pageTitle" class="truncate text-2xl font-bold tracking-normal">Doc</h1>
             <p id="pagePath" class="text-base-content/60 truncate text-sm"></p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <div role="tablist" class="tabs tabs-boxed w-fit">
-              <button class="tab tab-active" data-tab="overview">Overview</button>
-              <button class="tab" data-tab="graph">Graph</button>
-              <button class="tab" data-tab="search">Search</button>
-              <button class="tab" data-tab="spec">Doc</button>
+            <div role="tablist" class="tabs tabs-boxed w-fit" aria-label="Preview sections">
+              <button class="tab" data-tab="graph" type="button" aria-label="Graph" title="Graph">
+                <i data-lucide="git-fork" class="h-4 w-4"></i>
+              </button>
+              <button class="tab" data-tab="search" type="button" aria-label="Search" title="Search">
+                <i data-lucide="search" class="h-4 w-4"></i>
+              </button>
+              <button id="themeToggle" class="tab" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+                <i data-lucide="moon" class="h-4 w-4"></i>
+              </button>
             </div>
-            <button id="themeToggle" class="btn btn-ghost btn-sm" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
-              <i data-lucide="moon" class="h-4 w-4"></i>
-              <span id="themeLabel" class="hidden sm:inline">Dark</span>
-            </button>
           </div>
         </header>
-
-        <section id="overviewTab" class="panel active p-5">
-          <div id="summaryCards" class="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-5"></div>
-          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
-            <article class="card border-base-300 bg-base-100 border">
-              <div class="card-body">
-                <h2 class="card-title text-base">Sync State</h2>
-                <dl id="syncState" class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm"></dl>
-              </div>
-            </article>
-            <article class="card border-base-300 bg-base-100 border">
-              <div class="card-body">
-                <h2 class="card-title text-base">Warnings</h2>
-                <div id="warnings" class="grid gap-2"></div>
-              </div>
-            </article>
-          </div>
-        </section>
 
         <section id="graphTab" class="panel p-5">
           <div class="graph-shell border-base-300 bg-base-100 border">
@@ -115,7 +105,7 @@
             <div class="search-toolbar border-base-300 border-b">
               <label class="input input-bordered flex min-h-11 flex-1 items-center gap-2">
                 <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
-                  <input id="globalSearch" class="grow" placeholder="Search docs, code, graph nodes; separate keywords with commas" />
+                <input id="globalSearch" class="grow" placeholder="Search docs, code, graph nodes; separate keywords with commas" />
               </label>
             </div>
             <div id="searchSummary" class="search-summary border-base-300 border-b"></div>
@@ -145,7 +135,13 @@
                 <div class="search-panel-heading">
                   <h2>Code Graph</h2>
                   <div class="flex items-center gap-2">
-                    <button id="codeGraphReload" class="btn btn-ghost btn-xs" type="button" title="Reload code graph" aria-label="Reload code graph">
+                    <button
+                      id="codeGraphReload"
+                      class="btn btn-ghost btn-xs"
+                      type="button"
+                      title="Reload code graph"
+                      aria-label="Reload code graph"
+                    >
                       <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
                     </button>
                     <span id="codeGraphCount" class="badge badge-ghost badge-sm">0</span>
@@ -157,7 +153,19 @@
           </div>
         </section>
 
-        <section id="specTab" class="panel p-5">
+        <section id="specTab" class="panel active p-5">
+          <div class="mx-auto mb-3 flex max-w-5xl justify-end">
+            <button
+              id="rawMarkdownToggle"
+              class="btn btn-ghost btn-sm"
+              type="button"
+              aria-label="View raw Markdown"
+              title="View raw Markdown"
+              hidden
+            >
+              <i data-lucide="file-code" class="h-4 w-4"></i>
+            </button>
+          </div>
           <article id="specContent" class="markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"></article>
         </section>
       </main>
@@ -167,6 +175,8 @@
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/lib/common.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/lib/languages/go.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/lib/languages/typescript.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
@@ -184,6 +194,12 @@
         <div id="previewDialogBody" class="preview-modal-body"></div>
       </div>
       <button class="modal-backdrop" type="button" data-close-preview>close</button>
+    </div>
+    <div id="selectionContextMenu" class="selection-context-menu" hidden>
+      <button id="selectionCopyButton" class="btn btn-primary btn-xs" type="button">
+        <i data-lucide="copy" class="h-3.5 w-3.5"></i>
+        <span>Copy filepath and line index</span>
+      </button>
     </div>
     <script type="module" src="/app.js"></script>
   </body>

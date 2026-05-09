@@ -231,12 +231,13 @@ func previewSourceToken(moduleRoot string) string {
 
 func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
 	uiRoot := filepath.Join(moduleRoot, "internal", "preview", "preview_ui")
+	uiSourceRoot := filepath.Join(moduleRoot, "internal", "preview", "preview_ui_src")
 	_ = filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if path == moduleRoot || path == uiRoot {
+			if path == moduleRoot || path == uiRoot || path == uiSourceRoot {
 				return nil
 			}
 			name := d.Name()
@@ -247,7 +248,7 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
 			if strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
-			if strings.HasPrefix(path, uiRoot+string(os.PathSeparator)) {
+			if strings.HasPrefix(path, uiRoot+string(os.PathSeparator)) || strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator)) {
 				return nil
 			}
 			return nil
@@ -256,7 +257,7 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
 		if err != nil {
 			return nil
 		}
-		if rel != "go.mod" && rel != "go.sum" && filepath.Ext(path) != ".go" && !strings.HasPrefix(path, uiRoot+string(os.PathSeparator)) {
+		if !isPreviewSourceFile(rel, path, uiRoot, uiSourceRoot) {
 			return nil
 		}
 		info, err := d.Info()
@@ -266,6 +267,17 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
 		visit(path, info)
 		return nil
 	})
+}
+
+func isPreviewSourceFile(rel, path, uiRoot, uiSourceRoot string) bool {
+	if rel == "go.mod" || rel == "go.sum" || filepath.Ext(path) == ".go" {
+		return true
+	}
+	switch rel {
+	case "package.json", "package-lock.json", "tsconfig.preview.json", "eslint.config.mjs", ".prettierrc.json", ".prettierignore":
+		return true
+	}
+	return strings.HasPrefix(path, uiRoot+string(os.PathSeparator)) || strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator))
 }
 
 func fileExists(path string) bool {

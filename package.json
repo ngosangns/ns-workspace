@@ -1,0 +1,21 @@
+{
+  "name": "ns-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:preview": "tsc -p tsconfig.preview.json",
+    "check:preview": "tsc -p tsconfig.preview.json --noEmit",
+    "lint:preview": "eslint internal/preview/preview_ui_src",
+    "format:preview": "prettier --ignore-unknown --write package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.ts\" internal/preview/preview_ui/index.html",
+    "format:preview:check": "prettier --ignore-unknown --check package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.ts\" internal/preview/preview_ui/index.html"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.26.0",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^9.26.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.0"
+  }
+}

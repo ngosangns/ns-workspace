@@ -27,3 +27,4 @@ temp/
 
 # Generated output
 graphify-out/
+node_modules/

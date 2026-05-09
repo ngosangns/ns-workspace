@@ -31,6 +31,7 @@ overview → editor.core
 `+"```"+`
 `)
 	writeTestFile(t, root, "docs/overview.md", "# Overview\n\nHello **docs**.\n")
+	writeTestFile(t, root, "docs/reference/settings.custom", "feature_flag: preview_index_all_docs_files\n")
 
 	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
 	ts := httptest.NewServer(server.srv.Handler)
@@ -46,8 +47,18 @@ overview → editor.core
 	if err := json.NewDecoder(res.Body).Decode(&docs); err != nil {
 		t.Fatal(err)
 	}
-	if len(docs) != 2 {
-		t.Fatalf("expected _index and overview docs, got %d", len(docs))
+	if len(docs) != 3 {
+		t.Fatalf("expected _index, overview, and custom docs file, got %d", len(docs))
+	}
+	var custom *specDocument
+	for i := range docs {
+		if docs[i].ID == "reference/settings.custom" {
+			custom = &docs[i]
+			break
+		}
+	}
+	if custom == nil || custom.Language != "plaintext" {
+		t.Fatalf("expected non-Markdown docs file in docs list with plaintext language, got %+v", custom)
 	}
 
 	res, err = http.Get(ts.URL + "/api/docs/overview.md")
@@ -61,6 +72,19 @@ overview → editor.core
 	}
 	if !strings.Contains(doc.Raw, "Hello **docs**.") || doc.HTML != "" {
 		t.Fatalf("doc endpoint should return raw Markdown for client-side rendering: raw=%q html=%q", doc.Raw, doc.HTML)
+	}
+
+	res, err = http.Get(ts.URL + "/api/docs/reference%2Fsettings.custom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var customDoc specDocument
+	if err := json.NewDecoder(res.Body).Decode(&customDoc); err != nil {
+		t.Fatal(err)
+	}
+	if customDoc.ID != "reference/settings.custom" || customDoc.Language != "plaintext" || !strings.Contains(customDoc.Raw, "preview_index_all_docs_files") {
+		t.Fatalf("nested docs file endpoint returned wrong content: %+v", customDoc)
 	}
 
 	res, err = http.Get(ts.URL + "/api/files?path=docs/overview.md")
@@ -189,6 +213,148 @@ func parseAuthToken(raw string) string {
 	}
 	if len(commaSearch.Panels.DocsSemantic) < 2 {
 		t.Fatalf("comma-separated keywords should match multiple document terms: %+v", commaSearch.Panels.DocsSemantic)
+	}
+}
+
+func TestPreviewSearchScansAllTextFilesUnderDocs(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "docs/specs/auth.md", "# Auth\n\nAuthentication validates session tokens.\n")
+	writeTestFile(t, root, "docs/reference/settings.custom", "feature_flag: preview_index_all_docs_files\n")
+	writeTestFile(t, root, "main.go", "package main\n")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=preview_index_all_docs_files")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.DocsSemantic) == 0 {
+		t.Fatalf("expected docs semantic search to include non-Markdown docs files: %+v", search.Panels)
+	}
+	got := search.Panels.DocsSemantic[0]
+	if got.Path != "reference/settings.custom" || got.SpecID != "reference/settings.custom" || got.Kind != "doc" {
+		t.Fatalf("expected docs-relative document result, got %+v", got)
+	}
+	if len(search.Panels.CodeSemantic) != 0 {
+		t.Fatalf("docs files should not be duplicated in code semantic results: %+v", search.Panels.CodeSemantic)
+	}
+
+	res, err = http.Get(ts.URL + "/api/files?path=docs/reference/settings.custom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("docs text file should be previewable: %s", res.Status)
+	}
+	var file previewFileResponse
+	if err := json.NewDecoder(res.Body).Decode(&file); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(file.Raw, "preview_index_all_docs_files") {
+		t.Fatalf("docs text file preview returned wrong content: %+v", file)
+	}
+}
+
+func TestPreviewSearchExpandsDocsGraphFromSemanticResults(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", `# Spec Index
+
+## Dependency Graph
+
+`+"```"+`
+guide → policy
+`+"```"+`
+`)
+	writeTestFile(t, root, "docs/guide.md", "# Guide\n\nHandles session credential lookup.\n")
+	writeTestFile(t, root, "docs/policy.md", "# Policy\n\nAccess policy details.\n")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=session%20credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.DocsSemantic) == 0 || search.Panels.DocsSemantic[0].SpecID != "guide.md" {
+		t.Fatalf("expected semantic doc anchor for guide.md, got %+v", search.Panels.DocsSemantic)
+	}
+	if len(search.Panels.DocsGraph) == 0 {
+		t.Fatalf("expected docs graph expansion from semantic result: %+v", search.Panels)
+	}
+	if !containsString(search.Panels.DocsGraph[0].MatchedBy, "semantic-anchor") {
+		t.Fatalf("expected docs graph anchor to be marked semantic-anchor, got %+v", search.Panels.DocsGraph[0])
+	}
+	if len(search.Panels.DocsGraph[0].Neighbors) == 0 || search.Panels.DocsGraph[0].Neighbors[0].ID != "policy" {
+		t.Fatalf("expected docs graph to expand to policy neighbor, got %+v", search.Panels.DocsGraph[0].Neighbors)
+	}
+}
+
+func TestPreviewSearchExpandsCodeGraphFromSemanticResults(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "auth.go", `package demo
+
+func parseToken(raw string) string {
+	// Secure secret material is normalized before storage.
+	return raw
+}
+`)
+	writeTestFile(t, root, "store.go", `package demo
+
+func hydrateStore() {}
+`)
+	writeTestFile(t, root, "graphify-out/graph.json", `{
+  "nodes": [
+    {"id":"code_lookup","label":"parseToken()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "auth.go"))+`","source_location":"L3","community":1},
+    {"id":"code_store","label":"hydrateStore()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "store.go"))+`","source_location":"L3","community":1}
+  ],
+  "links": [
+    {"source":"code_lookup","target":"code_store","relation":"calls","confidence":"EXTRACTED"}
+  ]
+}`)
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=secure%20secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.CodeSemantic) == 0 || search.Panels.CodeSemantic[0].Path != "auth.go" {
+		t.Fatalf("expected semantic code anchor for auth.go, got %+v", search.Panels.CodeSemantic)
+	}
+	if len(search.Panels.CodeGraph) == 0 {
+		t.Fatalf("expected code graph expansion from semantic result: %+v", search.Panels)
+	}
+	if !containsString(search.Panels.CodeGraph[0].MatchedBy, "semantic-anchor") || search.Panels.CodeGraph[0].Path != "auth.go" {
+		t.Fatalf("expected code graph anchor to be marked semantic-anchor, got %+v", search.Panels.CodeGraph[0])
+	}
+	if len(search.Panels.CodeGraph[0].Neighbors) == 0 || search.Panels.CodeGraph[0].Neighbors[0].Path != "store.go" {
+		t.Fatalf("expected code graph to expand to store.go neighbor, got %+v", search.Panels.CodeGraph[0].Neighbors)
 	}
 }
 
@@ -378,12 +544,40 @@ func TestPreviewSourceHotReloadTokenTracksBackendAndFrontend(t *testing.T) {
 }
 
 func TestPreviewUIUsesProjectSummaryResponse(t *testing.T) {
-	data, err := os.ReadFile("preview_ui/app.js")
+	data, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(data), "project.summary") {
 		t.Fatalf("preview UI should use /api/project summary response directly")
+	}
+}
+
+func TestPreviewUIHasTypeScriptToolchain(t *testing.T) {
+	for _, path := range []string{
+		"../../package.json",
+		"../../package-lock.json",
+		"../../tsconfig.preview.json",
+		"../../eslint.config.mjs",
+		"../../.prettierrc.json",
+		"preview_ui_src/app.ts",
+		"preview_ui_src/js/graph.ts",
+		"preview_ui_src/types.d.ts",
+		"preview_ui/app.js",
+		"preview_ui/js/graph.js",
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("preview TypeScript toolchain missing %s: %v", path, err)
+		}
+	}
+	pkg, err := os.ReadFile("../../package.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"build:preview", "check:preview", "lint:preview", "format:preview", "format:preview:check", "typescript", "eslint", "prettier"} {
+		if !strings.Contains(string(pkg), want) {
+			t.Fatalf("preview package scripts/deps missing %s", want)
+		}
 	}
 }
 
@@ -402,7 +596,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "highlight.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "d3.min.js"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "d3.min.js"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -422,11 +616,11 @@ func TestPreviewUIRendersDocsGraphWithD3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	graphJS, err := os.ReadFile("preview_ui/js/graph.js")
+	graphJS, err := os.ReadFile("preview_ui_src/js/graph.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,9 +629,36 @@ func TestPreviewUIRendersDocsGraphWithD3(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(graphJS) + "\n" + string(css)
-	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "d3.forceSimulation", "normalizedGraphData", "graphSelectedId", "graph-details"} {
+	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "forceSimulation", "normalizedGraphData", "graphSelectedId", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview docs graph UI missing %s", want)
+		}
+	}
+	if strings.Contains(string(graphJS), "selectSpec(") || strings.Contains(string(graphJS), "data-open-spec") {
+		t.Fatalf("preview docs graph should use popup previews instead of direct doc navigation")
+	}
+}
+
+func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html)
+	for _, want := range []string{
+		`aria-label="Preview sections"`,
+		`data-tab="graph"`,
+		`data-lucide="git-fork"`,
+		`data-tab="search"`,
+		`data-lucide="search"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview topbar icon-only tabs missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{`data-tab="overview"`, `data-lucide="layout-dashboard"`, `data-tab="spec"`, `data-lucide="file-text"`, "overviewTab", ">Overview</button>", ">Graph</button>", ">Search</button>", ">Doc</button>", "id=\"themeLabel\""} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview topbar should not render text label %s", forbidden)
 		}
 	}
 }
@@ -447,7 +668,7 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +689,7 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		`renderSearchPanel("docsSemantic"`,
 		`renderSearchPanel("codeGraph"`,
 		`renderSearchResult(result, name)`,
-		`panelName !== "docsSemantic"`,
+		`!result.specId`,
 		"reloadCodeGraph",
 		"updateCodeGraphReloadControl",
 		"codeGraphLoading",
@@ -492,6 +713,17 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"openFilePreview",
 		"/api/files?",
 		"highlightRenderedCode",
+		"renderSpecDocumentContent",
+		"rawMarkdownToggle",
+		"showRawMarkdown",
+		"renderCurrentSpecContent",
+		"selectionContextMenu",
+		"selectionCopyButton",
+		"updateSelectionContextMenu",
+		"resolveSelectionCopyTarget",
+		"navigator.clipboard.writeText",
+		"data-source-line-start",
+		"Copy filepath and line index",
 		`data-preview-spec`,
 		`data-preview-file`,
 		"route.searchQuery",
@@ -504,11 +736,46 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"code-line-target",
 		".preview-modal",
 		".code-preview",
+		"line-height: 1.18",
 		".search-loading",
 		`.search-grid`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview search UI missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIHasFaviconAndRouteTitles(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	icon, err := os.ReadFile("preview_ui/favicon.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(icon)
+	for _, want := range []string{
+		`href="/favicon.svg"`,
+		`type="image/svg+xml"`,
+		`viewBox="0 0 64 64"`,
+		"setPageChromeForTab",
+		"updateDocumentTitle",
+		"pageTitleForTab",
+		"dedupeTitleParts",
+		`Search: ${query}`,
+		"Doc preview:",
+		"File preview:",
+		"state.project?.generatedTitle",
+		"document.title = \"Failed to load docs | Docs Preview\"",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI title/favicon support missing %s", want)
 		}
 	}
 }
@@ -527,13 +794,51 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 }
 
 func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	if strings.Contains(text, "fallbackHTML") || !strings.Contains(text, "markdownRenderer.render(raw)") {
+	if strings.Contains(text, "fallbackHTML") || !strings.Contains(text, "markdownRenderer.render(metadata.body)") {
 		t.Fatalf("preview UI should render Markdown from raw content on the client")
+	}
+	for _, want := range []string{`markdownRenderer.enable("table")`, "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI Markdown rendering missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIResolvesInternalLinksAndMentionsThroughRouter(t *testing.T) {
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{
+		"decorateInternalDocNavigation",
+		"decorateInternalDocLinks",
+		"decorateInternalDocMentions",
+		"resolveSpecNavigationTarget",
+		"internalSpecLink",
+		"@doc",
+		"@spec",
+		"internalDocMentionPattern",
+		"navigateToSpecTarget",
+		"selectSpec(target.specId, true",
+		"pushSpecRoute",
+		"scrollToSpecFragment",
+		"NodeFilter.SHOW_TEXT",
+		`closest("a, pre, code, script, style")`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview internal link router support missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{"window.location.href", "location.assign", "location.replace"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview internal docs navigation should not use raw redirect: %s", forbidden)
+		}
 	}
 }
 
@@ -543,7 +848,7 @@ func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(css)
-	for _, want := range []string{".markdown td code", "overflow-wrap: anywhere", "word-break: break-word", "overflow-x: auto"} {
+	for _, want := range []string{".markdown td code", ".markdown th", "text-align: left", "overflow-wrap: anywhere", "word-break: break-word", "overflow-x: auto"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview table CSS missing %s", want)
 		}
@@ -555,7 +860,7 @@ func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -568,7 +873,7 @@ func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 }
 
 func TestPreviewUIConnectsHotReload(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -581,7 +886,7 @@ func TestPreviewUIConnectsHotReload(t *testing.T) {
 }
 
 func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,13 +896,13 @@ func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
 			t.Fatalf("preview UI route handling missing %s", want)
 		}
 	}
-	if strings.Contains(text, "hashchange") || strings.Contains(text, "window.location.hash") {
+	if strings.Contains(text, "hashchange") {
 		t.Fatalf("preview UI should use path routing without hash fragments")
 	}
 }
 
 func TestPreviewDiagramSanitizerKeepsMermaidLabels(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +919,7 @@ func TestPreviewUISupportsDarkMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -644,7 +949,7 @@ func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,7 +975,7 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -692,7 +997,7 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 }
 
 func TestPreviewDiagramPanZoomLifecycleIsManaged(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,7 +1015,7 @@ func TestPreviewDiagramPanZoomLifecycleIsManaged(t *testing.T) {
 }
 
 func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -726,7 +1031,7 @@ func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
 }
 
 func TestPreviewDiagramViewportUsesHiddenOverflowWithoutCustomBackground(t *testing.T) {
-	app, err := os.ReadFile("preview_ui/app.js")
+	app, err := os.ReadFile("preview_ui_src/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}

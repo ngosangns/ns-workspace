@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -28,7 +29,6 @@ type projectSummary struct {
 	AgentsFound    bool              `json:"agentsFound"`
 	IndexFound     bool              `json:"indexFound"`
 	SyncFound      bool              `json:"syncFound"`
-	OverviewFound  bool              `json:"overviewFound"`
 	TotalSpecs     int               `json:"totalSpecs"`
 	Categories     map[string]int    `json:"categories"`
 	StatusCounts   map[string]int    `json:"statusCounts"`
@@ -42,6 +42,7 @@ type specDocument struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`
 	Path       string `json:"path"`
+	Language   string `json:"language,omitempty"`
 	Category   string `json:"category"`
 	Status     string `json:"status,omitempty"`
 	Version    string `json:"version,omitempty"`
@@ -110,6 +111,11 @@ type semanticSpecRef struct {
 	ValidRelation    bool
 }
 
+type metadataEntry struct {
+	Key   string
+	Value string
+}
+
 const defaultSpecRelation = "references"
 
 var (
@@ -141,7 +147,6 @@ func scanSpecProject(projectRoot, docsDir string) (specProject, error) {
 
 	indexPath := filepath.Join(docsRoot, "_index.md")
 	syncPath := filepath.Join(docsRoot, "_sync.md")
-	overviewPath := filepath.Join(docsRoot, "overview.md")
 	agentsPath := filepath.Join(projectRoot, "AGENTS.md")
 
 	indexRaw := readOptional(indexPath)
@@ -152,7 +157,7 @@ func scanSpecProject(projectRoot, docsDir string) (specProject, error) {
 		return specProject{}, err
 	}
 	graph := parseSpecGraph(indexRaw, documents)
-	summary := buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath, overviewPath, documents, sync)
+	summary := buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath, documents, sync)
 	return specProject{Summary: summary, Documents: documents, Graph: graph}, nil
 }
 
@@ -170,7 +175,11 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || filepath.Ext(path) != ".md" {
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() > maxSearchFileBytes {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)
@@ -182,6 +191,9 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 		if err != nil {
 			return err
 		}
+		if !utf8.Valid(rawBytes) {
+			return nil
+		}
 		raw := string(rawBytes)
 		meta := table[rel]
 		if meta.Path == "" {
@@ -191,6 +203,7 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 			ID:         rel,
 			Title:      firstNonEmpty(meta.Title, titleFromMarkdown(raw), rel),
 			Path:       rel,
+			Language:   languageForPath(path),
 			Category:   categoryFor(rel),
 			Status:     meta.Status,
 			Version:    meta.Version,
@@ -209,7 +222,7 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 	return docs, nil
 }
 
-func buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath, overviewPath string, docs []specDocument, sync map[string]string) projectSummary {
+func buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath string, docs []specDocument, sync map[string]string) projectSummary {
 	categories := map[string]int{}
 	status := map[string]int{}
 	compliance := map[string]int{}
@@ -240,7 +253,6 @@ func buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath, overvi
 		AgentsFound:    exists(agentsPath),
 		IndexFound:     exists(indexPath),
 		SyncFound:      exists(syncPath),
-		OverviewFound:  exists(overviewPath),
 		TotalSpecs:     len(docs),
 		Categories:     categories,
 		StatusCounts:   status,
@@ -301,7 +313,20 @@ func parseModuleTable(markdown string) map[string]moduleMeta {
 
 func parseDocumentMeta(rel, raw string) moduleMeta {
 	meta := moduleMeta{Title: titleFromMarkdown(raw), Path: rel}
-	for _, line := range strings.Split(raw, "\n") {
+	block := metadataBlock(raw)
+	for _, entry := range metadataEntries(block) {
+		switch strings.ToLower(strings.TrimSpace(entry.Key)) {
+		case "status":
+			meta.Status = stripMarkdown(entry.Value)
+		case "version":
+			meta.Version = stripMarkdown(entry.Value)
+		case "compliance":
+			meta.Compliance = stripMarkdown(entry.Value)
+		case "priority":
+			meta.Priority = stripMarkdown(entry.Value)
+		}
+	}
+	for _, line := range strings.Split(firstNonEmpty(block, raw), "\n") {
 		trimmed := strings.TrimSpace(strings.TrimPrefix(line, "-"))
 		if strings.Contains(trimmed, "**Status**") {
 			meta.Status = valueAfterColon(trimmed)
@@ -671,14 +696,14 @@ func parseDocumentMetadataEdges(doc specDocument, from string, docByPath map[str
 	}
 	edges := edgesFromMarkdownLinks(doc.Path, from, meta, "related", "metadata", docByPath, diagramLabelSet)
 	edges = append(edges, edgesFromSemanticReferences(doc.Path, from, meta, "metadata", docByPath, diagramLabelSet)...)
-	for _, line := range strings.Split(meta, "\n") {
-		key, value, ok := splitMetadataLine(line)
-		if !ok || !isSpecLinkMetadataKey(key) {
+	for _, entry := range metadataEntries(meta) {
+		if !isSpecLinkMetadataKey(entry.Key) {
 			continue
 		}
-		relationType := relationTypeFromText(key)
-		edges = append(edges, edgesFromMarkdownLinks(doc.Path, from, value, relationType, "metadata", docByPath, diagramLabelSet)...)
-		edges = append(edges, edgesFromPlainDocPaths(doc.Path, from, value, relationType, "metadata", docByPath, diagramLabelSet)...)
+		relationType := relationTypeFromText(entry.Key)
+		edges = append(edges, edgesFromSemanticReferences(doc.Path, from, entry.Value, "metadata", docByPath, diagramLabelSet)...)
+		edges = append(edges, edgesFromMarkdownLinks(doc.Path, from, entry.Value, relationType, "metadata", docByPath, diagramLabelSet)...)
+		edges = append(edges, edgesFromPlainDocPaths(doc.Path, from, entry.Value, relationType, "metadata", docByPath, diagramLabelSet)...)
 	}
 	return dedupeEdges(edges)
 }
@@ -778,11 +803,83 @@ func splitMetadataLine(line string) (string, string, bool) {
 	return key, strings.TrimSpace(parts[1]), key != ""
 }
 
+func metadataEntries(block string) []metadataEntry {
+	out := []metadataEntry{}
+	for _, line := range strings.Split(block, "\n") {
+		key, value, ok := splitMetadataLine(line)
+		if ok {
+			out = append(out, metadataEntry{Key: key, Value: value})
+		}
+	}
+	out = append(out, metadataTableEntries(block)...)
+	return out
+}
+
+func metadataTableEntries(block string) []metadataEntry {
+	out := []metadataEntry{}
+	lines := strings.Split(block, "\n")
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		header := markdownTableCells(trimmed)
+		if len(header) == 0 || isMarkdownSeparatorRow(header) {
+			continue
+		}
+		j := i + 1
+		for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
+			j++
+		}
+		if j >= len(lines) || !isMarkdownSeparatorRow(markdownTableCells(strings.TrimSpace(lines[j]))) {
+			continue
+		}
+		headers := normalizeHeaders(header)
+		for j++; j < len(lines); j++ {
+			rowLine := strings.TrimSpace(lines[j])
+			if !strings.HasPrefix(rowLine, "|") {
+				break
+			}
+			cells := markdownTableCells(rowLine)
+			if isMarkdownSeparatorRow(cells) {
+				continue
+			}
+			if isKeyValueMetadataTable(headers) {
+				if len(cells) >= 2 {
+					out = append(out, metadataEntry{Key: stripMarkdown(cells[0]), Value: strings.TrimSpace(cells[1])})
+				}
+				continue
+			}
+			for index, header := range headers {
+				if index < len(cells) && header != "" {
+					out = append(out, metadataEntry{Key: header, Value: strings.TrimSpace(cells[index])})
+				}
+			}
+		}
+		i = j - 1
+	}
+	return out
+}
+
+func isKeyValueMetadataTable(headers []string) bool {
+	if len(headers) < 2 {
+		return false
+	}
+	keyHeader := headers[0]
+	valueHeader := headers[1]
+	return (keyHeader == "key" || keyHeader == "field" || keyHeader == "property" || keyHeader == "meta" || keyHeader == "metadata") &&
+		(valueHeader == "value" || valueHeader == "values" || valueHeader == "description")
+}
+
 func isSpecLinkMetadataKey(key string) bool {
 	key = strings.ToLower(strings.TrimSpace(key))
 	key = strings.ReplaceAll(key, "_", " ")
 	key = strings.ReplaceAll(key, "-", " ")
-	for _, token := range []string{"link", "links", "related", "related specs", "spec links", "dependencies", "depends on", "consumes", "provides"} {
+	for _, token := range []string{
+		"link", "links", "related", "related specs", "spec links",
+		"dependency", "dependencies", "depends", "depends on",
+		"implements", "blocks", "blocked by", "follows", "supersedes", "verifies", "consumes", "provides",
+	} {
 		if key == token {
 			return true
 		}
@@ -1130,6 +1227,14 @@ func stripMarkdown(value string) string {
 	value = strings.ReplaceAll(value, "**", "")
 	value = strings.ReplaceAll(value, "`", "")
 	value = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`).ReplaceAllString(value, "$1")
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		first := value[0]
+		last := value[len(value)-1]
+		if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+			value = value[1 : len(value)-1]
+		}
+	}
 	return strings.TrimSpace(value)
 }
 

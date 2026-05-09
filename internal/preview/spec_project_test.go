@@ -312,6 +312,64 @@ func TestScanSpecProjectFallsBackWithoutIndex(t *testing.T) {
 	}
 }
 
+func TestScanSpecProjectParsesMetadataKeyValueTable(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/modules/editor-core.md", `# Editor Core
+
+## Meta
+
+| Field | Value |
+| ----- | ----- |
+| Status | "Finalized" |
+| Version | v2.0 |
+| Compliance | 'current-state' |
+| Priority | P0 |
+| Depends | [Data Models](../shared/data-models.md) |
+
+## Notes
+
+Content.
+`)
+	writeTestFile(t, root, "docs/shared/data-models.md", "# Data Models\n")
+
+	project, err := scanSpecProject(root, "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := findDoc(t, project.Documents, "modules/editor-core.md")
+	if doc.Status != "Finalized" || doc.Version != "v2.0" || doc.Compliance != "current-state" || doc.Priority != "P0" {
+		t.Fatalf("metadata table not parsed into document fields: %+v", doc)
+	}
+	if !hasTypedEdge(project.Graph.Edges, "editor-core", "data-models", "depends", "metadata") {
+		t.Fatalf("metadata table dependency edge not parsed: %+v", project.Graph.Edges)
+	}
+}
+
+func TestScanSpecProjectParsesMetadataHeaderTable(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/modules/editor-core.md", `# Editor Core
+
+## Meta
+
+| Status | Version | Compliance | Links |
+| ------ | ------- | ---------- | ----- |
+| Active | current | current-state | [Data Models](../shared/data-models.md) |
+`)
+	writeTestFile(t, root, "docs/shared/data-models.md", "# Data Models\n")
+
+	project, err := scanSpecProject(root, "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := findDoc(t, project.Documents, "modules/editor-core.md")
+	if doc.Status != "Active" || doc.Version != "current" || doc.Compliance != "current-state" {
+		t.Fatalf("metadata header table not parsed into document fields: %+v", doc)
+	}
+	if !hasTypedEdge(project.Graph.Edges, "editor-core", "data-models", "related", "metadata") {
+		t.Fatalf("metadata header table link edge not parsed: %+v", project.Graph.Edges)
+	}
+}
+
 func TestRenderMarkdownSupportsGFMTables(t *testing.T) {
 	html, err := renderMarkdown([]byte(`| File | Description |
 | ---- | ----------- |

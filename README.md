@@ -1,24 +1,24 @@
 # Personal Agent Bootstrap
 
-`ns-workspace` la mot Go CLI nho dung de bootstrap va dong bo cau hinh cho cac AI coding agent ca nhan. Du an gom cac preset ve instructions, skills, subagents, settings, hooks va MCP servers, roi day chung sang dung vi tri native cua tung tool nhu Claude Code, OpenCode, Kimi, Qwen, Gemini, Codex, Cline, Windsurf, Aider va mot so adapter khac.
+`ns-workspace` là Go CLI nhỏ dùng để bootstrap và đồng bộ cấu hình cho các AI coding agent cá nhân. Dự án gom các preset về instructions, skills, subagents, settings, hooks và MCP servers, rồi đẩy chúng sang vị trí native của từng tool như Claude Code, OpenCode, Kimi, Qwen, Gemini, Codex, Cline, Windsurf, Aider và một số adapter khác.
 
-Y tuong chinh: dung `~/.agents` lam "source of truth", sau do sync sang cac agent khac de minh co cung mot bo workflow va convention tren nhieu tool.
+Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung, sau đó sync sang các agent khác để cùng một bộ workflow và convention hoạt động trên nhiều tool.
 
-## Luu Y
+## Lưu Ý
 
-Day la du an vibe coding ca nhan, duoc tao va phat trien nhanh de phuc vu workflow rieng. Vi vay cac function, adapter path, MCP config hoac generated artifact co the khong dam bao chinh xac 100% tren moi may, moi version tool, hay moi moi truong.
+Đây là dự án cá nhân được phát triển nhanh để phục vụ workflow riêng. Một số function, adapter path, MCP config hoặc generated artifact có thể không chính xác tuyệt đối trên mọi máy, mọi phiên bản tool hay mọi môi trường.
 
-Hay dung `doctor`, `status`, `--dry-run`, va doc diff/backups truoc khi apply len moi truong quan trong.
+Hãy dùng `doctor`, `status`, `--dry-run` và đọc diff/backups trước khi apply lên môi trường quan trọng.
 
-## Cai Dat Va Chay Nhanh
+## Cài Đặt Và Chạy Nhanh
 
-Khong can clone repo neu chi muon chay ban moi nhat:
+Không cần clone repo nếu chỉ muốn chạy bản mới nhất:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest init
 ```
 
-Mot so lenh hay dung:
+Một số lệnh hay dùng:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest status
@@ -27,7 +27,7 @@ go run github.com/ngosangns/ns-workspace@latest update
 go run github.com/ngosangns/ns-workspace@latest agents
 ```
 
-Neu dang lam trong checkout cua repo nay:
+Nếu đang làm trong checkout của repo này:
 
 ```bash
 go run . status
@@ -35,49 +35,49 @@ go run . doctor
 go run . preview --project . --addr 127.0.0.1:8787 --open
 ```
 
-## Cach Dung Don Gian
+## Cách Dùng Đơn Giản
 
-1. Kiem tra trang thai hien tai:
+1. Kiểm tra trạng thái hiện tại:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest status
 ```
 
-2. Xem truoc nhung gi se duoc ghi:
+2. Xem trước những gì sẽ được ghi:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest init --dry-run
 ```
 
-3. Tao cau hinh ban dau:
+3. Tạo cấu hình ban đầu:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest init
 ```
 
-4. Cap nhat lai preset da quan ly:
+4. Cập nhật lại preset đã quản lý:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest update
 ```
 
-5. Kiem tra JSON config va cac CLI agent da cai:
+5. Kiểm tra JSON config và các CLI agent đã cài:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest doctor
 ```
 
-## Cac Lenh Chinh
+## Các Lệnh Chính
 
-- `init`: tao cau hinh shared va link/copy sang cac adapter native. Mac dinh bo qua file da ton tai, tru khi dung `--force`.
-- `update`: thay the cac phan config do tool quan ly bang preset embedded va tao backup timestamp truoc khi ghi.
-- `status`: hien thi path da cai, path thieu, va link hien co.
-- `doctor`: validate JSON config va report cac local agent CLI.
-- `registry`: cai cac skill lay tu registry.
-- `agents`: liet ke adapter duoc ho tro, support tier va artifact support.
-- `preview`: chay web dashboard local de doc va search thu muc `docs/` cua mot project.
+- `init`: tạo cấu hình shared và link/copy sang các adapter native. Mặc định bỏ qua file đã tồn tại, trừ khi dùng `--force`.
+- `update`: thay thế các phần config do tool quản lý bằng preset embedded và tạo backup timestamp trước khi ghi.
+- `status`: hiển thị path đã cài, path thiếu và link hiện có.
+- `doctor`: validate JSON config và report các local agent CLI.
+- `registry`: cài các skill lấy từ registry.
+- `agents`: liệt kê adapter được hỗ trợ, support tier và artifact support.
+- `preview`: chạy web dashboard local để đọc và search thư mục `docs/` của một project.
 
-## Flag Hay Dung
+## Flag Hay Dùng
 
 ```bash
 --agents-home ~/.agents
@@ -91,9 +91,9 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 --no-registry
 ```
 
-Dung `--copy` neu khong muon tao symlink.
+Dùng `--copy` nếu không muốn tạo symlink.
 
-## Du Lieu Duoc Quan Ly
+## Dữ Liệu Được Quản Lý
 
 - Shared instructions: `~/.agents/AGENTS.md`
 - Shared subagents: `~/.agents/agents/*.md`
@@ -101,31 +101,31 @@ Dung `--copy` neu khong muon tao symlink.
 - Registry-managed skills: `~/.agents/registry/skills.json`
 - Shared settings/hooks: `~/.agents/settings.json`
 - Shared MCP presets: `~/.agents/mcp/servers.json`
-- User-level adapters cho Claude Code, OpenCode, Kimi Code CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf, Aider, Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae va Roo.
+- User-level adapters cho Claude Code, OpenCode, Kimi Code CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf, Aider, Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 
 ## Adapter Support
 
-Stable adapters ghi vao cac user-level path da biet:
+Stable adapters ghi vào các user-level path đã biết:
 
-| Agent | User-level targets |
-| --- | --- |
-| Claude Code | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` with hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
-| OpenCode | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` with hooks and MCP |
-| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json` |
-| Qwen Code | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` with hooks and MCP |
-| Gemini CLI | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` with hooks and MCP |
-| Codex CLI | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block in `~/.codex/config.toml` |
-| Cline | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json` |
-| Windsurf | `~/.codeium/windsurf/memories/global_rules.md` |
-| Aider | managed conventions block in `~/.aider.conf.yml` |
+| Agent         | User-level targets                                                                                                         |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
+| OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                |
+| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                  |
+| Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                              |
+| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với hooks và MCP                                      |
+| Codex CLI     | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml`                                    |
+| Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                           |
+| Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                             |
+| Aider         | managed conventions block trong `~/.aider.conf.yml`                                                                        |
 
-Manual hoac experimental adapters tao guidance trong `~/.agents/generated/<agent>/` thay vi ghi truc tiep vao native path chua chac chan. Nhom nay hien gom Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae va Roo.
+Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<agent>/` thay vì ghi trực tiếp vào native path chưa chắc chắn. Nhóm này hiện gồm Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 
 ## Docs Preview
 
-Lenh `preview` chay mot localhost web server de doc thu muc `docs/` cua project. Dashboard co danh sach docs, Markdown preview, sync state, typed docs graph va trang search gom Docs Semantic, Docs Graph, Code Semantic, Code Graph. Cac graph panel dung `graphify-out/graph.json` neu file nay ton tai. Markdown code fence `mermaid` se duoc render thanh diagram trong browser.
+Lệnh `preview` chạy một localhost web server để đọc thư mục `docs/` của project. Dashboard có danh sách docs, Markdown preview, typed docs graph và trang search gồm Docs Semantic, Docs Graph, Code Semantic, Code Graph. Trang tổng quan riêng đã được bỏ; preview mặc định mở tài liệu đầu tiên trong Doc tab. Các graph panel dùng `graphify-out/graph.json` nếu file này tồn tại. Markdown code fence `mermaid` sẽ được render thành diagram trong browser.
 
-Vi du:
+Ví dụ:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass
@@ -140,4 +140,14 @@ Preview flags:
 --docs-dir docs
 --addr 127.0.0.1:8787
 --open
+```
+
+Preview frontend source nằm trong `internal/preview/preview_ui_src/` và được build thành static assets trong `internal/preview/preview_ui/` để Go có thể embed sẵn. Khi sửa preview UI:
+
+```bash
+npm install
+npm run check:preview
+npm run lint:preview
+npm run format:preview
+npm run build:preview
 ```

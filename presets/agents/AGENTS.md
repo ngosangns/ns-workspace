@@ -24,6 +24,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 
 | Trigger | Skill | Khi Dùng |
 | --- | --- | --- |
+| `//f` | `fix` | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể. |
 | `//r` | `research` | Research codebase/docs trước khi sửa code, đặc biệt khi yêu cầu mơ hồ, liên quan kiến trúc hoặc có rủi ro. |
 | `//s` | `read-search-docs` | Search/đọc docs và specs, không sửa file. |
 | `//p` | `plan` | Tạo hoặc cập nhật file planning cho task lớn và chờ user duyệt trước khi sửa source. |
@@ -36,6 +37,9 @@ Các trigger ghép thường dùng:
 
 | Trigger | Pipeline |
 | --- | --- |
+| `//rf` | Research lỗi, rồi fix khi đã đủ bối cảnh. |
+| `//sf` | Search docs/specs liên quan, rồi fix theo nguồn tham chiếu hiện có. |
+| `//fu` | Fix lỗi, rồi update docs nếu behavior, architecture, business rules hoặc quan hệ module thay đổi. |
 | `//sp` | Search docs, rồi tạo plan. |
 | `//spe` | Search docs, tạo plan, rồi execution sau khi được duyệt nếu task cần. |
 | `//re` | Research, rồi execution cho thay đổi nhỏ đã rõ. |

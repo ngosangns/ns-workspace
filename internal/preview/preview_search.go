@@ -24,6 +24,7 @@ const (
 	defaultSearchLimit = 8
 	maxSearchLimit     = 24
 	maxSearchFileBytes = 256 * 1024
+	maxGraphNeighborUI = 10
 )
 
 type previewSearchResponse struct {
@@ -56,6 +57,9 @@ type previewSearchResult struct {
 	Community  string                  `json:"community,omitempty"`
 	Relation   string                  `json:"relation,omitempty"`
 	Confidence string                  `json:"confidence,omitempty"`
+	Anchor     bool                    `json:"anchor,omitempty"`
+	AnchorID   string                  `json:"anchorId,omitempty"`
+	Depth      int                     `json:"depth,omitempty"`
 	Neighbors  []previewSearchNeighbor `json:"neighbors,omitempty"`
 }
 
@@ -91,11 +95,48 @@ type graphifyLink struct {
 	Confidence string
 }
 
+type graphSearchAnchor struct {
+	ID     string
+	Title  string
+	Path   string
+	SpecID string
+	Line   int
+	Score  float64
+}
+
+type docsGraphIndex struct {
+	Nodes map[string]graphNode
+	Keys  map[string][]string
+	Edges map[string][]graphEdge
+}
+
+type graphifyIndex struct {
+	Nodes map[string]graphifyNode
+	Keys  map[string][]string
+	Edges map[string][]graphifyEdge
+	Root  string
+}
+
+type graphifyEdge struct {
+	To         string
+	Relation   string
+	Confidence string
+}
+
 type codeSearchDoc struct {
 	ID      string
 	Title   string
 	Path    string
 	Content string
+}
+
+type docsSearchDoc struct {
+	ID      string
+	Title   string
+	Path    string
+	Content string
+	SpecID  string
+	Kind    string
 }
 
 type previewEmbeddingConfig struct {
@@ -210,14 +251,16 @@ func buildPreviewSearchResponse(project specProject, graphify graphifyGraph, pro
 	}
 
 	if mode != "graph" {
-		codeDocs, warnings := scanCodeSearchDocs(projectRoot)
+		docsDocs, docsWarnings := scanDocsSearchDocs(projectRoot, project.Summary.DocsRoot, project.Documents)
+		response.Warnings = append(response.Warnings, docsWarnings...)
+		codeDocs, warnings := scanCodeSearchDocs(projectRoot, project.Summary.DocsRoot)
 		response.Warnings = append(response.Warnings, warnings...)
 		var embedSearch *previewEmbeddingSearch
 		if mode == "semantic" || mode == "hybrid" {
-			embedSearch, _ = loadPreviewEmbeddingSearch(projectRoot, project.Documents, codeDocs)
+			embedSearch, _ = loadPreviewEmbeddingSearch(projectRoot, docsDocs, codeDocs)
 		}
 		if embedSearch != nil {
-			docKeyword := searchDocsSemantic(project.Documents, query, tokens, "keyword", limit*2)
+			docKeyword := searchDocsSemantic(docsDocs, query, tokens, "keyword", limit*2)
 			codeKeyword := searchCodeSemantic(codeDocs, query, tokens, "keyword", limit*2)
 			docSemantic, codeSemantic, err := embedSearch.search(query, limit*2)
 			if err == nil {
@@ -225,17 +268,17 @@ func buildPreviewSearchResponse(project specProject, graphify graphifyGraph, pro
 				response.Panels.CodeSemantic = combineEmbeddingResults(codeKeyword, codeSemantic, mode, limit)
 			} else {
 				response.Warnings = append(response.Warnings, "Embedding search failed; using lexical fallback: "+err.Error())
-				response.Panels.DocsSemantic = searchDocsSemantic(project.Documents, query, tokens, mode, limit)
+				response.Panels.DocsSemantic = searchDocsSemantic(docsDocs, query, tokens, mode, limit)
 				response.Panels.CodeSemantic = searchCodeSemantic(codeDocs, query, tokens, mode, limit)
 			}
 		} else {
-			response.Panels.DocsSemantic = searchDocsSemantic(project.Documents, query, tokens, mode, limit)
+			response.Panels.DocsSemantic = searchDocsSemantic(docsDocs, query, tokens, mode, limit)
 			response.Panels.CodeSemantic = searchCodeSemantic(codeDocs, query, tokens, mode, limit)
 		}
 	}
 	if mode != "keyword" && mode != "semantic" {
-		response.Panels.DocsGraph = searchDocsGraph(project.Graph, graphify, projectRoot, query, tokens, limit)
-		response.Panels.CodeGraph = searchCodeGraph(graphify, projectRoot, query, tokens, limit)
+		response.Panels.DocsGraph = searchDocsGraph(project.Graph, graphify, projectRoot, query, tokens, response.Panels.DocsSemantic, limit)
+		response.Panels.CodeGraph = searchCodeGraph(graphify, projectRoot, query, tokens, response.Panels.CodeSemantic, limit)
 		boostSemanticWithGraph(response.Panels.DocsSemantic, response.Panels.DocsGraph)
 		boostSemanticWithGraph(response.Panels.CodeSemantic, response.Panels.CodeGraph)
 	}
@@ -258,14 +301,14 @@ func parseSearchLimit(raw string) int {
 	return limit
 }
 
-func searchDocsSemantic(docs []specDocument, query string, tokens []string, mode string, limit int) []previewSearchResult {
+func searchDocsSemantic(docs []docsSearchDoc, query string, tokens []string, mode string, limit int) []previewSearchResult {
 	results := []previewSearchResult{}
 	for _, doc := range docs {
-		if isSpecControlFile(doc.Path) {
+		if doc.SpecID != "" && isSpecControlFile(doc.SpecID) {
 			continue
 		}
-		keyword := keywordScore(query, tokens, doc.Title, doc.Path, doc.Raw)
-		semantic := semanticScore(tokens, doc.Title, doc.Path, headingsFromMarkdown(doc.Raw), doc.Raw)
+		keyword := keywordScore(query, tokens, doc.Title, doc.Path, doc.Content)
+		semantic := semanticScore(tokens, doc.Title, doc.Path, headingsFromMarkdown(doc.Content), doc.Content)
 		score, matchedBy := combineSearchScores(keyword, semantic, mode)
 		if score <= 0 {
 			continue
@@ -274,11 +317,11 @@ func searchDocsSemantic(docs []specDocument, query string, tokens []string, mode
 			ID:        "doc:" + doc.ID,
 			Title:     doc.Title,
 			Path:      doc.Path,
-			Kind:      "doc",
+			Kind:      doc.Kind,
 			Score:     score,
 			MatchedBy: matchedBy,
-			Excerpt:   excerptForQuery(doc.Raw, tokens),
-			SpecID:    doc.ID,
+			Excerpt:   excerptForQuery(doc.Content, tokens),
+			SpecID:    doc.SpecID,
 			Source:    "docs",
 		})
 	}
@@ -313,7 +356,7 @@ func searchCodeSemantic(codeDocs []codeSearchDoc, query string, tokens []string,
 	return limitResults(results, limit)
 }
 
-func loadPreviewEmbeddingSearch(projectRoot string, docs []specDocument, codeDocs []codeSearchDoc) (*previewEmbeddingSearch, []string) {
+func loadPreviewEmbeddingSearch(projectRoot string, docs []docsSearchDoc, codeDocs []codeSearchDoc) (*previewEmbeddingSearch, []string) {
 	cfg, warning := previewEmbeddingConfigForProject(projectRoot)
 	if warning != "" {
 		return nil, []string{warning}
@@ -327,13 +370,13 @@ func loadPreviewEmbeddingSearch(projectRoot string, docs []specDocument, codeDoc
 	return &previewEmbeddingSearch{Config: cfg, Index: index}, warnings
 }
 
-func buildPreviewEmbeddingChunks(docs []specDocument, codeDocs []codeSearchDoc) []previewEmbeddingChunk {
+func buildPreviewEmbeddingChunks(docs []docsSearchDoc, codeDocs []codeSearchDoc) []previewEmbeddingChunk {
 	chunks := []previewEmbeddingChunk{}
 	for _, doc := range docs {
-		if isSpecControlFile(doc.Path) {
+		if doc.SpecID != "" && isSpecControlFile(doc.SpecID) {
 			continue
 		}
-		content := strings.TrimSpace(strings.Join([]string{doc.Title, doc.Path, strings.Join(headingsFromMarkdown(doc.Raw), "\n"), doc.Raw}, "\n\n"))
+		content := strings.TrimSpace(strings.Join([]string{doc.Title, doc.Path, strings.Join(headingsFromMarkdown(doc.Content), "\n"), doc.Content}, "\n\n"))
 		if content == "" {
 			continue
 		}
@@ -342,7 +385,7 @@ func buildPreviewEmbeddingChunks(docs []specDocument, codeDocs []codeSearchDoc) 
 			Type:    "doc",
 			Title:   doc.Title,
 			Path:    doc.Path,
-			SpecID:  doc.ID,
+			SpecID:  doc.SpecID,
 			Content: content,
 			Hash:    contentHash(content),
 		})
@@ -665,7 +708,21 @@ func combineSearchScores(keyword, semantic float64, mode string) (float64, []str
 	}
 }
 
-func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, limit int) []previewSearchResult {
+func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
+	results := searchDocsGraphFromSemantic(graph, semantic, graphExpansionLimit(limit))
+	for _, result := range searchGraphifyFromSemantic(graphify, projectRoot, semantic, graphExpansionLimit(limit), true) {
+		result.ID = "docs-graphify:" + result.NodeID
+		results = append(results, result)
+	}
+	results = dedupeSearchResults(results)
+	if len(results) == 0 {
+		return searchDocsGraphByQuery(graph, graphify, projectRoot, query, tokens, limit)
+	}
+	sortSearchResults(results)
+	return limitResults(results, graphExpansionLimit(limit))
+}
+
+func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, limit int) []previewSearchResult {
 	results := []previewSearchResult{}
 	for _, node := range graph.Nodes {
 		haystack := strings.Join([]string{node.ID, node.Label, node.Path, node.Category, node.Status}, " ")
@@ -683,7 +740,7 @@ func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query
 			SpecID:    node.SpecID,
 			NodeID:    node.ID,
 			Source:    "docs graph",
-			Neighbors: docGraphNeighbors(graph, node.ID),
+			Neighbors: limitNeighbors(docGraphNeighbors(graph, node.ID), 8),
 		})
 	}
 	for _, result := range searchGraphifyNodes(graphify, projectRoot, query, tokens, limit*2, true) {
@@ -694,7 +751,20 @@ func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query
 	return limitResults(dedupeSearchResults(results), limit)
 }
 
-func searchCodeGraph(graphify graphifyGraph, projectRoot, query string, tokens []string, limit int) []previewSearchResult {
+func searchCodeGraph(graphify graphifyGraph, projectRoot, query string, tokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
+	results := searchGraphifyFromSemantic(graphify, projectRoot, semantic, graphExpansionLimit(limit), false)
+	for i := range results {
+		results[i].ID = "code-graphify:" + results[i].NodeID
+	}
+	results = dedupeSearchResults(results)
+	if len(results) == 0 {
+		return searchCodeGraphByQuery(graphify, projectRoot, query, tokens, limit)
+	}
+	sortSearchResults(results)
+	return limitResults(results, graphExpansionLimit(limit))
+}
+
+func searchCodeGraphByQuery(graphify graphifyGraph, projectRoot, query string, tokens []string, limit int) []previewSearchResult {
 	results := searchGraphifyNodes(graphify, projectRoot, query, tokens, limit, false)
 	for i := range results {
 		results[i].ID = "code-graphify:" + results[i].NodeID
@@ -725,12 +795,159 @@ func searchGraphifyNodes(graph graphifyGraph, projectRoot, query string, tokens 
 			MatchedBy:  []string{"graph"},
 			NodeID:     node.ID,
 			Community:  node.Community,
-			Neighbors:  graph.Neighbors[node.ID],
+			Neighbors:  limitNeighbors(graph.Neighbors[node.ID], maxGraphNeighborUI),
 			Confidence: "graphify",
 		})
 	}
 	sortSearchResults(results)
 	return limitResults(results, limit)
+}
+
+func searchDocsGraphFromSemantic(graph specGraph, semantic []previewSearchResult, limit int) []previewSearchResult {
+	if len(semantic) == 0 || len(graph.Nodes) == 0 {
+		return nil
+	}
+	index := newDocsGraphIndex(graph)
+	anchors := graphAnchorsFromSemantic(semantic)
+	results := map[string]previewSearchResult{}
+	for _, anchor := range anchors {
+		for _, nodeID := range index.match(anchor) {
+			expandDocsGraphAnchor(graph, index, nodeID, anchor, limit, results)
+			if len(results) >= limit {
+				break
+			}
+		}
+		if len(results) >= limit {
+			break
+		}
+	}
+	out := make([]previewSearchResult, 0, len(results))
+	for _, result := range results {
+		out = append(out, result)
+	}
+	sortSearchResults(out)
+	return limitResults(out, limit)
+}
+
+func searchGraphifyFromSemantic(graph graphifyGraph, projectRoot string, semantic []previewSearchResult, limit int, docs bool) []previewSearchResult {
+	if len(semantic) == 0 || len(graph.Nodes) == 0 {
+		return nil
+	}
+	index := newGraphifyIndex(graph, projectRoot, docs)
+	anchors := graphAnchorsFromSemantic(semantic)
+	results := map[string]previewSearchResult{}
+	for _, anchor := range anchors {
+		for _, nodeID := range index.match(anchor) {
+			expandGraphifyAnchor(graph, index, projectRoot, nodeID, anchor, limit, results)
+			if len(results) >= limit {
+				break
+			}
+		}
+		if len(results) >= limit {
+			break
+		}
+	}
+	out := make([]previewSearchResult, 0, len(results))
+	for _, result := range results {
+		out = append(out, result)
+	}
+	sortSearchResults(out)
+	return limitResults(out, limit)
+}
+
+func expandDocsGraphAnchor(graph specGraph, index docsGraphIndex, startID string, anchor graphSearchAnchor, limit int, results map[string]previewSearchResult) {
+	type queued struct {
+		ID    string
+		Depth int
+	}
+	seen := map[string]bool{startID: true}
+	queue := []queued{{ID: startID}}
+	for len(queue) > 0 && len(results) < limit {
+		item := queue[0]
+		queue = queue[1:]
+		node, ok := index.Nodes[item.ID]
+		if !ok {
+			continue
+		}
+		result := previewSearchResult{
+			ID:        "docs-graph:" + node.ID,
+			Title:     firstNonEmpty(node.Label, node.ID),
+			Path:      node.Path,
+			Kind:      firstNonEmpty(node.Type, "doc-node"),
+			Score:     graphExpansionScore(anchor.Score, item.Depth),
+			MatchedBy: graphExpansionMatchedBy(item.Depth),
+			SpecID:    node.SpecID,
+			NodeID:    node.ID,
+			Source:    "docs graph",
+			Anchor:    item.Depth == 0,
+			AnchorID:  anchor.ID,
+			Depth:     item.Depth,
+			Neighbors: limitNeighbors(docGraphNeighbors(graph, node.ID), maxGraphNeighborUI),
+		}
+		mergeGraphResult(results, result)
+		if item.Depth >= graphExpansionDepth(limit) {
+			continue
+		}
+		for _, edge := range index.Edges[item.ID] {
+			nextID := edge.To
+			if seen[nextID] {
+				continue
+			}
+			seen[nextID] = true
+			queue = append(queue, queued{ID: nextID, Depth: item.Depth + 1})
+		}
+	}
+}
+
+func expandGraphifyAnchor(graph graphifyGraph, index graphifyIndex, projectRoot, startID string, anchor graphSearchAnchor, limit int, results map[string]previewSearchResult) {
+	type queued struct {
+		ID    string
+		Depth int
+	}
+	seen := map[string]bool{startID: true}
+	queue := []queued{{ID: startID}}
+	for len(queue) > 0 && len(results) < limit {
+		item := queue[0]
+		queue = queue[1:]
+		node, ok := index.Nodes[item.ID]
+		if !ok {
+			continue
+		}
+		result := graphifyNodeSearchResult(graph, projectRoot, node, graphExpansionScore(anchor.Score, item.Depth), graphExpansionMatchedBy(item.Depth))
+		result.Anchor = item.Depth == 0
+		result.AnchorID = anchor.ID
+		result.Depth = item.Depth
+		result.Neighbors = limitNeighbors(graph.Neighbors[node.ID], maxGraphNeighborUI)
+		mergeGraphResult(results, result)
+		if item.Depth >= graphExpansionDepth(limit) {
+			continue
+		}
+		for _, edge := range index.Edges[item.ID] {
+			nextID := edge.To
+			if seen[nextID] {
+				continue
+			}
+			seen[nextID] = true
+			queue = append(queue, queued{ID: nextID, Depth: item.Depth + 1})
+		}
+	}
+}
+
+func graphifyNodeSearchResult(graph graphifyGraph, projectRoot string, node graphifyNode, score float64, matchedBy []string) previewSearchResult {
+	line := lineFromLocation(node.SourceLocation)
+	return previewSearchResult{
+		Title:      firstNonEmpty(node.Label, node.ID),
+		Path:       relPath(projectRoot, node.SourceFile),
+		Kind:       firstNonEmpty(node.FileType, "graph-node"),
+		Source:     "graphify",
+		Line:       line,
+		Score:      score,
+		MatchedBy:  matchedBy,
+		NodeID:     node.ID,
+		Community:  node.Community,
+		Neighbors:  limitNeighbors(graph.Neighbors[node.ID], maxGraphNeighborUI),
+		Confidence: "graphify",
+	}
 }
 
 func docGraphNeighbors(graph specGraph, nodeID string) []previewSearchNeighbor {
@@ -742,11 +959,217 @@ func docGraphNeighbors(graph specGraph, nodeID string) []previewSearchNeighbor {
 		case edge.To == nodeID:
 			neighbors = append(neighbors, previewSearchNeighbor{ID: edge.From, Label: edge.From, Relation: edge.Type})
 		}
-		if len(neighbors) >= 8 {
-			break
-		}
 	}
 	return neighbors
+}
+
+func newDocsGraphIndex(graph specGraph) docsGraphIndex {
+	index := docsGraphIndex{
+		Nodes: map[string]graphNode{},
+		Keys:  map[string][]string{},
+		Edges: map[string][]graphEdge{},
+	}
+	for _, node := range graph.Nodes {
+		index.Nodes[node.ID] = node
+		for _, key := range graphNodeKeys(node) {
+			index.Keys[key] = appendUniqueString(index.Keys[key], node.ID)
+		}
+	}
+	for _, edge := range graph.Edges {
+		if edge.From == "" || edge.To == "" {
+			continue
+		}
+		index.Edges[edge.From] = append(index.Edges[edge.From], graphEdge{From: edge.From, To: edge.To, Type: firstNonEmpty(edge.Type, edge.Label, "references"), Label: edge.Label, Origin: edge.Origin, Raw: edge.Raw})
+		index.Edges[edge.To] = append(index.Edges[edge.To], graphEdge{From: edge.To, To: edge.From, Type: firstNonEmpty(edge.Type, edge.Label, "references"), Label: edge.Label, Origin: edge.Origin, Raw: edge.Raw})
+	}
+	return index
+}
+
+func (index docsGraphIndex) match(anchor graphSearchAnchor) []string {
+	matches := []string{}
+	for _, key := range anchorKeys(anchor) {
+		for _, nodeID := range index.Keys[key] {
+			matches = appendUniqueString(matches, nodeID)
+		}
+	}
+	return matches
+}
+
+func newGraphifyIndex(graph graphifyGraph, projectRoot string, docs bool) graphifyIndex {
+	index := graphifyIndex{
+		Nodes: map[string]graphifyNode{},
+		Keys:  map[string][]string{},
+		Edges: map[string][]graphifyEdge{},
+		Root:  projectRoot,
+	}
+	for id, node := range graph.Nodes {
+		if classifyGraphifyNode(node) == "doc" != docs {
+			continue
+		}
+		index.Nodes[id] = node
+		for _, key := range graphifyNodeKeys(node, projectRoot) {
+			index.Keys[key] = appendUniqueString(index.Keys[key], id)
+		}
+	}
+	for id, neighbors := range graph.Neighbors {
+		if _, ok := index.Nodes[id]; !ok {
+			continue
+		}
+		for _, neighbor := range neighbors {
+			if _, ok := index.Nodes[neighbor.ID]; !ok {
+				continue
+			}
+			index.Edges[id] = append(index.Edges[id], graphifyEdge{To: neighbor.ID, Relation: neighbor.Relation, Confidence: neighbor.Confidence})
+		}
+	}
+	return index
+}
+
+func (index graphifyIndex) match(anchor graphSearchAnchor) []string {
+	matches := []string{}
+	for _, key := range anchorKeys(anchor) {
+		for _, nodeID := range index.Keys[key] {
+			matches = appendUniqueString(matches, nodeID)
+		}
+	}
+	if len(matches) > 0 {
+		return matches
+	}
+	for id, node := range index.Nodes {
+		if anchor.Path != "" && graphPathMatches(relPath(index.Root, node.SourceFile), anchor.Path) {
+			matches = appendUniqueString(matches, id)
+			continue
+		}
+		if anchor.Title != "" && fuzzyGraphKeyMatch(anchor.Title, strings.Join([]string{node.ID, node.Label, node.NormLabel}, " ")) {
+			matches = appendUniqueString(matches, id)
+		}
+	}
+	return matches
+}
+
+func graphAnchorsFromSemantic(semantic []previewSearchResult) []graphSearchAnchor {
+	anchors := make([]graphSearchAnchor, 0, len(semantic))
+	for _, result := range semantic {
+		anchor := graphSearchAnchor{
+			ID:     firstNonEmpty(result.ID, result.SpecID, result.Path, result.Title),
+			Title:  result.Title,
+			Path:   result.Path,
+			SpecID: result.SpecID,
+			Line:   result.Line,
+			Score:  result.Score,
+		}
+		if anchor.Score <= 0 {
+			anchor.Score = 0.55
+		}
+		if anchor.ID == "" && anchor.Path == "" && anchor.Title == "" {
+			continue
+		}
+		anchors = append(anchors, anchor)
+	}
+	return anchors
+}
+
+func graphNodeKeys(node graphNode) []string {
+	values := []string{node.ID, node.Label, node.Path, node.SpecID}
+	if node.Path != "" {
+		values = append(values, "docs/"+strings.TrimPrefix(node.Path, "docs/"))
+	}
+	return normalizedGraphKeys(values...)
+}
+
+func graphifyNodeKeys(node graphifyNode, projectRoot string) []string {
+	rel := relPath(projectRoot, node.SourceFile)
+	return normalizedGraphKeys(node.ID, node.Label, node.NormLabel, rel, strings.TrimPrefix(rel, "docs/"), filepath.Base(rel))
+}
+
+func anchorKeys(anchor graphSearchAnchor) []string {
+	values := []string{anchor.ID, anchor.Title, anchor.Path, anchor.SpecID}
+	if anchor.Path != "" {
+		values = append(values, "docs/"+strings.TrimPrefix(anchor.Path, "docs/"), strings.TrimPrefix(anchor.Path, "docs/"), filepath.Base(anchor.Path))
+	}
+	return normalizedGraphKeys(values...)
+}
+
+func normalizedGraphKeys(values ...string) []string {
+	keys := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(strings.ToLower(filepath.ToSlash(value)))
+		if value == "" {
+			continue
+		}
+		keys = appendUniqueString(keys, value)
+		tokenKey := strings.Join(searchTokens(value), "")
+		if tokenKey != "" {
+			keys = appendUniqueString(keys, tokenKey)
+		}
+	}
+	return keys
+}
+
+func graphPathMatches(sourcePath, anchorPath string) bool {
+	sourcePath = strings.TrimPrefix(strings.ToLower(filepath.ToSlash(sourcePath)), "./")
+	anchorPath = strings.TrimPrefix(strings.ToLower(filepath.ToSlash(anchorPath)), "./")
+	return sourcePath == anchorPath || strings.TrimPrefix(sourcePath, "docs/") == strings.TrimPrefix(anchorPath, "docs/") || strings.HasSuffix(sourcePath, "/"+anchorPath)
+}
+
+func fuzzyGraphKeyMatch(needle, haystack string) bool {
+	needleKey := strings.Join(searchTokens(needle), "")
+	haystackKey := strings.Join(searchTokens(haystack), "")
+	return needleKey != "" && haystackKey != "" && (strings.Contains(haystackKey, needleKey) || strings.Contains(needleKey, haystackKey))
+}
+
+func graphExpansionLimit(limit int) int {
+	if limit <= 0 {
+		limit = defaultSearchLimit
+	}
+	return minInt(maxSearchLimit, maxInt(limit, limit*3))
+}
+
+func graphExpansionDepth(limit int) int {
+	if limit >= 8 {
+		return 3
+	}
+	return 2
+}
+
+func graphExpansionScore(anchorScore float64, depth int) float64 {
+	if anchorScore <= 0 {
+		anchorScore = 0.55
+	}
+	return roundScore(math.Max(0.05, anchorScore-(float64(depth)*0.12)))
+}
+
+func graphExpansionMatchedBy(depth int) []string {
+	if depth == 0 {
+		return []string{"semantic-anchor", "graph"}
+	}
+	return []string{"graph-expansion", "graph"}
+}
+
+func mergeGraphResult(results map[string]previewSearchResult, next previewSearchResult) {
+	key := graphResultMergeKey(next)
+	current, ok := results[key]
+	if !ok || next.Score > current.Score || (next.Anchor && !current.Anchor) || next.Depth < current.Depth {
+		results[key] = next
+	}
+}
+
+func graphResultMergeKey(result previewSearchResult) string {
+	return firstNonEmpty(result.NodeID, result.ID, result.SpecID, result.Path, result.Title)
+}
+
+func appendUniqueString(values []string, value string) []string {
+	if value == "" || containsString(values, value) {
+		return values
+	}
+	return append(values, value)
+}
+
+func limitNeighbors(neighbors []previewSearchNeighbor, limit int) []previewSearchNeighbor {
+	if limit <= 0 || len(neighbors) <= limit {
+		return neighbors
+	}
+	return neighbors[:limit]
 }
 
 func boostSemanticWithGraph(semantic []previewSearchResult, graph []previewSearchResult) {
@@ -1035,7 +1458,65 @@ func compactWhitespace(value string, limit int) string {
 	return string(runes[:limit-1]) + "…"
 }
 
-func scanCodeSearchDocs(projectRoot string) ([]codeSearchDoc, []string) {
+func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]docsSearchDoc, []string) {
+	docs := make([]docsSearchDoc, 0, len(specs))
+	seen := map[string]bool{}
+	for _, doc := range specs {
+		docs = append(docs, docsSearchDoc{
+			ID:      doc.ID,
+			Title:   doc.Title,
+			Path:    doc.Path,
+			Content: doc.Raw,
+			SpecID:  doc.ID,
+			Kind:    "doc",
+		})
+		seen[doc.ID] = true
+	}
+	warnings := []string{}
+	err := filepath.WalkDir(docsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		docRel, err := filepath.Rel(docsRoot, path)
+		if err != nil {
+			return nil
+		}
+		docRel = filepath.ToSlash(docRel)
+		if seen[docRel] {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() > maxSearchFileBytes {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || !utf8.Valid(data) {
+			return nil
+		}
+		projectRel := relPath(projectRoot, path)
+		docs = append(docs, docsSearchDoc{
+			ID:      projectRel,
+			Title:   filepath.Base(path),
+			Path:    projectRel,
+			Content: string(data),
+			Kind:    "file",
+		})
+		seen[docRel] = true
+		return nil
+	})
+	if err != nil {
+		warnings = append(warnings, "Docs search scan failed: "+err.Error())
+	}
+	sort.Slice(docs, func(i, j int) bool {
+		return docs[i].Path < docs[j].Path
+	})
+	return docs, warnings
+}
+
+func scanCodeSearchDocs(projectRoot, docsRoot string) ([]codeSearchDoc, []string) {
 	docs := []codeSearchDoc{}
 	warnings := []string{}
 	err := filepath.WalkDir(projectRoot, func(path string, d os.DirEntry, err error) error {
@@ -1044,6 +1525,9 @@ func scanCodeSearchDocs(projectRoot string) ([]codeSearchDoc, []string) {
 		}
 		name := d.Name()
 		if d.IsDir() {
+			if sameCleanPath(path, docsRoot) && !sameCleanPath(path, projectRoot) {
+				return filepath.SkipDir
+			}
 			if shouldSkipSearchDir(name) {
 				return filepath.SkipDir
 			}
@@ -1073,6 +1557,21 @@ func scanCodeSearchDocs(projectRoot string) ([]codeSearchDoc, []string) {
 		warnings = append(warnings, "Code search scan failed: "+err.Error())
 	}
 	return docs, warnings
+}
+
+func sameCleanPath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA == nil {
+		a = absA
+	}
+	if errB == nil {
+		b = absB
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 func shouldSkipSearchDir(name string) bool {
@@ -1226,11 +1725,6 @@ func loadGraphifyGraph(projectRoot string) graphifyGraph {
 			Path:       relPath(projectRoot, source.SourceFile),
 			Line:       lineFromLocation(source.SourceLocation),
 		})
-	}
-	for id, neighbors := range graph.Neighbors {
-		if len(neighbors) > 10 {
-			graph.Neighbors[id] = neighbors[:10]
-		}
 	}
 	return graph
 }
