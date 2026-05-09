@@ -1,19 +1,22 @@
-package main
+package preview
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPreviewHTTPHandlers(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "AGENTS.md", "# Agents\n")
-	writeTestFile(t, root, "specs/_index.md", `# Spec Index
+	writeTestFile(t, root, "docs/_index.md", `# Spec Index
 
 ## Modules
 
@@ -27,14 +30,14 @@ func TestPreviewHTTPHandlers(t *testing.T) {
 overview → editor.core
 `+"```"+`
 `)
-	writeTestFile(t, root, "specs/overview.md", "# Overview\n\nHello **specs**.\n")
+	writeTestFile(t, root, "docs/overview.md", "# Overview\n\nHello **docs**.\n")
 
-	server := newPreviewServer(previewOptions{projectRoot: root, specsDir: "specs", addr: "127.0.0.1:0"})
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
 	ts := httptest.NewServer(server.srv.Handler)
 	defer ts.Close()
 	defer func() { _ = server.shutdown(context.Background()) }()
 
-	res, err := http.Get(ts.URL + "/api/specs")
+	res, err := http.Get(ts.URL + "/api/docs")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +50,7 @@ overview → editor.core
 		t.Fatalf("expected _index and overview docs, got %d", len(docs))
 	}
 
-	res, err = http.Get(ts.URL + "/api/specs/overview.md")
+	res, err = http.Get(ts.URL + "/api/docs/overview.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +59,21 @@ overview → editor.core
 	if err := json.NewDecoder(res.Body).Decode(&doc); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(doc.Raw, "Hello **specs**.") || doc.HTML != "" {
-		t.Fatalf("spec endpoint should return raw Markdown for client-side rendering: raw=%q html=%q", doc.Raw, doc.HTML)
+	if !strings.Contains(doc.Raw, "Hello **docs**.") || doc.HTML != "" {
+		t.Fatalf("doc endpoint should return raw Markdown for client-side rendering: raw=%q html=%q", doc.Raw, doc.HTML)
+	}
+
+	res, err = http.Get(ts.URL + "/api/files?path=docs/overview.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var file previewFileResponse
+	if err := json.NewDecoder(res.Body).Decode(&file); err != nil {
+		t.Fatal(err)
+	}
+	if file.Path != "docs/overview.md" || file.Language != "markdown" || !strings.Contains(file.Raw, "Hello **docs**.") {
+		t.Fatalf("file endpoint should return previewable UTF-8 file content: %+v", file)
 	}
 
 	res, err = http.Get(ts.URL + "/api/graph")
@@ -104,9 +120,260 @@ overview → editor.core
 	}
 }
 
+func TestPreviewSearchReturnsFourPanelsAcrossDocsAndCode(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", `# Spec Index
+
+## Dependency Graph
+
+`+"```"+`
+auth → session
+`+"```"+`
+`)
+	writeTestFile(t, root, "docs/auth.md", "# Auth\n\nAuthentication validates session tokens.\n")
+	writeTestFile(t, root, "docs/session.md", "# Session\n\nSession token lifecycle.\n")
+	writeTestFile(t, root, "auth.go", `package demo
+
+func parseAuthToken(raw string) string {
+	return raw
+}
+`)
+	writeTestFile(t, root, "graphify-out/graph.json", `{
+  "nodes": [
+    {"id":"code_parse_auth_token","label":"parseAuthToken()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "auth.go"))+`","source_location":"L3","community":1},
+    {"id":"doc_auth","label":"Auth","file_type":"doc","source_file":"`+filepath.ToSlash(filepath.Join(root, "docs/auth.md"))+`","source_location":"L1","community":2}
+  ],
+  "links": [
+    {"source":"code_parse_auth_token","target":"doc_auth","relation":"references","confidence":"EXTRACTED"}
+  ]
+}`)
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if search.Mode != "hybrid" {
+		t.Fatalf("expected hybrid mode, got %s", search.Mode)
+	}
+	if len(search.Panels.DocsSemantic) == 0 || len(search.Panels.DocsGraph) == 0 || len(search.Panels.CodeSemantic) == 0 || len(search.Panels.CodeGraph) == 0 {
+		t.Fatalf("expected all four search panels to have results: %+v", search.Panels)
+	}
+	if search.Panels.DocsSemantic[0].SpecID == "" {
+		t.Fatalf("docs semantic result should be openable as a doc: %+v", search.Panels.DocsSemantic[0])
+	}
+	if search.Panels.CodeGraph[0].Line != 3 || len(search.Panels.CodeGraph[0].Neighbors) == 0 {
+		t.Fatalf("code graph should expose source line and neighbors: %+v", search.Panels.CodeGraph[0])
+	}
+	if search.Panels.CodeGraph[0].Neighbors[0].Path != "docs/auth.md" || search.Panels.CodeGraph[0].Neighbors[0].Line != 1 {
+		t.Fatalf("code graph neighbors should expose their own preview targets: %+v", search.Panels.CodeGraph[0].Neighbors[0])
+	}
+
+	res, err = http.Get(ts.URL + "/api/search?q=auth,session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var commaSearch previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&commaSearch); err != nil {
+		t.Fatal(err)
+	}
+	if len(commaSearch.Panels.DocsSemantic) < 2 {
+		t.Fatalf("comma-separated keywords should match multiple document terms: %+v", commaSearch.Panels.DocsSemantic)
+	}
+}
+
+func TestPreviewSearchWorksWithoutDocsDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "auth.go", `package demo
+
+func parseAuthToken(raw string) string {
+	return raw
+}
+`)
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=parseAuthToken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("search without docs should not fail: %s", res.Status)
+	}
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.CodeSemantic) == 0 {
+		t.Fatalf("expected code semantic results without docs folder: %+v", search)
+	}
+	if len(search.Panels.DocsSemantic) != 0 || len(search.Panels.DocsGraph) != 0 {
+		t.Fatalf("docs panels should be empty without docs folder: %+v", search.Panels)
+	}
+	if len(search.Warnings) == 0 || !strings.Contains(search.Warnings[0], "Docs directory is unavailable") {
+		t.Fatalf("expected missing docs warning, got %+v", search.Warnings)
+	}
+}
+
+func TestPreviewSearchHidesEmbeddingFallbackWarning(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "docs/auth.md", "# Auth\n\nAuthentication validates session tokens.\n")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	for _, warning := range search.Warnings {
+		if strings.Contains(warning, "Embedding search is not configured") {
+			t.Fatalf("embedding fallback should not be exposed as a search warning: %+v", search.Warnings)
+		}
+	}
+}
+
+func TestPreviewSearchUsesKnownsEmbeddingSettings(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "docs/auth.md", "# Auth\n\nAuthentication validates session tokens.\n")
+	writeTestFile(t, root, "docs/billing.md", "# Billing\n\nInvoices and payment records.\n")
+	writeTestFile(t, root, "auth.go", `package demo
+
+func parseAuthToken(raw string) string {
+	return raw
+}
+`)
+	embedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Input []string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		type datum struct {
+			Index     int       `json:"index"`
+			Embedding []float32 `json:"embedding"`
+		}
+		res := struct {
+			Data []datum `json:"data"`
+		}{}
+		for i, input := range req.Input {
+			lower := strings.ToLower(input)
+			vec := []float32{0, 1, 0}
+			if strings.Contains(lower, "auth") || strings.Contains(lower, "session") || strings.Contains(lower, "token") {
+				vec = []float32{1, 0, 0}
+			}
+			res.Data = append(res.Data, datum{Index: i, Embedding: vec})
+		}
+		_ = json.NewEncoder(w).Encode(res)
+	}))
+	defer embedServer.Close()
+	writeTestFile(t, home, ".knowns/settings.json", fmt.Sprintf(`{
+  "embeddingProviders": {
+    "preview-test": {
+      "apiBase": %q,
+      "batchSize": 2,
+      "timeout": 5
+    }
+  },
+  "embeddingModels": {
+    "multilingual-e5-small": {
+      "provider": "preview-test",
+      "model": "multilingual-e5-small",
+      "dimensions": 3
+    }
+  },
+  "defaultEmbeddingModel": "multilingual-e5-small"
+}`, embedServer.URL+"/v1"))
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=session%20credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.DocsSemantic) == 0 || search.Panels.DocsSemantic[0].Path != "auth.md" {
+		t.Fatalf("expected embedding semantic doc result for auth.md, got %+v", search.Panels.DocsSemantic)
+	}
+	if !containsString(search.Panels.DocsSemantic[0].MatchedBy, "semantic") {
+		t.Fatalf("expected semantic match method, got %+v", search.Panels.DocsSemantic[0].MatchedBy)
+	}
+	for _, warning := range search.Warnings {
+		if strings.Contains(warning, "lexical fallback") {
+			t.Fatalf("embedding-configured search should not use lexical fallback warning: %+v", search.Warnings)
+		}
+	}
+}
+
 func TestPreviewHelpIsAccepted(t *testing.T) {
-	if err := run([]string{"preview", "--help"}); err != nil {
+	if err := Run([]string{"--help"}); err != nil {
 		t.Fatalf("preview help failed: %v", err)
+	}
+}
+
+func TestPreviewSourceHotReloadTokenTracksBackendAndFrontend(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "go.mod", "module example.com/preview\n")
+	writeTestFile(t, root, "main.go", "package main\n")
+	writeTestFile(t, root, "internal/preview/preview.go", "package preview\n")
+	writeTestFile(t, root, "internal/preview/preview_ui/app.js", "console.log('one')\n")
+	writeTestFile(t, root, "docs/guide.md", "# guide\n")
+
+	nested := filepath.Join(root, "internal", "preview")
+	if got, ok := previewModuleRoot(nested); !ok || got != root {
+		t.Fatalf("previewModuleRoot(%q) = %q, %v; want %q, true", nested, got, ok, root)
+	}
+	initial := previewSourceToken(root)
+	time.Sleep(time.Millisecond)
+	writeTestFile(t, root, "internal/preview/preview_ui/app.js", "console.log('two')\n")
+	if next := previewSourceToken(root); next == initial {
+		t.Fatalf("frontend source change should update hot reload token")
+	}
+	codeToken := previewSourceToken(root)
+	time.Sleep(time.Millisecond)
+	writeTestFile(t, root, "internal/preview/preview.go", "package preview\nconst changed = true\n")
+	if next := previewSourceToken(root); next == codeToken {
+		t.Fatalf("backend source change should update hot reload token")
+	}
+	docToken := previewSourceToken(root)
+	time.Sleep(time.Millisecond)
+	writeTestFile(t, root, "docs/guide.md", "# changed\n")
+	if next := previewSourceToken(root); next != docToken {
+		t.Fatalf("docs changes should be handled by data hot reload, not source restart: %q != %q", next, docToken)
 	}
 }
 
@@ -135,7 +402,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "d3.min.js"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "highlight.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "d3.min.js"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -171,6 +438,77 @@ func TestPreviewUIRendersDocsGraphWithD3(t *testing.T) {
 	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "d3.forceSimulation", "normalizedGraphData", "graphSelectedId", "graph-details"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview docs graph UI missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(css)
+	for _, want := range []string{
+		`data-tab="search"`,
+		`id="searchTab"`,
+		`id="docsSemanticResults"`,
+		`id="docsGraphResults"`,
+		`id="codeSemanticResults"`,
+		`id="codeGraphResults"`,
+		`id="codeGraphReload"`,
+		"fetch(`/api/search?${params.toString()}",
+		`renderSearchPanel("docsSemantic"`,
+		`renderSearchPanel("codeGraph"`,
+		`renderSearchResult(result, name)`,
+		`panelName !== "docsSemantic"`,
+		"reloadCodeGraph",
+		"updateCodeGraphReloadControl",
+		"codeGraphLoading",
+		"els.codeGraphReload?.addEventListener",
+		"renderSearchGraphPanel",
+		"searchResultsToGraph",
+		"renderSearchResultGraph",
+		"codeGraphNodeLabel",
+		"codeGraphNodePreview",
+		"neighborPath",
+		"neighborLine",
+		"previewPath",
+		`name === "codeGraph"`,
+		`node.classed("selected"`,
+		".search-graph-canvas",
+		"searchLoading",
+		"renderSearchLoading",
+		"Searching docs, code, and graphs",
+		`id="previewDialog"`,
+		"openSpecPreview",
+		"openFilePreview",
+		"/api/files?",
+		"highlightRenderedCode",
+		`data-preview-spec`,
+		`data-preview-file`,
+		"route.searchQuery",
+		"buildRouteQuery",
+		"updateSearchRouteURL",
+		`params.set("preview", state.previewRoute.type)`,
+		`params.set("path", state.previewRoute.path)`,
+		"applyPreviewRoute",
+		"decorateCodePreviewLines",
+		"code-line-target",
+		".preview-modal",
+		".code-preview",
+		".search-loading",
+		`.search-grid`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview search UI missing %s", want)
 		}
 	}
 }
@@ -235,7 +573,7 @@ func TestPreviewUIConnectsHotReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"new EventSource(\"/api/events\")", "reloadPreviewData", "addEventListener(\"change\""} {
+	for _, want := range []string{"new EventSource(\"/api/events\")", "reloadPreviewData", "addEventListener(\"change\"", "addEventListener(\"ready\"", "hotReloadToken", "parseEventToken", "window.location.reload"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI hot reload missing %s", want)
 		}

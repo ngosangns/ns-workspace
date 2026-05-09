@@ -11,11 +11,6 @@
       "skill": "dispatching-parallel-agents"
     },
     {
-      "name": "gitbutler",
-      "source": "aheritier/boost-your-ai",
-      "skill": "gitbutler"
-    },
-    {
       "name": "graphify",
       "source": "howell5/willhong-skills",
       "skill": "graphify"

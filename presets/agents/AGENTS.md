@@ -44,17 +44,3 @@ Các trigger ghép thường dùng:
 
 Nếu trigger ghép có `plan` đứng trước `execution` cho task lớn, dừng lại sau
 bước plan và chờ user duyệt rõ ràng trước khi sửa source code.
-
-## Registry-Managed Skills
-
-Project cũng cài các registry-managed skills sau từ
-`presets/registry/skills.json`:
-
-- `find-skills`
-- `dispatching-parallel-agents`
-- `gitbutler`
-- `graphify`
-- `refactor`
-
-Các registry-managed skills này giữ nguyên tên upstream. Dùng chúng khi user
-gọi đích danh skill hoặc khi mô tả skill đã cài khớp rõ với task.

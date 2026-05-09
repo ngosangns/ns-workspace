@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Spec Preview</title>
+    <title>Docs Preview</title>
     <script>
       (() => {
         const stored = localStorage.getItem("spec-preview-theme");
@@ -26,6 +26,7 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/styles/github-dark.min.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body class="min-h-screen bg-base-200 text-base-content">
@@ -34,21 +35,15 @@
         <div class="mb-4 flex items-center gap-3">
           <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content"><i data-lucide="book-open-text" class="h-5 w-5"></i></div>
           <div class="min-w-0">
-            <div class="font-bold">Spec Preview</div>
+            <div class="font-bold">Docs Preview</div>
             <div id="projectName" class="text-base-content/60 truncate text-sm">Loading</div>
           </div>
         </div>
 
         <label class="input input-bordered mb-3 flex h-10 items-center gap-2">
           <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
-          <input id="search" class="grow" placeholder="Spec name, path, status" />
+          <input id="search" class="grow" placeholder="Doc name, path, status" />
         </label>
-
-        <div class="mb-4 grid gap-2">
-          <select id="categoryFilter" class="select select-bordered select-sm w-full"><option value="">All categories</option></select>
-          <select id="statusFilter" class="select select-bordered select-sm w-full"><option value="">All statuses</option></select>
-          <select id="complianceFilter" class="select select-bordered select-sm w-full"><option value="">All compliance</option></select>
-        </div>
 
         <nav id="specList" class="space-y-1"></nav>
       </aside>
@@ -63,7 +58,8 @@
             <div role="tablist" class="tabs tabs-boxed w-fit">
               <button class="tab tab-active" data-tab="overview">Overview</button>
               <button class="tab" data-tab="graph">Graph</button>
-              <button class="tab" data-tab="spec">Spec</button>
+              <button class="tab" data-tab="search">Search</button>
+              <button class="tab" data-tab="spec">Doc</button>
             </div>
             <button id="themeToggle" class="btn btn-ghost btn-sm" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
               <i data-lucide="moon" class="h-4 w-4"></i>
@@ -114,6 +110,53 @@
           </div>
         </section>
 
+        <section id="searchTab" class="panel p-5">
+          <div class="search-shell border-base-300 bg-base-100 border">
+            <div class="search-toolbar border-base-300 border-b">
+              <label class="input input-bordered flex min-h-11 flex-1 items-center gap-2">
+                <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
+                  <input id="globalSearch" class="grow" placeholder="Search docs, code, graph nodes; separate keywords with commas" />
+              </label>
+            </div>
+            <div id="searchSummary" class="search-summary border-base-300 border-b"></div>
+            <div class="search-grid">
+              <section class="search-panel" data-search-panel="docsSemantic">
+                <div class="search-panel-heading">
+                  <h2>Docs Semantic</h2>
+                  <span id="docsSemanticCount" class="badge badge-ghost badge-sm">0</span>
+                </div>
+                <div id="docsSemanticResults" class="search-results"></div>
+              </section>
+              <section class="search-panel" data-search-panel="docsGraph">
+                <div class="search-panel-heading">
+                  <h2>Docs Graph</h2>
+                  <span id="docsGraphCount" class="badge badge-ghost badge-sm">0</span>
+                </div>
+                <div id="docsGraphResults" class="search-results"></div>
+              </section>
+              <section class="search-panel" data-search-panel="codeSemantic">
+                <div class="search-panel-heading">
+                  <h2>Code Semantic</h2>
+                  <span id="codeSemanticCount" class="badge badge-ghost badge-sm">0</span>
+                </div>
+                <div id="codeSemanticResults" class="search-results"></div>
+              </section>
+              <section class="search-panel" data-search-panel="codeGraph">
+                <div class="search-panel-heading">
+                  <h2>Code Graph</h2>
+                  <div class="flex items-center gap-2">
+                    <button id="codeGraphReload" class="btn btn-ghost btn-xs" type="button" title="Reload code graph" aria-label="Reload code graph">
+                      <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
+                    </button>
+                    <span id="codeGraphCount" class="badge badge-ghost badge-sm">0</span>
+                  </div>
+                </div>
+                <div id="codeGraphResults" class="search-results"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
         <section id="specTab" class="panel p-5">
           <article id="specContent" class="markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"></article>
         </section>
@@ -123,9 +166,25 @@
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/lib/common.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <div id="previewDialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="previewDialogTitle">
+      <div class="modal-box preview-modal border-base-300 bg-base-100 border p-0">
+        <div class="preview-modal-header border-base-300 border-b">
+          <div class="min-w-0">
+            <h2 id="previewDialogTitle" class="truncate text-base font-semibold">Preview</h2>
+            <p id="previewDialogPath" class="text-base-content/60 truncate text-xs"></p>
+          </div>
+          <button class="btn btn-ghost btn-sm" type="button" data-close-preview aria-label="Close preview" title="Close preview">
+            <i data-lucide="x" class="h-4 w-4"></i>
+          </button>
+        </div>
+        <div id="previewDialogBody" class="preview-modal-body"></div>
+      </div>
+      <button class="modal-backdrop" type="button" data-close-preview>close</button>
+    </div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-package main
+package preview
 
 import (
 	"os"
@@ -10,7 +10,7 @@ import (
 func TestScanSpecProjectParsesViclassStyleIndex(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "AGENTS.md", "# Agents\n")
-	writeTestFile(t, root, "specs/_sync.md", `# Spec Sync State
+	writeTestFile(t, root, "docs/_sync.md", `# Spec Sync State
 
 ## Current Sync
 
@@ -18,7 +18,7 @@ func TestScanSpecProjectParsesViclassStyleIndex(t *testing.T) {
 - **Branch**: main
 - **Sync Date**: 2026-05-08 10:00 +0700
 `)
-	writeTestFile(t, root, "specs/_index.md", `# Spec Index & Dependency Graph
+	writeTestFile(t, root, "docs/_index.md", `# Spec Index & Dependency Graph
 
 ## Modules
 
@@ -41,16 +41,16 @@ portal.common → editor.core, common.libs.captcha
 
 - Portal Common → Editor Core: consumes errors
 `)
-	writeTestFile(t, root, "specs/modules/editor-core.md", `# Editor Core
+	writeTestFile(t, root, "docs/modules/editor-core.md", `# Editor Core
 
 ## Meta
 
 - **Status**: Draft
 - **Version**: v0.1
 `)
-	writeTestFile(t, root, "specs/modules/portal/_overview.md", "# Portal\n")
+	writeTestFile(t, root, "docs/modules/portal/_overview.md", "# Portal\n")
 
-	project, err := scanSpecProject(root, "specs")
+	project, err := scanSpecProject(root, "docs")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ portal.common → editor.core, common.libs.captcha
 
 func TestScanSpecProjectParsesMermaidDependencyGraph(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, root, "specs/_index.md", `# Spec Index & Dependency Graph
+	writeTestFile(t, root, "docs/_index.md", `# Spec Index & Dependency Graph
 
 ## Modules
 
@@ -131,14 +131,14 @@ FORBIDDEN:
 - editor.core -> editor.* (core cannot depend on specific editor)
 - portal.* -> editor.* directly for normal document loading (portal must go through MFE/config)
 `)
-	writeTestFile(t, root, "specs/modules/editor-core.md", "# Editor Core\n")
-	writeTestFile(t, root, "specs/modules/mfe.md", "# MFE & Web Wrappers\n")
-	writeTestFile(t, root, "specs/modules/editorui/_overview.md", "# EditorUI Module\n")
-	writeTestFile(t, root, "specs/modules/turnstile-captcha.md", "# Turnstile Captcha\n")
-	writeTestFile(t, root, "specs/modules/portal/portal-homepage.md", "# Portal Homepage\n")
-	writeTestFile(t, root, "specs/shared/data-models.md", "# Data Models\n")
+	writeTestFile(t, root, "docs/modules/editor-core.md", "# Editor Core\n")
+	writeTestFile(t, root, "docs/modules/mfe.md", "# MFE & Web Wrappers\n")
+	writeTestFile(t, root, "docs/modules/editorui/_overview.md", "# EditorUI Module\n")
+	writeTestFile(t, root, "docs/modules/turnstile-captcha.md", "# Turnstile Captcha\n")
+	writeTestFile(t, root, "docs/modules/portal/portal-homepage.md", "# Portal Homepage\n")
+	writeTestFile(t, root, "docs/shared/data-models.md", "# Data Models\n")
 
-	project, err := scanSpecProject(root, "specs")
+	project, err := scanSpecProject(root, "docs")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ FORBIDDEN:
 
 func TestScanSpecProjectSplitsRelationshipMapLists(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, root, "specs/_index.md", `# Spec Index
+	writeTestFile(t, root, "docs/_index.md", `# Spec Index
 
 ## Relationship Map
 
@@ -197,9 +197,9 @@ func TestScanSpecProjectSplitsRelationshipMapLists(t *testing.T) {
 
 - portal.homepage, portal.classrooms, ww → config.server: runtime editor lookup
 `)
-	writeTestFile(t, root, "specs/overview.md", "# Overview\n")
+	writeTestFile(t, root, "docs/overview.md", "# Overview\n")
 
-	project, err := scanSpecProject(root, "specs")
+	project, err := scanSpecProject(root, "docs")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestScanSpecProjectSplitsRelationshipMapLists(t *testing.T) {
 
 func TestScanSpecProjectParsesSpecMetadataAndContentConnections(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, root, "specs/modules/editor-core.md", `# Editor Core
+	writeTestFile(t, root, "docs/modules/editor-core.md", `# Editor Core
 
 ## Meta
 
@@ -227,11 +227,11 @@ func TestScanSpecProjectParsesSpecMetadataAndContentConnections(t *testing.T) {
 
 Runtime behavior also mentions turnstile-captcha.md in prose.
 `)
-	writeTestFile(t, root, "specs/shared/data-models.md", "# Data Models\n")
-	writeTestFile(t, root, "specs/modules/portal/homepage.md", "# Portal Homepage\n\nSee [Editor Core](../editor-core.md).\n")
-	writeTestFile(t, root, "specs/modules/turnstile-captcha.md", "# Turnstile Captcha\n")
+	writeTestFile(t, root, "docs/shared/data-models.md", "# Data Models\n")
+	writeTestFile(t, root, "docs/modules/portal/homepage.md", "# Portal Homepage\n\nSee [Editor Core](../editor-core.md).\n")
+	writeTestFile(t, root, "docs/modules/turnstile-captcha.md", "# Turnstile Captcha\n")
 
-	project, err := scanSpecProject(root, "specs")
+	project, err := scanSpecProject(root, "docs")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ Runtime behavior also mentions turnstile-captcha.md in prose.
 
 func TestScanSpecProjectParsesKnownsStyleDocReferences(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, root, "specs/specs/auth.md", `# Auth Spec
+	writeTestFile(t, root, "docs/specs/auth.md", `# Auth Spec
 
 ## Meta
 
@@ -263,10 +263,10 @@ func TestScanSpecProjectParsesKnownsStyleDocReferences(t *testing.T) {
 
 Implements login with [Session](session.md) and verifies @doc/shared/data-models{verifies}.
 `)
-	writeTestFile(t, root, "specs/specs/session.md", "# Session Spec\n")
-	writeTestFile(t, root, "specs/shared/data-models.md", "# Data Models\n")
+	writeTestFile(t, root, "docs/specs/session.md", "# Session Spec\n")
+	writeTestFile(t, root, "docs/shared/data-models.md", "# Data Models\n")
 
-	project, err := scanSpecProject(root, "specs")
+	project, err := scanSpecProject(root, "docs")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ Implements login with [Session](session.md) and verifies @doc/shared/data-models
 
 func TestScanSpecProjectFallsBackWithoutIndex(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, root, "specs/modules/dev-tooling.md", `# Dev Tooling
+	writeTestFile(t, root, "docs/modules/dev-tooling.md", `# Dev Tooling
 
 ## Meta
 
@@ -296,7 +296,7 @@ func TestScanSpecProjectFallsBackWithoutIndex(t *testing.T) {
 - **Version**: v1.14
 - **Compliance**: Unchecked
 `)
-	project, err := scanSpecProject(root, "specs")
+	project, err := scanSpecProject(root, "docs")
 	if err != nil {
 		t.Fatal(err)
 	}

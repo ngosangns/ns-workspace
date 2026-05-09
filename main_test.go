@@ -18,15 +18,22 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".agents", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".agents", "agents", "spec-guardian.md"))
+	mustExist(t, filepath.Join(home, ".agents", "agents", "opencode-intern.md"))
 	mustExist(t, filepath.Join(home, ".agents", "registry", "skills.json"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "changeset-generator", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".agents", "settings.json"))
 	mustExist(t, filepath.Join(home, ".agents", "mcp", "servers.json"))
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
+	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
 	mustExist(t, filepath.Join(home, ".kimi", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
-	mustExist(t, filepath.Join(home, ".config", "opencode", ".opencode.json"))
+	mustExist(t, filepath.Join(home, ".gemini", "settings.json"))
+	mustExist(t, filepath.Join(home, ".codex", "config.toml"))
+	mustExist(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
+	mustExist(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
+	mustExist(t, filepath.Join(home, ".agents", "generated", "cursor", "README.md"))
+	mustExist(t, filepath.Join(home, ".agents", "generated", "antigravity", "README.md"))
+	mustExist(t, filepath.Join(home, ".agents", "generated", "trae", "README.md"))
 
 	data, err := os.ReadFile(filepath.Join(home, ".qwen", "settings.json"))
 	if err != nil {
@@ -34,6 +41,17 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "context7") || !strings.Contains(string(data), "figma") {
 		t.Fatalf("qwen settings did not include MCP preset: %s", data)
+	}
+	if !strings.Contains(string(data), "PreToolUse") || !strings.Contains(string(data), "graphify-out/graph.json") {
+		t.Fatalf("qwen settings did not include shared hooks: %s", data)
+	}
+
+	codex, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(codex), "[mcp_servers.\"context7\"]") {
+		t.Fatalf("codex config did not include MCP preset: %s", codex)
 	}
 }
 

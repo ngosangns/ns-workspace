@@ -168,7 +168,7 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, selectSp
           <h3 class="mt-1 text-lg font-semibold">${escapeHTML(node.label || node.id)}</h3>
           <p class="break-words text-sm text-base-content/60">${escapeHTML(node.path || node.id)}</p>
         </div>
-        ${node.specId ? `<button class="btn btn-primary btn-sm" type="button" data-open-spec="${escapeHTML(node.specId)}"><i data-lucide="file-text" class="h-4 w-4"></i>Open spec</button>` : ""}
+        ${node.specId ? `<button class="btn btn-primary btn-sm" type="button" data-open-spec="${escapeHTML(node.specId)}"><i data-lucide="file-text" class="h-4 w-4"></i>Open doc</button>` : ""}
         <div>
           <h4 class="mb-2 text-sm font-semibold">Outgoing refs (${outgoing.length})</h4>
           ${renderEdgeList(outgoing, "target")}

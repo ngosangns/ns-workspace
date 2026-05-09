@@ -180,6 +180,214 @@ figure,
   background: hsl(var(--b2));
 }
 
+.search-shell {
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+
+.search-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+}
+
+.search-summary {
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+}
+
+.search-grid {
+  display: grid;
+  gap: 0;
+}
+
+.search-panel {
+  min-height: 18rem;
+  border-bottom: 1px solid hsl(var(--b3));
+  padding: 1rem;
+}
+
+.search-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.search-panel-heading h2 {
+  font-size: 0.95rem;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.search-results {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.search-result {
+  border: 1px solid hsl(var(--b3));
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: hsl(var(--b1));
+}
+
+.search-result h3 {
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.search-path {
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+  color: hsl(var(--bc) / 0.58);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.74rem;
+}
+
+.search-excerpt {
+  margin-top: 0.55rem;
+  color: hsl(var(--bc) / 0.72);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.search-tags,
+.search-neighbors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.search-empty {
+  border: 1px dashed hsl(var(--b3));
+  border-radius: 0.5rem;
+  padding: 1rem;
+  color: hsl(var(--bc) / 0.55);
+  font-size: 0.875rem;
+}
+
+.search-loading {
+  display: grid;
+  gap: 0.625rem;
+  border: 1px solid hsl(var(--b3));
+  border-radius: 0.5rem;
+  padding: 0.875rem;
+  background: hsl(var(--b1));
+}
+
+.search-graph-shell {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid hsl(var(--b3));
+  border-radius: 0.5rem;
+  background: hsl(var(--b1));
+}
+
+.search-graph-canvas {
+  min-height: 22rem;
+  overflow: hidden;
+  background:
+    linear-gradient(hsl(var(--b2) / 0.72), hsl(var(--b2) / 0.72)),
+    radial-gradient(circle at center, hsl(var(--bc) / 0.06) 1px, transparent 1px);
+  background-size:
+    auto,
+    22px 22px;
+}
+
+.search-graph-svg {
+  height: 22rem;
+  min-height: 22rem;
+}
+
+.search-graph-details {
+  min-height: 12rem;
+  border-top: 1px solid hsl(var(--b3));
+  overflow: auto;
+}
+
+.preview-modal {
+  width: min(92rem, calc(100vw - 2rem));
+  max-width: none;
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
+}
+
+.preview-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+}
+
+.preview-modal-body {
+  max-height: calc(100vh - 7.25rem);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.preview-modal-body.markdown {
+  max-width: none;
+}
+
+.preview-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: hsl(var(--bc) / 0.68);
+  font-size: 0.875rem;
+}
+
+.code-preview,
+.markdown pre.hljs {
+  overflow: auto;
+  border-radius: 0.5rem;
+  background: #101318;
+  padding: 1rem;
+  color: #eef2f7;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.code-preview code,
+.markdown pre.hljs code {
+  display: block;
+  min-width: max-content;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  white-space: pre;
+}
+
+.code-line {
+  display: block;
+  min-height: 1.55em;
+}
+
+.code-line-number {
+  display: inline-block;
+  width: 3rem;
+  margin-right: 1rem;
+  user-select: none;
+  color: rgb(148 163 184);
+  text-align: right;
+}
+
+.code-line-content {
+  display: inline;
+}
+
+.code-line-target {
+  background: rgb(250 204 21 / 0.16);
+}
+
 @media (min-width: 1024px) {
   .graph-toolbar {
     flex-direction: row;
@@ -189,6 +397,21 @@ figure,
 
   .graph-layout {
     grid-template-columns: minmax(0, 1fr) 22rem;
+  }
+
+  .search-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .search-graph-shell {
+    grid-template-columns: minmax(0, 1fr) 16rem;
+  }
+
+  .search-graph-details {
+    border-top: 0;
+    border-left: 1px solid hsl(var(--b3));
   }
 }
 
