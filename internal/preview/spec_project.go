@@ -1,4 +1,4 @@
-package main
+package preview
 
 import (
 	"bytes"
@@ -23,7 +23,7 @@ type specProject struct {
 type projectSummary struct {
 	Name           string            `json:"name"`
 	ProjectRoot    string            `json:"projectRoot"`
-	SpecsRoot      string            `json:"specsRoot"`
+	DocsRoot       string            `json:"docsRoot"`
 	AgentsPath     string            `json:"agentsPath"`
 	AgentsFound    bool              `json:"agentsFound"`
 	IndexFound     bool              `json:"indexFound"`
@@ -129,51 +129,51 @@ var (
 	}
 )
 
-func scanSpecProject(projectRoot, specsDir string) (specProject, error) {
-	specsRoot := specsRoot(projectRoot, specsDir)
-	info, err := os.Stat(specsRoot)
+func scanSpecProject(projectRoot, docsDir string) (specProject, error) {
+	docsRoot := docsRoot(projectRoot, docsDir)
+	info, err := os.Stat(docsRoot)
 	if err != nil {
-		return specProject{}, fmt.Errorf("specs directory not found: %s", specsRoot)
+		return specProject{}, fmt.Errorf("docs directory not found: %s", docsRoot)
 	}
 	if !info.IsDir() {
-		return specProject{}, fmt.Errorf("specs path is not a directory: %s", specsRoot)
+		return specProject{}, fmt.Errorf("docs path is not a directory: %s", docsRoot)
 	}
 
-	indexPath := filepath.Join(specsRoot, "_index.md")
-	syncPath := filepath.Join(specsRoot, "_sync.md")
-	overviewPath := filepath.Join(specsRoot, "overview.md")
+	indexPath := filepath.Join(docsRoot, "_index.md")
+	syncPath := filepath.Join(docsRoot, "_sync.md")
+	overviewPath := filepath.Join(docsRoot, "overview.md")
 	agentsPath := filepath.Join(projectRoot, "AGENTS.md")
 
 	indexRaw := readOptional(indexPath)
 	moduleMetaByPath := parseModuleTable(indexRaw)
 	sync := parseSyncState(readOptional(syncPath))
-	documents, err := scanSpecDocuments(specsRoot, moduleMetaByPath)
+	documents, err := scanSpecDocuments(docsRoot, moduleMetaByPath)
 	if err != nil {
 		return specProject{}, err
 	}
 	graph := parseSpecGraph(indexRaw, documents)
-	summary := buildSummary(projectRoot, specsRoot, agentsPath, indexPath, syncPath, overviewPath, documents, sync)
+	summary := buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath, overviewPath, documents, sync)
 	return specProject{Summary: summary, Documents: documents, Graph: graph}, nil
 }
 
-func specsRoot(projectRoot, specsDir string) string {
-	specsDir = expandPath(specsDir)
-	if filepath.IsAbs(specsDir) {
-		return filepath.Clean(specsDir)
+func docsRoot(projectRoot, docsDir string) string {
+	docsDir = expandPath(docsDir)
+	if filepath.IsAbs(docsDir) {
+		return filepath.Clean(docsDir)
 	}
-	return filepath.Join(projectRoot, specsDir)
+	return filepath.Join(projectRoot, docsDir)
 }
 
-func scanSpecDocuments(specsRoot string, table map[string]moduleMeta) ([]specDocument, error) {
+func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument, error) {
 	docs := []specDocument{}
-	err := filepath.WalkDir(specsRoot, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() || filepath.Ext(path) != ".md" {
 			return nil
 		}
-		rel, err := filepath.Rel(specsRoot, path)
+		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
@@ -209,7 +209,7 @@ func scanSpecDocuments(specsRoot string, table map[string]moduleMeta) ([]specDoc
 	return docs, nil
 }
 
-func buildSummary(projectRoot, specsRoot, agentsPath, indexPath, syncPath, overviewPath string, docs []specDocument, sync map[string]string) projectSummary {
+func buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath, overviewPath string, docs []specDocument, sync map[string]string) projectSummary {
 	categories := map[string]int{}
 	status := map[string]int{}
 	compliance := map[string]int{}
@@ -224,10 +224,10 @@ func buildSummary(projectRoot, specsRoot, agentsPath, indexPath, syncPath, overv
 	}
 	warnings := []string{}
 	if !exists(indexPath) {
-		warnings = append(warnings, "Missing specs/_index.md; using filesystem scan fallback.")
+		warnings = append(warnings, "Missing docs/_index.md; using filesystem scan fallback.")
 	}
 	if !exists(syncPath) {
-		warnings = append(warnings, "Missing specs/_sync.md; sync state is unavailable.")
+		warnings = append(warnings, "Missing docs/_sync.md; sync state is unavailable.")
 	}
 	if !exists(agentsPath) {
 		warnings = append(warnings, "Missing project AGENTS.md.")
@@ -235,7 +235,7 @@ func buildSummary(projectRoot, specsRoot, agentsPath, indexPath, syncPath, overv
 	return projectSummary{
 		Name:           filepath.Base(projectRoot),
 		ProjectRoot:    projectRoot,
-		SpecsRoot:      specsRoot,
+		DocsRoot:       docsRoot,
 		AgentsPath:     agentsPath,
 		AgentsFound:    exists(agentsPath),
 		IndexFound:     exists(indexPath),
@@ -247,7 +247,7 @@ func buildSummary(projectRoot, specsRoot, agentsPath, indexPath, syncPath, overv
 		Compliance:     compliance,
 		Sync:           sync,
 		Warnings:       warnings,
-		GeneratedTitle: "Spec Preview",
+		GeneratedTitle: "Docs Preview",
 	}
 }
 
@@ -1112,6 +1112,7 @@ func normalizeSpecPath(path string) string {
 	path = strings.TrimSpace(path)
 	path = strings.TrimPrefix(path, "./")
 	path = strings.TrimPrefix(path, "specs/")
+	path = strings.TrimPrefix(path, "docs/")
 	path = filepath.ToSlash(filepath.Clean(path))
 	if path == "." {
 		return ""

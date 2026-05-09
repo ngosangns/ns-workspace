@@ -1,14 +1,24 @@
-package main
+package preview
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
+
+type previewFileResponse struct {
+	Path     string `json:"path"`
+	Title    string `json:"title"`
+	Language string `json:"language"`
+	Raw      string `json:"raw"`
+}
 
 func (ps *previewServer) handleProject(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -47,7 +57,7 @@ func (ps *previewServer) handleSpec(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	id, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/api/specs/"))
+	id, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/api/docs/"))
 	if err != nil || id == "" {
 		http.Error(w, "invalid spec id", http.StatusBadRequest)
 		return
@@ -64,6 +74,58 @@ func (ps *previewServer) handleSpec(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.Error(w, "spec not found", http.StatusNotFound)
+}
+
+func (ps *previewServer) handleFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	rel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(r.URL.Query().Get("path"))))
+	if rel == "." || rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+		http.Error(w, "invalid file path", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(ps.opt.projectRoot, rel)
+	absRoot, err := filepath.Abs(ps.opt.projectRoot)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	rootPrefix := absRoot + string(filepath.Separator)
+	if absPath != absRoot && !strings.HasPrefix(absPath, rootPrefix) {
+		http.Error(w, "file path escapes project root", http.StatusBadRequest)
+		return
+	}
+	info, err := os.Stat(absPath)
+	if err != nil || info.IsDir() {
+		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+	if info.Size() > maxSearchFileBytes || !isPreviewableFilePath(absPath) {
+		http.Error(w, "file is not previewable", http.StatusBadRequest)
+		return
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	if !utf8.Valid(data) {
+		http.Error(w, "file is not valid UTF-8", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, previewFileResponse{
+		Path:     filepath.ToSlash(rel),
+		Title:    filepath.Base(absPath),
+		Language: languageForPath(absPath),
+		Raw:      string(data),
+	})
 }
 
 func (ps *previewServer) handleGraph(w http.ResponseWriter, r *http.Request) {
