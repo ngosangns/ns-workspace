@@ -15,6 +15,7 @@ Lệnh `preview` chạy một web server local để đọc thư mục `docs/` c
 
 - Doc tab render Markdown client-side, hỗ trợ code highlight, Mermaid diagram và pan/zoom cho diagram.
 - Doc tab có nút xem raw Markdown để chuyển nhanh giữa rendered view và source Markdown.
+- Preview modal cho doc/file có nút chuyển giữa rendered preview và raw source hiện tại.
 - Khi chọn text trong Doc hoặc preview modal, context menu có nút Copy để copy reference dạng `path:start-end`.
 - Topbar chỉ điều hướng các view phụ như Graph và Search; tài liệu đang đọc được chọn trong sidebar và được xác nhận bằng route `/spec/...`.
 - Graph tab hiển thị graph tài liệu từ `_index.md`, metadata, relationship và dependency diagram bằng Sigma/Graphology WebGL renderer; click node chỉ chọn node và cập nhật details panel, còn preview doc/file được mở bằng nút trong details panel.

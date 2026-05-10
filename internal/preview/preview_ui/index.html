@@ -195,9 +195,21 @@
             <h2 id="previewDialogTitle" class="truncate text-base font-semibold">Preview</h2>
             <p id="previewDialogPath" class="text-base-content/60 truncate text-xs"></p>
           </div>
-          <button class="btn btn-ghost btn-sm" type="button" data-close-preview aria-label="Close preview" title="Close preview">
-            <i data-lucide="x" class="h-4 w-4"></i>
-          </button>
+          <div class="flex items-center gap-1">
+            <button
+              id="previewRawToggle"
+              class="btn btn-ghost btn-sm"
+              type="button"
+              aria-label="View raw source"
+              title="View raw source"
+              hidden
+            >
+              <i data-lucide="file-code" class="h-4 w-4"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" data-close-preview aria-label="Close preview" title="Close preview">
+              <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+          </div>
         </div>
         <div id="previewDialogBody" class="preview-modal-body"></div>
       </div>

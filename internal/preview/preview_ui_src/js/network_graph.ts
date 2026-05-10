@@ -88,9 +88,9 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
     hideLabelsOnMove: false,
     itemSizesReference: "screen",
     labelColor: { color: options.labelColor || "#0f172a" },
-    labelDensity: graph.order > 120 ? 0.08 : 0.22,
+    labelDensity: 1,
     labelGridCellSize: 90,
-    labelRenderedSizeThreshold: graph.order > 120 ? 9 : 7,
+    labelRenderedSizeThreshold: 0,
     labelSize: 12,
     labelWeight: "650",
     maxCameraRatio: 10,
@@ -105,9 +105,9 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
       return {
         ...data,
         color: selected && !related ? softenColor(data.color) : data.color,
-        forceLabel: node === selectedId,
+        forceLabel: true,
         highlighted: node === selectedId,
-        label: selected && !related && graph.order > 80 ? "" : data.label,
+        label: data.label,
         size: node === selectedId ? data.size + 3 : related ? data.size + 1.5 : data.size,
         type: "circle",
         zIndex: node === selectedId ? 3 : related ? 2 : 1,
@@ -131,6 +131,12 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
     selectedId = node;
     renderer.refresh();
     options.onSelectNode(attrs);
+  });
+  renderer.on("enterNode", () => {
+    options.container.classList.add("is-node-hover");
+  });
+  renderer.on("leaveNode", () => {
+    options.container.classList.remove("is-node-hover");
   });
 
   requestAnimationFrame(() => fitRenderer(renderer));
@@ -213,7 +219,19 @@ function applyReadableLayout(graph: Graph<SigmaNodeAttributes, SigmaEdgeAttribut
 
 function fitRenderer(renderer: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>) {
   renderer.resize(true);
-  renderer.getCamera().animatedReset({ duration: 260 });
+  renderer.refresh();
+  renderer
+    .getCamera()
+    .animatedReset({ duration: 260 })
+    .then(() => {
+      renderer.resize(true);
+      renderer.refresh();
+    })
+    .catch(() => {});
+  requestAnimationFrame(() => {
+    renderer.refresh();
+    requestAnimationFrame(() => renderer.refresh());
+  });
 }
 
 function endpointID(endpoint: string | NetworkGraphNode): string {

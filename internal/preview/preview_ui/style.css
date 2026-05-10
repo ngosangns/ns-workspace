@@ -130,6 +130,11 @@ figure,
   cursor: grabbing;
 }
 
+.graph-canvas.is-node-hover canvas,
+.search-graph-canvas.is-node-hover canvas {
+  cursor: pointer;
+}
+
 .graph-details {
   min-height: 16rem;
   overflow: auto;

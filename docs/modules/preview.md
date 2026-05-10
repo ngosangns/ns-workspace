@@ -9,7 +9,7 @@
 
 ## Tổng Quan
 
-`internal/preview` cung cấp HTTP preview cho knowledge base. Backend Go scan docs, parse metadata, dựng graph và trả API JSON. Frontend TypeScript render UI, router, Markdown preview, raw Markdown toggle, selection copy menu, graph Sigma/Graphology, search panels, modal preview và hot reload.
+`internal/preview` cung cấp HTTP preview cho knowledge base. Backend Go scan docs, parse metadata, dựng graph và trả API JSON. Frontend TypeScript render UI, router, Markdown preview, raw Markdown toggle, selection copy menu, graph Sigma/Graphology, search panels, modal preview với raw/rendered toggle và hot reload.
 
 ## Data Models Và APIs
 
