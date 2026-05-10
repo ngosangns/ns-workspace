@@ -633,7 +633,7 @@ func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(graphJS) + "\n" + string(networkGraphJS) + "\n" + string(css)
-	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "normalizedGraphData", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode"} {
+	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode", ".is-node-hover canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview docs graph UI missing %s", want)
 		}
@@ -721,6 +721,11 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"rawMarkdownToggle",
 		"showRawMarkdown",
 		"renderCurrentSpecContent",
+		`id="previewRawToggle"`,
+		"previewSource",
+		"previewShowRaw",
+		"updatePreviewRawToggle",
+		"renderPreviewSource",
 		"selectionContextMenu",
 		"selectionCopyButton",
 		"updateSelectionContextMenu",

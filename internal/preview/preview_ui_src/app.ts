@@ -100,7 +100,9 @@ interface PreviewState {
   routeSpecId: string;
   tab: string;
   applyingRoute: boolean;
+  previewSource: PreviewSource | null;
   previewRoute: PreviewRoute | null;
+  previewShowRaw: boolean;
   previewTitle: string;
   diagramSerial: number;
   showRawMarkdown: boolean;
@@ -124,6 +126,15 @@ interface SelectionCopyTarget {
   path: string;
   start: number;
   end: number;
+}
+
+interface PreviewSource {
+  type: "doc" | "file";
+  raw: string;
+  language: string;
+  path: string;
+  line: number;
+  spec?: SpecDocument;
 }
 
 const state: PreviewState = {
@@ -150,7 +161,9 @@ const state: PreviewState = {
   routeSpecId: "",
   tab: "spec",
   applyingRoute: false,
+  previewSource: null,
   previewRoute: null,
+  previewShowRaw: false,
   previewTitle: "",
   diagramSerial: 0,
   showRawMarkdown: false,
@@ -184,6 +197,7 @@ const els: any = {
   previewDialogTitle: document.querySelector("#previewDialogTitle"),
   previewDialogPath: document.querySelector("#previewDialogPath"),
   previewDialogBody: document.querySelector("#previewDialogBody"),
+  previewRawToggle: document.querySelector("#previewRawToggle"),
   themeToggle: document.querySelector("#themeToggle"),
   rawMarkdownToggle: document.querySelector("#rawMarkdownToggle"),
   selectionContextMenu: document.querySelector("#selectionContextMenu"),
@@ -952,9 +966,19 @@ async function openSpecPreview(id, options: UpdateURLOptions = {}) {
     els.previewDialogTitle.textContent = spec.title || "Doc preview";
     els.previewDialogPath.textContent = spec.path || id;
     state.previewTitle = `Doc preview: ${spec.title || id}`;
+    state.previewSource = {
+      type: "doc",
+      raw: spec.raw || "",
+      language: spec.language || languageFromPath(spec.path || ""),
+      path: spec.path || id,
+      line: 0,
+      spec,
+    };
+    state.previewShowRaw = false;
     updateDocumentTitle();
     destroyDiagramsIn(els.previewDialogBody);
-    await renderSpecDocumentContent(els.previewDialogBody, spec, "preview-modal-body");
+    updatePreviewRawToggle();
+    await renderPreviewSource();
     refreshIcons();
   } catch (error) {
     renderPreviewError(error);
@@ -1004,14 +1028,18 @@ async function openFilePreview(path, line, options: UpdateURLOptions = {}) {
     els.previewDialogTitle.textContent = file.title || "File preview";
     els.previewDialogPath.textContent = line ? `${file.path}:${line}` : file.path;
     state.previewTitle = `File preview: ${line ? `${file.title}:${line}` : file.title}`;
+    state.previewSource = {
+      type: "file",
+      raw: file.raw || "",
+      language: file.language || languageFromPath(file.path),
+      path: file.path || path,
+      line: Number(line || 0),
+    };
+    state.previewShowRaw = false;
     updateDocumentTitle();
     destroyDiagramsIn(els.previewDialogBody);
-    els.previewDialogBody.dataset.sourcePath = file.path || path;
-    els.previewDialogBody.className = "preview-modal-body";
-    els.previewDialogBody.innerHTML = renderCodePreview(file.raw || "", file.language || languageFromPath(file.path));
-    highlightRenderedCode(els.previewDialogBody);
-    decorateCodePreviewLines(els.previewDialogBody);
-    scrollPreviewToLine(line);
+    updatePreviewRawToggle();
+    await renderPreviewSource();
     refreshIcons();
   } catch (error) {
     renderPreviewError(error);
@@ -1020,6 +1048,8 @@ async function openFilePreview(path, line, options: UpdateURLOptions = {}) {
 
 function openPreviewLoading(title, path) {
   destroyDiagramsIn(els.previewDialogBody);
+  state.previewSource = null;
+  state.previewShowRaw = false;
   els.previewDialogTitle.textContent = title;
   els.previewDialogPath.textContent = path || "";
   state.previewTitle = title;
@@ -1032,6 +1062,7 @@ function openPreviewLoading(title, path) {
     </div>
   `;
   els.previewDialog.classList.add("modal-open");
+  updatePreviewRawToggle();
   refreshIcons();
 }
 
@@ -1039,8 +1070,11 @@ function closePreviewDialog(options: UpdateURLOptions = {}) {
   hideSelectionContextMenu();
   destroyDiagramsIn(els.previewDialogBody);
   els.previewDialog.classList.remove("modal-open");
+  state.previewSource = null;
+  state.previewShowRaw = false;
   state.previewRoute = null;
   state.previewTitle = "";
+  updatePreviewRawToggle();
   updateDocumentTitle();
   if (options.updateURL !== false) {
     updateSearchRouteURL({ replace: false });
@@ -1048,8 +1082,36 @@ function closePreviewDialog(options: UpdateURLOptions = {}) {
 }
 
 function renderPreviewError(error) {
+  state.previewSource = null;
+  state.previewShowRaw = false;
+  updatePreviewRawToggle();
   els.previewDialogBody.className = "preview-modal-body";
   els.previewDialogBody.innerHTML = `<div class="alert alert-error m-4 text-sm">${escapeHTML(error.message || String(error))}</div>`;
+}
+
+async function renderPreviewSource() {
+  const source = state.previewSource;
+  if (!source) return;
+  destroyDiagramsIn(els.previewDialogBody);
+  if (state.previewShowRaw) {
+    els.previewDialogBody.dataset.sourcePath = source.path;
+    els.previewDialogBody.className = "preview-modal-body";
+    els.previewDialogBody.innerHTML = renderCodePreview(source.raw, source.language || "plaintext");
+    highlightRenderedCode(els.previewDialogBody);
+    decorateCodePreviewLines(els.previewDialogBody);
+    scrollPreviewToLine(source.line);
+    return;
+  }
+  if (source.type === "doc" && source.spec) {
+    await renderSpecDocumentContent(els.previewDialogBody, source.spec, "preview-modal-body");
+    return;
+  }
+  els.previewDialogBody.dataset.sourcePath = source.path;
+  els.previewDialogBody.className = "preview-modal-body";
+  els.previewDialogBody.innerHTML = renderCodePreview(source.raw, source.language);
+  highlightRenderedCode(els.previewDialogBody);
+  decorateCodePreviewLines(els.previewDialogBody);
+  scrollPreviewToLine(source.line);
 }
 
 function renderCodePreview(raw, language) {
@@ -1132,6 +1194,20 @@ function updateRawMarkdownToggle(spec = state.currentSpec) {
   els.rawMarkdownToggle.setAttribute("aria-label", state.showRawMarkdown ? "View rendered Markdown" : "View raw Markdown");
   els.rawMarkdownToggle.setAttribute("title", state.showRawMarkdown ? "View rendered Markdown" : "View raw Markdown");
   els.rawMarkdownToggle.innerHTML = state.showRawMarkdown
+    ? '<i data-lucide="file-text" class="h-4 w-4"></i>'
+    : '<i data-lucide="file-code" class="h-4 w-4"></i>';
+  refreshIcons();
+}
+
+function updatePreviewRawToggle() {
+  if (!els.previewRawToggle) return;
+  const available = Boolean(state.previewSource);
+  els.previewRawToggle.hidden = !available;
+  els.previewRawToggle.classList.toggle("btn-active", available && state.previewShowRaw);
+  els.previewRawToggle.setAttribute("aria-pressed", available && state.previewShowRaw ? "true" : "false");
+  els.previewRawToggle.setAttribute("aria-label", state.previewShowRaw ? "View rendered preview" : "View raw source");
+  els.previewRawToggle.setAttribute("title", state.previewShowRaw ? "View rendered preview" : "View raw source");
+  els.previewRawToggle.innerHTML = state.previewShowRaw
     ? '<i data-lucide="file-text" class="h-4 w-4"></i>'
     : '<i data-lucide="file-code" class="h-4 w-4"></i>';
   refreshIcons();
@@ -2109,6 +2185,12 @@ els.rawMarkdownToggle?.addEventListener("click", () => {
   state.showRawMarkdown = !state.showRawMarkdown;
   destroyDiagramsIn(els.specContent);
   renderCurrentSpecContent().catch(() => {});
+});
+els.previewRawToggle?.addEventListener("click", () => {
+  if (!state.previewSource) return;
+  state.previewShowRaw = !state.previewShowRaw;
+  updatePreviewRawToggle();
+  renderPreviewSource().catch((error) => renderPreviewError(error));
 });
 document.addEventListener("mouseup", () => window.setTimeout(updateSelectionContextMenu, 0));
 document.addEventListener("keyup", (event) => {
