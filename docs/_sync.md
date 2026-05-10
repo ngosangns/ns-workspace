@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 20ccfe4b9ba16f32c3c7de7e2ec24a28981506d3
+- **Last Synced Commit**: 87da81d942e095afd4bf53842b902141d13a370b
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-10T11:48:36Z
-- **Scope**: preview web search keyword operator UI/API, doc metadata description in search results, search docs/code/graph behavior, semantic-anchored graph expansion, metadata graph syntax và trigger skill presets.
+- **Sync Date**: 2026-05-10T13:37:59Z
+- **Scope**: preview web search keyword operator UI/API, doc metadata description in search results, graph node selection/navigation behavior, graph wheel zoom guard, search docs/code/graph behavior, semantic-anchored graph expansion, metadata graph syntax và trigger skill presets.
 - **Known Unsynced**: Không có.

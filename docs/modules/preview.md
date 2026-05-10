@@ -35,7 +35,7 @@ Trang tổng quan không còn là route hoặc tab riêng. Nếu URL cũ `/overv
 
 ## Ràng Buộc Và Giả Định
 
-Server preview chạy local và frontend runtime dùng CDN giống các thư viện UI hiện có. Semantic search hiện có fallback local khi embedding runtime không khả dụng. Graphify data là optional và không được coi là nguồn bắt buộc; khi không có graphify hoặc không map được semantic anchor, graph panels degrade bằng warning hoặc fallback query graph search. Graph UI dùng Sigma/Graphology WebGL renderer với layout ForceAtlas2 để xem graph nhiều nodes/edges nhẹ hơn D3 SVG force-layout cũ. Click node chỉ chọn node và cập nhật details panel; người dùng mở preview doc/file bằng nút trong details panel.
+Server preview chạy local và frontend runtime dùng CDN giống các thư viện UI hiện có. Semantic search hiện có fallback local khi embedding runtime không khả dụng. Graphify data là optional và không được coi là nguồn bắt buộc; khi không có graphify hoặc không map được semantic anchor, graph panels degrade bằng warning hoặc fallback query graph search. Graph UI dùng Sigma/Graphology WebGL renderer với layout ForceAtlas2 để xem graph nhiều nodes/edges nhẹ hơn D3 SVG force-layout cũ. Click node chỉ chọn node và cập nhật details panel; click nền graph bỏ chọn node; incoming/outgoing edge rows trong details panel chọn node liên quan trong graph hiện tại. Người dùng mở preview doc/file bằng nút trong details panel. Wheel zoom trên graph chỉ chạy khi người dùng giữ `Ctrl` hoặc `Meta`, để scroll trang không bị graph bắt ngoài ý muốn.
 
 ## Quan Hệ
 
