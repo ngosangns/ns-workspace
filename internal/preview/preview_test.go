@@ -596,7 +596,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "d3.min.js"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -611,7 +611,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 }
 
-func TestPreviewUIRendersDocsGraphWithD3(t *testing.T) {
+func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -624,12 +624,16 @@ func TestPreviewUIRendersDocsGraphWithD3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
 	css, err := os.ReadFile("preview_ui/style.css")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html) + "\n" + string(app) + "\n" + string(graphJS) + "\n" + string(css)
-	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "forceSimulation", "normalizedGraphData", "graphSelectedId", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode"} {
+	text := string(html) + "\n" + string(app) + "\n" + string(graphJS) + "\n" + string(networkGraphJS) + "\n" + string(css)
+	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "normalizedGraphData", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview docs graph UI missing %s", want)
 		}
@@ -697,13 +701,13 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"renderSearchGraphPanel",
 		"searchResultsToGraph",
 		"renderSearchResultGraph",
+		"renderNetworkGraph",
 		"codeGraphNodeLabel",
-		"codeGraphNodePreview",
 		"neighborPath",
 		"neighborLine",
 		"previewPath",
-		`name === "codeGraph"`,
-		`node.classed("selected"`,
+		"searchGraphRenderers",
+		"renderSearchGraphDetails(name, graph, details)",
 		".search-graph-canvas",
 		"searchLoading",
 		"renderSearchLoading",
@@ -785,8 +789,16 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(css)
-	for _, want := range []string{`[data-theme="dark"] .graph-node text`, "fill: #f8fafc", "stroke: #020617"} {
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graphJS, err := os.ReadFile("preview_ui_src/js/graph.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(css) + "\n" + string(app) + "\n" + string(graphJS)
+	for _, want := range []string{"labelColor", "#f8fafc", "#0f172a", ".graph-canvas canvas", ".search-graph-canvas canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview graph label dark mode contrast missing %s", want)
 		}

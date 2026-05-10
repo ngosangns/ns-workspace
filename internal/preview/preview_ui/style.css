@@ -120,45 +120,14 @@ figure,
     24px 24px;
 }
 
-.docs-graph-svg {
-  display: block;
-  width: 100%;
-  height: 68vh;
-  min-height: 28rem;
+.graph-canvas canvas,
+.search-graph-canvas canvas {
   cursor: grab;
 }
 
-.docs-graph-svg:active {
+.graph-canvas canvas:active,
+.search-graph-canvas canvas:active {
   cursor: grabbing;
-}
-
-.graph-node {
-  cursor: pointer;
-}
-
-.graph-node text {
-  fill: hsl(var(--bc));
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0;
-  paint-order: stroke;
-  pointer-events: none;
-  stroke: hsl(var(--b1));
-  stroke-width: 3px;
-}
-
-[data-theme="dark"] .graph-node text {
-  fill: #f8fafc;
-  stroke: #020617;
-}
-
-.graph-node.selected circle {
-  stroke: hsl(var(--p));
-  stroke-width: 4;
-}
-
-.graph-links line {
-  opacity: 0.72;
 }
 
 .graph-details {
@@ -301,11 +270,6 @@ figure,
     22px 22px;
 }
 
-.search-graph-svg {
-  height: 22rem;
-  min-height: 22rem;
-}
-
 .search-graph-details {
   min-height: 12rem;
   border-top: 1px solid hsl(var(--b3));
@@ -405,23 +369,10 @@ figure,
     justify-content: space-between;
   }
 
-  .graph-layout {
-    grid-template-columns: minmax(0, 1fr) 22rem;
-  }
-
   .search-toolbar {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-  }
-
-  .search-graph-shell {
-    grid-template-columns: minmax(0, 1fr) 16rem;
-  }
-
-  .search-graph-details {
-    border-top: 0;
-    border-left: 1px solid hsl(var(--b3));
   }
 }
 

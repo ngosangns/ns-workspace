@@ -29,6 +29,15 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/styles/github-dark.min.css" />
     <link rel="stylesheet" href="/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "graphology": "https://cdn.jsdelivr.net/npm/graphology@0.26.0/+esm",
+          "graphology-layout-forceatlas2": "https://cdn.jsdelivr.net/npm/graphology-layout-forceatlas2@0.10.1/+esm",
+          "sigma": "https://cdn.jsdelivr.net/npm/sigma@3.0.3/+esm"
+        }
+      }
+    </script>
   </head>
   <body class="min-h-screen bg-base-200 text-base-content">
     <div class="min-h-screen lg:pl-[22rem]">
@@ -95,7 +104,7 @@
             </div>
             <div class="graph-layout">
               <div id="graphCanvas" class="graph-canvas" role="img" aria-label="Spec document graph"></div>
-              <aside id="graphDetails" class="graph-details border-base-300 border-t lg:border-l lg:border-t-0"></aside>
+              <aside id="graphDetails" class="graph-details border-base-300 border-t"></aside>
             </div>
           </div>
         </section>
@@ -174,12 +183,11 @@
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/lib/common.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/lib/languages/go.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/lib/languages/typescript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/languages/go.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/languages/typescript.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
     <div id="previewDialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="previewDialogTitle">
       <div class="modal-box preview-modal border-base-300 bg-base-100 border p-0">
         <div class="preview-modal-header border-base-300 border-b">
