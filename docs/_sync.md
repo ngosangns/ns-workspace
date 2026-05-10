@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: b475d84c1f95b1634406eadbaed4ca8be6aa4204
+- **Last Synced Commit**: e9b57ee6b6703529b27c669104638637b4bfa7b3
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-09T11:48:41Z
+- **Sync Date**: 2026-05-09T11:53:40Z
 - **Scope**: toàn bộ metadata description trong `docs/`, README dự án, preview web TypeScript, search docs/code/graph, semantic-anchored graph expansion, metadata graph syntax và trigger skill presets.
-- **Known Unsynced**: worktree còn thay đổi chưa commit; docs phản ánh `HEAD` cộng với trạng thái worktree hiện tại.
+- **Known Unsynced**: Không có.

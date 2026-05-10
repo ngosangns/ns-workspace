@@ -1,121 +1,28 @@
+import { renderNetworkGraph } from "./network_graph.js";
 export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpecPreview, openFilePreview }) {
     return {
+        fit,
         render,
         stop,
     };
     function render() {
         if (!els.graphCanvas || !state.graph)
             return;
-        if (!window.d3) {
-            els.graphCanvas.innerHTML = '<div class="alert alert-error m-4 text-sm">D3 library is not loaded.</div>';
-            return;
-        }
         stop();
         const query = (els.graphSearch?.value || "").trim().toLowerCase();
         const graph = normalizedGraphData(state.graph, query);
         els.graphStats.textContent = `${graph.nodes.length} nodes, ${graph.links.length} edges`;
         renderDetails(graph);
         els.graphCanvas.innerHTML = "";
-        const rect = els.graphCanvas.getBoundingClientRect();
-        const width = Math.max(640, rect.width || 960);
-        const height = Math.max(420, rect.height || 620);
-        const svg = d3
-            .select(els.graphCanvas)
-            .append("svg")
-            .attr("class", "docs-graph-svg")
-            .attr("viewBox", [-width / 2, -height / 2, width, height])
-            .attr("role", "img");
-        const viewport = svg.append("g");
-        const zoom = d3
-            .zoom()
-            .scaleExtent([0.25, 5])
-            .on("zoom", (event) => viewport.attr("transform", event.transform));
-        svg.call(zoom);
-        const defs = svg.append("defs");
-        defs
-            .append("marker")
-            .attr("id", "graph-arrow")
-            .attr("viewBox", "0 -5 10 10")
-            .attr("refX", 17)
-            .attr("refY", 0)
-            .attr("markerWidth", 6)
-            .attr("markerHeight", 6)
-            .attr("orient", "auto")
-            .append("path")
-            .attr("d", "M0,-5L10,0L0,5")
-            .attr("fill", "currentColor")
-            .attr("opacity", 0.45);
-        const link = viewport
-            .append("g")
-            .attr("class", "graph-links")
-            .selectAll("line")
-            .data(graph.links)
-            .join("line")
-            .attr("stroke", (edge) => edgeColor(edge.type))
-            .attr("stroke-width", 1.6)
-            .attr("stroke-dasharray", (edge) => (edge.origin === "index" ? "" : "4 4"))
-            .attr("marker-end", "url(#graph-arrow)");
-        const simulation = d3
-            .forceSimulation(graph.nodes)
-            .force("link", d3
-            .forceLink(graph.links)
-            .id((n) => n.id)
-            .distance((edge) => (edge.type === "depends" ? 120 : 96)))
-            .force("charge", d3.forceManyBody().strength(-420))
-            .force("center", d3.forceCenter(0, 0))
-            .force("collision", d3.forceCollide().radius(38));
-        const node = viewport
-            .append("g")
-            .attr("class", "graph-nodes")
-            .selectAll("g")
-            .data(graph.nodes)
-            .join("g")
-            .attr("class", (n) => `graph-node ${n.id === state.graphSelectedId ? "selected" : ""}`)
-            .call(d3.drag().on("start", graphDragStarted).on("drag", graphDragged).on("end", graphDragEnded))
-            .on("click", (_, n) => openGraphNode(n));
-        node
-            .append("circle")
-            .attr("r", (n) => (n.type === "external" ? 7 : 9))
-            .attr("fill", (n) => nodeColor(n))
-            .attr("stroke", "hsl(var(--b1))")
-            .attr("stroke-width", 2);
-        node
-            .append("text")
-            .attr("x", 12)
-            .attr("y", 4)
-            .text((n) => n.label || n.id);
-        node.append("title").text((n) => `${n.label || n.id}\n${n.path || n.id}`);
-        simulation.on("tick", () => {
-            link
-                .attr("x1", (d) => d.source.x)
-                .attr("y1", (d) => d.source.y)
-                .attr("x2", (d) => d.target.x)
-                .attr("y2", (d) => d.target.y);
-            node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+        state.graphRenderer = renderNetworkGraph({
+            container: els.graphCanvas,
+            graph,
+            selectedId: state.graphSelectedId,
+            nodeColor,
+            edgeColor,
+            labelColor: state.theme === "dark" ? "#f8fafc" : "#0f172a",
+            onSelectNode: openGraphNode,
         });
-        state.graphSimulation = simulation;
-        requestAnimationFrame(() => {
-            const bounds = viewport.node().getBBox?.();
-            if (bounds && Number.isFinite(bounds.width) && bounds.width > 0) {
-                fitGraph(svg, zoom, bounds, width, height);
-            }
-        });
-        function graphDragStarted(event) {
-            if (!event.active)
-                simulation.alphaTarget(0.25).restart();
-            event.subject.fx = event.subject.x;
-            event.subject.fy = event.subject.y;
-        }
-        function graphDragged(event) {
-            event.subject.fx = event.x;
-            event.subject.fy = event.y;
-        }
-        function graphDragEnded(event) {
-            if (!event.active)
-                simulation.alphaTarget(0);
-            event.subject.fx = null;
-            event.subject.fy = null;
-        }
     }
     function normalizedGraphData(raw, query) {
         const visible = new Set();
@@ -205,38 +112,25 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpec
       </div>
     `;
     }
-    function selectGraphNode(id) {
-        state.graphSelectedId = id;
-        render();
-    }
     function openGraphNode(node) {
         state.graphSelectedId = node.id;
+        state.graphRenderer?.setSelected?.(node.id);
         renderDetails(normalizedGraphData(state.graph, (els.graphSearch?.value || "").trim().toLowerCase()));
-        // Graph interactions should preview docs/files without changing the main tab selection.
-        if (node.specId) {
-            openSpecPreview(node.specId, { updateURL: true });
-            return;
-        }
-        if (node.path) {
-            openFilePreview(node.path, 0, { updateURL: true });
-            return;
-        }
-        selectGraphNode(node.id);
     }
     function stop() {
-        if (state.graphSimulation) {
-            state.graphSimulation.stop();
-            state.graphSimulation = null;
+        if (state.graphRenderer) {
+            state.graphRenderer.kill();
+            state.graphRenderer = null;
         }
     }
-}
-function fitGraph(svg, zoom, bounds, width, height) {
-    const fullWidth = bounds.width || width;
-    const fullHeight = bounds.height || height;
-    const scale = Math.max(0.25, Math.min(2.5, 0.86 / Math.max(fullWidth / width, fullHeight / height)));
-    const tx = -scale * (bounds.x + fullWidth / 2);
-    const ty = -scale * (bounds.y + fullHeight / 2);
-    svg.transition().duration(350).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    function fit() {
+        if (state.graphRenderer) {
+            state.graphRenderer.fit();
+        }
+        else {
+            render();
+        }
+    }
 }
 function nodeColor(node) {
     if (node.type === "external")

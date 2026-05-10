@@ -25,7 +25,7 @@ Semantic search tìm các tài liệu hoặc file code có liên quan trước; 
 
 - Không thay đổi nguồn tạo graphify hoặc schema `graphify-out/graph.json`.
 - Không thêm dependency runtime mới cho preview server.
-- Không biến graph panels thành full project graph không giới hạn; vẫn cần cap để tránh response và D3 layout quá nặng.
+- Không biến graph panels thành full project graph không giới hạn; vẫn cần cap để tránh response quá lớn và UI graph khó đọc.
 - Không thay đổi contract mở file/doc preview hiện có ngoài việc bổ sung metadata nếu cần.
 
 ## Hướng Tiếp Cận

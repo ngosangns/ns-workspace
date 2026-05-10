@@ -1,4 +1,5 @@
 import { createDocsGraph } from "./js/graph.js";
+import { renderNetworkGraph } from "./js/network_graph.js";
 
 interface ProjectSummary {
   name: string;
@@ -79,8 +80,8 @@ interface PreviewState {
   project: ProjectSummary | null;
   specs: SpecDocument[];
   graph: any;
-  graphSimulation: any;
-  searchGraphSimulations: Map<string, any>;
+  graphRenderer: any;
+  searchGraphRenderers: Map<string, any>;
   searchGraphSelections: Map<string, string>;
   graphSelectedId: string;
   searchData: SearchResponse | null;
@@ -129,8 +130,8 @@ const state: PreviewState = {
   project: null,
   specs: [],
   graph: null,
-  graphSimulation: null,
-  searchGraphSimulations: new Map(),
+  graphRenderer: null,
+  searchGraphRenderers: new Map(),
   searchGraphSelections: new Map(),
   graphSelectedId: "",
   searchData: null,
@@ -549,10 +550,6 @@ function dedupeGraphLinks(links) {
 
 function renderSearchResultGraph(name, graph, canvas, details) {
   if (!canvas || !details) return;
-  if (!window.d3) {
-    canvas.innerHTML = '<div class="alert alert-error m-4 text-sm">D3 library is not loaded.</div>';
-    return;
-  }
   stopSearchGraph(name);
   const selected = state.searchGraphSelections.get(name);
   const selectedNode = graph.nodes.find((node) => node.id === selected) || graph.nodes[0];
@@ -562,130 +559,19 @@ function renderSearchResultGraph(name, graph, canvas, details) {
   renderSearchGraphDetails(name, graph, details);
 
   canvas.innerHTML = "";
-  const rect = canvas.getBoundingClientRect();
-  const width = Math.max(480, rect.width || 720);
-  const height = Math.max(320, rect.height || 420);
-  const svg = d3
-    .select(canvas)
-    .append("svg")
-    .attr("class", "docs-graph-svg search-graph-svg")
-    .attr("viewBox", [-width / 2, -height / 2, width, height])
-    .attr("role", "img");
-  const viewport = svg.append("g");
-  const zoom = d3
-    .zoom()
-    .scaleExtent([0.35, 4])
-    .on("zoom", (event) => viewport.attr("transform", event.transform));
-  svg.call(zoom);
-
-  const markerID = `search-graph-arrow-${name}`;
-  svg
-    .append("defs")
-    .append("marker")
-    .attr("id", markerID)
-    .attr("viewBox", "0 -5 10 10")
-    .attr("refX", 18)
-    .attr("refY", 0)
-    .attr("markerWidth", 6)
-    .attr("markerHeight", 6)
-    .attr("orient", "auto")
-    .append("path")
-    .attr("d", "M0,-5L10,0L0,5")
-    .attr("fill", "currentColor")
-    .attr("opacity", 0.45);
-
-  const link = viewport
-    .append("g")
-    .attr("class", "graph-links")
-    .selectAll("line")
-    .data(graph.links)
-    .join("line")
-    .attr("stroke", (edge) => searchEdgeColor(edge.type))
-    .attr("stroke-width", 1.5)
-    .attr("stroke-dasharray", (edge) => (edge.confidence === "INFERRED" ? "4 4" : ""))
-    .attr("marker-end", `url(#${markerID})`);
-
-  const simulation = d3
-    .forceSimulation(graph.nodes)
-    .force(
-      "link",
-      d3
-        .forceLink(graph.links)
-        .id((node) => node.id)
-        .distance((edge) => (edge.type === "defines" ? 74 : 112)),
-    )
-    .force("charge", d3.forceManyBody().strength(-360))
-    .force("center", d3.forceCenter(0, 0))
-    .force("collision", d3.forceCollide().radius(34));
-
-  const node = viewport
-    .append("g")
-    .attr("class", "graph-nodes")
-    .selectAll("g")
-    .data(graph.nodes)
-    .join("g")
-    .attr("class", (item) => `graph-node ${item.id === selectedNode?.id ? "selected" : ""}`)
-    .call(d3.drag().on("start", dragStarted).on("drag", dragged).on("end", dragEnded))
-    .on("click", (_, item) => {
+  const renderer = renderNetworkGraph({
+    container: canvas,
+    graph,
+    selectedId: selectedNode?.id || "",
+    nodeColor: searchNodeColor,
+    edgeColor: searchEdgeColor,
+    labelColor: state.theme === "dark" ? "#f8fafc" : "#0f172a",
+    onSelectNode: (item) => {
       state.searchGraphSelections.set(name, item.id);
       renderSearchGraphDetails(name, graph, details);
-      node.classed("selected", (candidate) => candidate.id === item.id);
-      if (name === "codeGraph") {
-        const preview = codeGraphNodePreview(item);
-        if (preview.path) {
-          openFilePreview(preview.path, preview.line, { updateURL: true });
-        }
-      }
-    });
-
-  node
-    .append("circle")
-    .attr("r", (item) => (item.type === "file" || item.type === "doc-file" ? 8 : 9))
-    .attr("fill", searchNodeColor)
-    .attr("stroke", "hsl(var(--b1))")
-    .attr("stroke-width", 2);
-
-  node
-    .append("text")
-    .attr("x", 12)
-    .attr("y", 4)
-    .text((item) => item.label || item.id);
-
-  node.append("title").text((item) => `${item.label || item.id}\n${item.path || item.id}`);
-
-  simulation.on("tick", () => {
-    link
-      .attr("x1", (edge) => edge.source.x)
-      .attr("y1", (edge) => edge.source.y)
-      .attr("x2", (edge) => edge.target.x)
-      .attr("y2", (edge) => edge.target.y);
-    node.attr("transform", (item) => `translate(${item.x},${item.y})`);
+    },
   });
-  state.searchGraphSimulations.set(name, simulation);
-
-  requestAnimationFrame(() => {
-    const bounds = viewport.node().getBBox?.();
-    if (bounds && Number.isFinite(bounds.width) && bounds.width > 0) {
-      fitSearchGraph(svg, zoom, bounds, width, height);
-    }
-  });
-
-  function dragStarted(event) {
-    if (!event.active) simulation.alphaTarget(0.25).restart();
-    event.subject.fx = event.subject.x;
-    event.subject.fy = event.subject.y;
-  }
-
-  function dragged(event) {
-    event.subject.fx = event.x;
-    event.subject.fy = event.y;
-  }
-
-  function dragEnded(event) {
-    if (!event.active) simulation.alphaTarget(0);
-    event.subject.fx = null;
-    event.subject.fy = null;
-  }
+  state.searchGraphRenderers.set(name, renderer);
 }
 
 function renderSearchGraphDetails(name, graph, details) {
@@ -735,13 +621,6 @@ function codeGraphNodeLabel(result, fileName) {
     return title;
   }
   return `${title} · ${fileName}`;
-}
-
-function codeGraphNodePreview(node) {
-  return {
-    path: node.previewPath || node.path || "",
-    line: Number(node.previewLine || node.line || 0),
-  };
 }
 
 function renderSearchGraphEdgeList(edges, side) {
@@ -800,20 +679,11 @@ function searchEdgeColor(type) {
   }
 }
 
-function fitSearchGraph(svg, zoom, bounds, width, height) {
-  const fullWidth = bounds.width || width;
-  const fullHeight = bounds.height || height;
-  const scale = Math.max(0.35, Math.min(2.5, 0.82 / Math.max(fullWidth / width, fullHeight / height)));
-  const tx = -scale * (bounds.x + fullWidth / 2);
-  const ty = -scale * (bounds.y + fullHeight / 2);
-  svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-}
-
 function stopSearchGraph(name) {
-  const simulation = state.searchGraphSimulations.get(name);
-  if (simulation) {
-    simulation.stop();
-    state.searchGraphSimulations.delete(name);
+  const renderer = state.searchGraphRenderers.get(name);
+  if (renderer) {
+    renderer.kill();
+    state.searchGraphRenderers.delete(name);
   }
 }
 
@@ -1319,9 +1189,7 @@ function markdownMetadataRows(lines) {
 }
 
 function renderMetadataTable(rows) {
-  const body = rows
-    .map((row) => `<tr><th>${escapeHTML(row.key)}</th><td>${renderMetadataValue(row.value)}</td></tr>`)
-    .join("");
+  const body = rows.map((row) => `<tr><th>${escapeHTML(row.key)}</th><td>${renderMetadataValue(row.value)}</td></tr>`).join("");
   return `<table class="metadata-table"><thead><tr><th>Metadata</th><th>Value</th></tr></thead><tbody>${body}</tbody></table>\n`;
 }
 
@@ -1343,11 +1211,7 @@ function metadataArrayValues(raw) {
         return parsed.map((item) => cleanMetadataScalar(String(item))).filter(Boolean);
       }
     } catch {
-      return value
-        .slice(1, -1)
-        .split(",")
-        .map(cleanMetadataScalar)
-        .filter(Boolean);
+      return value.slice(1, -1).split(",").map(cleanMetadataScalar).filter(Boolean);
     }
   }
   return [];
@@ -2228,7 +2092,7 @@ window.addEventListener("popstate", () => {
 });
 els.search?.addEventListener("input", renderSpecList);
 els.graphSearch?.addEventListener("input", graphView.render);
-els.graphFit?.addEventListener("click", graphView.render);
+els.graphFit?.addEventListener("click", graphView.fit);
 els.globalSearch?.addEventListener("input", scheduleSearch);
 els.codeGraphReload?.addEventListener("click", () => {
   reloadCodeGraph().catch((error) => {

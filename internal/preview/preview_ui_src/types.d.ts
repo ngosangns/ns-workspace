@@ -1,7 +1,6 @@
 type Dictionary<T = unknown> = Record<string, T>;
 
 interface Window {
-  d3?: D3Global;
   hljs?: HighlightGlobal;
   lucide?: LucideGlobal;
   markdownit?: MarkdownItFactory;
@@ -9,7 +8,6 @@ interface Window {
   svgPanZoom?: SvgPanZoomFactory;
 }
 
-declare const d3: D3Global;
 declare const DOMPurify: {
   sanitize(input: string, config?: Dictionary): string;
 };
@@ -52,5 +50,3 @@ interface SvgPanZoomInstance {
 interface SvgPanZoomFactory {
   (svg: SVGElement, options: Dictionary): SvgPanZoomInstance;
 }
-
-type D3Global = any;

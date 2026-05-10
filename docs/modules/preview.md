@@ -5,11 +5,11 @@
 - **Status**: active
 - **Description**: Tài liệu module `internal/preview`, mô tả data models, API, parser metadata, search, graph và ràng buộc build frontend.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Preview web](../features/preview-web.md), [Kiến trúc tổng quan](../architecture/overview.md), [TypeScript cho preview web](../specs/planning/use-full-typescript-for-preview-web.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md)
+- **Links**: [Chỉ mục](../_index.md), [Preview web](../features/preview-web.md), [Kiến trúc tổng quan](../architecture/overview.md), [TypeScript cho preview web](../specs/planning/use-full-typescript-for-preview-web.md), [Renderer graph preview](../specs/planning/use-specialized-graph-renderer.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md)
 
 ## Tổng Quan
 
-`internal/preview` cung cấp HTTP preview cho knowledge base. Backend Go scan docs, parse metadata, dựng graph và trả API JSON. Frontend TypeScript render UI, router, Markdown preview, raw Markdown toggle, selection copy menu, graph D3, search panels, modal preview và hot reload.
+`internal/preview` cung cấp HTTP preview cho knowledge base. Backend Go scan docs, parse metadata, dựng graph và trả API JSON. Frontend TypeScript render UI, router, Markdown preview, raw Markdown toggle, selection copy menu, graph Sigma/Graphology, search panels, modal preview và hot reload.
 
 ## Data Models Và APIs
 
@@ -33,7 +33,7 @@ Trang tổng quan không còn là route hoặc tab riêng. Nếu URL cũ `/overv
 
 ## Ràng Buộc Và Giả Định
 
-Server preview chạy local và không phụ thuộc dịch vụ ngoài. Semantic search hiện có fallback local khi embedding runtime không khả dụng. Graphify data là optional và không được coi là nguồn bắt buộc; khi không có graphify hoặc không map được semantic anchor, graph panels degrade bằng warning hoặc fallback query graph search.
+Server preview chạy local và frontend runtime dùng CDN giống các thư viện UI hiện có. Semantic search hiện có fallback local khi embedding runtime không khả dụng. Graphify data là optional và không được coi là nguồn bắt buộc; khi không có graphify hoặc không map được semantic anchor, graph panels degrade bằng warning hoặc fallback query graph search. Graph UI dùng Sigma/Graphology WebGL renderer với layout ForceAtlas2 để xem graph nhiều nodes/edges nhẹ hơn D3 SVG force-layout cũ. Click node chỉ chọn node và cập nhật details panel; người dùng mở preview doc/file bằng nút trong details panel.
 
 ## Quan Hệ
 
