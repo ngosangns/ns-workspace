@@ -1,5 +1,6 @@
 import { renderNetworkGraph } from "./network_graph.js";
 export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpecPreview, openFilePreview }) {
+    let renderedGraph = null;
     return {
         fit,
         render,
@@ -11,6 +12,7 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpec
         stop();
         const query = (els.graphSearch?.value || "").trim().toLowerCase();
         const graph = normalizedGraphData(state.graph, query);
+        renderedGraph = graph;
         els.graphStats.textContent = `${graph.nodes.length} nodes, ${graph.links.length} edges`;
         renderDetails(graph);
         els.graphCanvas.innerHTML = "";
@@ -19,9 +21,10 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpec
             graph,
             selectedId: state.graphSelectedId,
             nodeColor,
-            edgeColor,
+            edgeColor: edgeColorForTheme(state.theme),
             labelColor: state.theme === "dark" ? "#f8fafc" : "#0f172a",
             onSelectNode: openGraphNode,
+            onClearSelection: clearGraphSelection,
         });
     }
     function normalizedGraphData(raw, query) {
@@ -51,12 +54,12 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpec
     function renderDetails(graph) {
         if (!els.graphDetails)
             return;
-        const node = graph.nodes.find((item) => item.id === state.graphSelectedId) || graph.nodes[0];
+        const selected = graph.nodes.find((item) => item.id === state.graphSelectedId);
+        const node = selected || graph.nodes[0];
         if (!node) {
             els.graphDetails.innerHTML = '<div class="p-4 text-sm text-base-content/60">No graph nodes.</div>';
             return;
         }
-        state.graphSelectedId = node.id;
         const incoming = graph.links.filter((edge) => edge.target === node.id || edge.target?.id === node.id);
         const outgoing = graph.links.filter((edge) => edge.source === node.id || edge.source?.id === node.id);
         els.graphDetails.innerHTML = `
@@ -67,7 +70,7 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpec
           <p class="break-words text-sm text-base-content/60">${escapeHTML(node.path || node.id)}</p>
         </div>
         ${node.specId ? `<button class="btn btn-primary btn-sm" type="button" data-preview-spec="${escapeHTML(node.specId)}"><i data-lucide="file-text" class="h-4 w-4"></i>Preview doc</button>` : ""}
-        ${!node.specId && node.path ? `<button class="btn btn-ghost btn-sm" type="button" data-preview-file="${escapeHTML(node.path)}"><i data-lucide="file-code" class="h-4 w-4"></i>Preview file</button>` : ""}
+        ${!node.specId && node.path ? `<button class="btn btn-outline btn-sm" type="button" data-preview-file="${escapeHTML(node.path)}"><i data-lucide="file-code" class="h-4 w-4"></i>Preview file</button>` : ""}
         <div>
           <h4 class="mb-2 text-sm font-semibold">Outgoing refs (${outgoing.length})</h4>
           ${renderEdgeList(outgoing, "target")}
@@ -115,13 +118,23 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpec
     function openGraphNode(node) {
         state.graphSelectedId = node.id;
         state.graphRenderer?.setSelected?.(node.id);
-        renderDetails(normalizedGraphData(state.graph, (els.graphSearch?.value || "").trim().toLowerCase()));
+        if (renderedGraph) {
+            renderDetails(renderedGraph);
+        }
+    }
+    function clearGraphSelection() {
+        state.graphSelectedId = "";
+        state.graphRenderer?.setSelected?.("");
+        if (renderedGraph) {
+            renderDetails(renderedGraph);
+        }
     }
     function stop() {
         if (state.graphRenderer) {
             state.graphRenderer.kill();
             state.graphRenderer = null;
         }
+        renderedGraph = null;
     }
     function fit() {
         if (state.graphRenderer) {
@@ -150,6 +163,9 @@ function nodeColor(node) {
             return "#0f766e";
     }
 }
+function edgeColorForTheme(theme) {
+    return theme === "dark" ? edgeColor : darkEdgeColor;
+}
 function edgeColor(type) {
     switch (type) {
         case "depends":
@@ -166,5 +182,23 @@ function edgeColor(type) {
             return "#eab308";
         default:
             return "#64748b";
+    }
+}
+function darkEdgeColor(type) {
+    switch (type) {
+        case "depends":
+            return "#991b1b";
+        case "implements":
+            return "#3730a3";
+        case "blocked-by":
+            return "#9a3412";
+        case "verifies":
+            return "#115e59";
+        case "provides":
+            return "#166534";
+        case "consumes":
+            return "#854d0e";
+        default:
+            return "#334155";
     }
 }

@@ -17,9 +17,11 @@
 - `projectSummary` mô tả project root, docs root, trạng thái `_index.md`, `_sync.md`, số lượng tài liệu, category, status, compliance và warning.
 - `specDocument` đại diện cho từng file text trong docs với `id`, `title`, `path`, `language`, metadata và raw content.
 - `specGraph` chứa nodes, edges, relationships, constraints và dependency diagram.
-- `/api/search` trả response hybrid với bốn panel để UI render độc lập.
+- `/api/search` trả response hybrid với bốn panel để UI render độc lập và hỗ trợ `keywordOp=sum|difference` cho query nhiều keyword phân tách bằng dấu phẩy.
 - Docs semantic search dùng `docsSearchDoc` để gom cả spec documents và file text còn lại trong docs root.
 - Code semantic search scan project root nhưng bỏ qua docs root, cache, dependency folders, generated folders lớn và binary file.
+- `specDocument.description` được parse từ metadata `Description`; docs semantic results truyền field này sang `previewSearchResult.description` để UI search hiển thị mô tả metadata trước excerpt nội dung.
+- Keyword operator mặc định là `sum`, giữ hành vi cộng dồn match từ mọi keyword. Khi operator là `difference`, backend dùng keyword/nhóm đầu làm truy vấn chính và loại docs, code files hoặc graph nodes match các keyword/nhóm còn lại trước khi score.
 - Docs Graph và Code Graph nhận semantic results làm anchors, match anchors vào docs graph hoặc graphify graph, rồi breadth-first expand qua neighbor relationships với depth và result cap.
 - `/api/files` đọc file UTF-8 trong project root; file trong docs root được preview dù extension không nằm trong allowlist code.
 

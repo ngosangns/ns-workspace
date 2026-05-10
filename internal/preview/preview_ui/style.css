@@ -322,7 +322,7 @@ figure,
   padding: 0.625rem 0.75rem;
   color: #eef2f7;
   font-size: 0.8rem;
-  line-height: 1.18;
+  line-height: 1.08;
 }
 
 .code-preview code,
@@ -337,7 +337,7 @@ figure,
 
 .code-line {
   display: block;
-  min-height: 1.18em;
+  min-height: 1.08em;
 }
 
 .code-line-number {
