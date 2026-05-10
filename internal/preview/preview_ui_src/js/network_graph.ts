@@ -40,6 +40,7 @@ interface RenderNetworkGraphOptions {
   nodeColor: (node: NetworkGraphNode) => string;
   edgeColor: (type: string) => string;
   onSelectNode: (node: NetworkGraphNode) => void;
+  onClearSelection?: () => void;
   labelColor?: string;
 }
 
@@ -49,6 +50,7 @@ interface SigmaNodeAttributes extends NetworkGraphNode {
   size: number;
   color: string;
   label: string;
+  labelColor: string;
 }
 
 interface SigmaEdgeAttributes {
@@ -70,6 +72,7 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
       ...node,
       color: options.nodeColor(node),
       label: node.label || node.id,
+      labelColor: options.labelColor || "#0f172a",
       size: nodeSize(node),
     });
   }
@@ -77,17 +80,18 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
   addEdges(graph, options.graph.links, options.edgeColor);
   applyReadableLayout(graph);
 
-  let selectedId = options.selectedId && graph.hasNode(options.selectedId) ? options.selectedId : nodes[0]?.id || "";
+  let selectedId = options.selectedId && graph.hasNode(options.selectedId) ? options.selectedId : "";
   const renderer = new Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>(graph, options.container, {
     allowInvalidContainer: true,
     autoCenter: true,
     autoRescale: true,
     defaultEdgeType: "arrow",
     defaultNodeColor: "#94a3b8",
+    defaultDrawNodeHover: drawNodeHoverLabelOnly,
     hideEdgesOnMove: false,
     hideLabelsOnMove: false,
     itemSizesReference: "screen",
-    labelColor: { color: options.labelColor || "#0f172a" },
+    labelColor: { attribute: "labelColor", color: options.labelColor || "#0f172a" },
     labelDensity: 1,
     labelGridCellSize: 90,
     labelRenderedSizeThreshold: 0,
@@ -102,35 +106,41 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
     nodeReducer: (node, data) => {
       const selected = Boolean(selectedId);
       const related = selected && (node === selectedId || graph.areNeighbors(node, selectedId));
+      const dimmed = selected && !related;
       return {
         ...data,
-        color: selected && !related ? softenColor(data.color) : data.color,
+        color: dimmed ? colorWithOpacity(data.color, 0.18) : data.color,
         forceLabel: true,
-        highlighted: node === selectedId,
         label: data.label,
-        size: node === selectedId ? data.size + 3 : related ? data.size + 1.5 : data.size,
+        labelColor: dimmed ? colorWithOpacity(data.labelColor, 0.22) : data.labelColor,
         type: "circle",
-        zIndex: node === selectedId ? 3 : related ? 2 : 1,
+        zIndex: node === selectedId ? 4 : related ? 3 : 1,
       };
     },
     edgeReducer: (edge, data) => {
       const [source, target] = graph.extremities(edge);
-      const related = Boolean(selectedId) && (source === selectedId || target === selectedId);
+      const selected = Boolean(selectedId);
+      const related = selected && (source === selectedId || target === selectedId);
       return {
         ...data,
-        color: related ? data.color : softenColor(data.color),
-        hidden: Boolean(selectedId) && graph.order > 180 && !related,
-        size: related ? data.size + 0.8 : data.size,
-        zIndex: related ? 2 : 1,
+        color: selected && !related ? colorWithOpacity(data.color, 0.14) : data.color,
+        hidden: false,
       };
     },
   });
+  const disposeWheelGuard = installModifierWheelZoomGuard(options.container);
 
   renderer.on("clickNode", ({ node }) => {
     const attrs = graph.getNodeAttributes(node);
     selectedId = node;
     renderer.refresh();
     options.onSelectNode(attrs);
+  });
+  renderer.on("clickStage", () => {
+    if (!selectedId) return;
+    selectedId = "";
+    renderer.refresh();
+    options.onClearSelection?.();
   });
   renderer.on("enterNode", () => {
     options.container.classList.add("is-node-hover");
@@ -143,12 +153,39 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
 
   return {
     fit: () => fitRenderer(renderer),
-    kill: () => renderer.kill(),
+    kill: () => {
+      disposeWheelGuard();
+      renderer.kill();
+    },
     setSelected: (id: string) => {
       selectedId = graph.hasNode(id) ? id : "";
       renderer.refresh();
     },
   };
+}
+
+function installModifierWheelZoomGuard(container: HTMLElement): () => void {
+  const options = { capture: true };
+  const handleWheel = (event: WheelEvent) => {
+    if (event.metaKey || event.ctrlKey) return;
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  container.addEventListener("wheel", handleWheel, options);
+  return () => container.removeEventListener("wheel", handleWheel, options);
+}
+
+function drawNodeHoverLabelOnly(context: CanvasRenderingContext2D, data: any, settings: any) {
+  if (!data.label) return;
+  const size = settings.labelSize;
+  const font = settings.labelFont;
+  const weight = settings.labelWeight;
+  const color = settings.labelColor.attribute
+    ? data[settings.labelColor.attribute] || settings.labelColor.color || "#000"
+    : settings.labelColor.color;
+  context.fillStyle = color;
+  context.font = `${weight} ${size}px ${font}`;
+  context.fillText(data.label, data.x + data.size + 3, data.y + size / 3);
 }
 
 function normalizeNodes(nodes: NetworkGraphNode[]): SigmaNodeAttributes[] {
@@ -162,6 +199,7 @@ function normalizeNodes(nodes: NetworkGraphNode[]): SigmaNodeAttributes[] {
       ...node,
       id,
       label: node.label || id,
+      labelColor: "#0f172a",
       x: 0,
       y: 0,
       size: nodeSize(node),
@@ -252,13 +290,25 @@ function nodeSize(node: NetworkGraphNode): number {
   }
 }
 
-function softenColor(color: string): string {
-  const hex = color.startsWith("#") ? color.slice(1) : color;
-  if (hex.length !== 6) return "#cbd5e1";
-  const r = Number.parseInt(hex.slice(0, 2), 16);
-  const g = Number.parseInt(hex.slice(2, 4), 16);
-  const b = Number.parseInt(hex.slice(4, 6), 16);
-  return `rgb(${Math.round((r + 226) / 2)}, ${Math.round((g + 232) / 2)}, ${Math.round((b + 240) / 2)})`;
+function colorWithOpacity(color: string, opacity: number): string {
+  const hex = color.startsWith("#") ? color.slice(1) : "";
+  if (hex.length === 3) {
+    const r = Number.parseInt(hex[0] + hex[0], 16);
+    const g = Number.parseInt(hex[1] + hex[1], 16);
+    const b = Number.parseInt(hex[2] + hex[2], 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  }
+  if (hex.length === 6) {
+    const r = Number.parseInt(hex.slice(0, 2), 16);
+    const g = Number.parseInt(hex.slice(2, 4), 16);
+    const b = Number.parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  }
+  const rgb = color.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+  if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${opacity})`;
+  const rgba = color.match(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)$/);
+  if (rgba) return `rgba(${rgba[1]}, ${rgba[2]}, ${rgba[3]}, ${opacity})`;
+  return color;
 }
 
 function stableHash(value: string): number {

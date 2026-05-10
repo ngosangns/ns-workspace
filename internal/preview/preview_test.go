@@ -30,7 +30,14 @@ func TestPreviewHTTPHandlers(t *testing.T) {
 overview → editor.core
 `+"```"+`
 `)
-	writeTestFile(t, root, "docs/overview.md", "# Overview\n\nHello **docs**.\n")
+	writeTestFile(t, root, "docs/overview.md", `# Overview
+
+## Meta
+
+- **Description**: Overview metadata description.
+
+Hello **docs**.
+`)
 	writeTestFile(t, root, "docs/reference/settings.custom", "feature_flag: preview_index_all_docs_files\n")
 
 	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
@@ -72,6 +79,9 @@ overview → editor.core
 	}
 	if !strings.Contains(doc.Raw, "Hello **docs**.") || doc.HTML != "" {
 		t.Fatalf("doc endpoint should return raw Markdown for client-side rendering: raw=%q html=%q", doc.Raw, doc.HTML)
+	}
+	if doc.Description != "Overview metadata description." {
+		t.Fatalf("doc endpoint should preserve document metadata description: %+v", doc)
 	}
 
 	res, err = http.Get(ts.URL + "/api/docs/reference%2Fsettings.custom")
@@ -154,7 +164,14 @@ func TestPreviewSearchReturnsFourPanelsAcrossDocsAndCode(t *testing.T) {
 auth → session
 `+"```"+`
 `)
-	writeTestFile(t, root, "docs/auth.md", "# Auth\n\nAuthentication validates session tokens.\n")
+	writeTestFile(t, root, "docs/auth.md", `# Auth
+
+## Meta
+
+- **Description**: Describes auth metadata for search result cards.
+
+Authentication validates session tokens.
+`)
 	writeTestFile(t, root, "docs/session.md", "# Session\n\nSession token lifecycle.\n")
 	writeTestFile(t, root, "auth.go", `package demo
 
@@ -195,6 +212,9 @@ func parseAuthToken(raw string) string {
 	if search.Panels.DocsSemantic[0].SpecID == "" {
 		t.Fatalf("docs semantic result should be openable as a doc: %+v", search.Panels.DocsSemantic[0])
 	}
+	if search.Panels.DocsSemantic[0].Description != "Describes auth metadata for search result cards." {
+		t.Fatalf("docs semantic result should expose metadata description: %+v", search.Panels.DocsSemantic[0])
+	}
 	if search.Panels.CodeGraph[0].Line != 3 || len(search.Panels.CodeGraph[0].Neighbors) == 0 {
 		t.Fatalf("code graph should expose source line and neighbors: %+v", search.Panels.CodeGraph[0])
 	}
@@ -213,6 +233,39 @@ func parseAuthToken(raw string) string {
 	}
 	if len(commaSearch.Panels.DocsSemantic) < 2 {
 		t.Fatalf("comma-separated keywords should match multiple document terms: %+v", commaSearch.Panels.DocsSemantic)
+	}
+}
+
+func TestPreviewSearchKeywordDifferenceExcludesLaterKeywords(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "docs/alpha.md", "# Alpha\n\nAlpha only.\n")
+	writeTestFile(t, root, "docs/beta.md", "# Beta\n\nAlpha beta overlap.\n")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=alpha,beta&keywordOp=difference")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if search.KeywordOperator != "difference" {
+		t.Fatalf("expected difference keyword operator, got %s", search.KeywordOperator)
+	}
+	if len(search.Panels.DocsSemantic) == 0 {
+		t.Fatalf("expected alpha result after keyword difference")
+	}
+	for _, result := range search.Panels.DocsSemantic {
+		if strings.Contains(result.Path, "beta.md") {
+			t.Fatalf("difference search should exclude later keyword matches: %+v", search.Panels.DocsSemantic)
+		}
 	}
 }
 
@@ -633,13 +686,28 @@ func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(graphJS) + "\n" + string(networkGraphJS) + "\n" + string(css)
-	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode", ".is-node-hover canvas"} {
+	for _, want := range []string{"data-tab=\"graph\"", "type=\"module\" src=\"/app.js\"", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "clickStage", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "renderedGraph", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode", "clearGraphSelection", ".is-node-hover canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview docs graph UI missing %s", want)
 		}
 	}
 	if strings.Contains(string(graphJS), "selectSpec(") || strings.Contains(string(graphJS), "data-open-spec") {
 		t.Fatalf("preview docs graph should use popup previews instead of direct doc navigation")
+	}
+	if strings.Contains(string(graphJS), "state.graphSelectedId = node.id;\n    const incoming") {
+		t.Fatalf("preview docs graph should not focus the first node while rendering details")
+	}
+	if strings.Contains(string(networkGraphJS), ": nodes[0]?.id") {
+		t.Fatalf("preview graph renderer should not default-focus the first node")
+	}
+	if strings.Contains(string(networkGraphJS), `label: dimmed ? "" : data.label`) || strings.Contains(string(networkGraphJS), "size: node === selectedId") {
+		t.Fatalf("focused preview graph should dim nodes without hiding labels or resizing nodes")
+	}
+	if !strings.Contains(string(networkGraphJS), "labelColor: dimmed ? colorWithOpacity(data.labelColor, 0.22) : data.labelColor") {
+		t.Fatalf("focused preview graph should dim unfocused node labels")
+	}
+	if strings.Contains(string(networkGraphJS), "softenColor") || !strings.Contains(string(networkGraphJS), "return color;") {
+		t.Fatalf("focused preview graph should dim by opacity only, without changing original colors")
 	}
 }
 
@@ -689,10 +757,14 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		`id="codeSemanticResults"`,
 		`id="codeGraphResults"`,
 		`id="codeGraphReload"`,
+		`id="searchKeywordOperator"`,
+		`keywordOp`,
+		`currentSearchKeywordOperator`,
 		"fetch(`/api/search?${params.toString()}",
 		`renderSearchPanel("docsSemantic"`,
 		`renderSearchPanel("codeGraph"`,
 		`renderSearchResult(result, name)`,
+		"result.description || result.excerpt",
 		`!result.specId`,
 		"reloadCodeGraph",
 		"updateCodeGraphReloadControl",
@@ -708,6 +780,8 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"previewPath",
 		"searchGraphRenderers",
 		"renderSearchGraphDetails(name, graph, details)",
+		"const selectedNode = graph.nodes.find((node) => node.id === selected);",
+		"clearSearchGraphSelection",
 		".search-graph-canvas",
 		"searchLoading",
 		"renderSearchLoading",
@@ -752,6 +826,9 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview search UI missing %s", want)
 		}
+	}
+	if strings.Contains(text, "state.searchGraphSelections.set(name, selectedNode.id)") {
+		t.Fatalf("preview search graph should not default-focus the first rendered node")
 	}
 }
 
@@ -802,11 +879,29 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
 	text := string(css) + "\n" + string(app) + "\n" + string(graphJS)
-	for _, want := range []string{"labelColor", "#f8fafc", "#0f172a", ".graph-canvas canvas", ".search-graph-canvas canvas"} {
+	for _, want := range []string{"labelColor", "#f8fafc", "#0f172a", "edgeColorForTheme", "searchEdgeColorForTheme", "#334155", "#991b1b", ".graph-canvas canvas", ".search-graph-canvas canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview graph label dark mode contrast missing %s", want)
 		}
+	}
+	if strings.Contains(string(networkGraphJS), "highlighted: node === selectedId") {
+		t.Fatalf("focused preview graph node should not render Sigma highlighted label background")
+	}
+	if !strings.Contains(string(networkGraphJS), "defaultDrawNodeHover: drawNodeHoverLabelOnly") {
+		t.Fatalf("hovered preview graph node should not render Sigma label background")
+	}
+	if !strings.Contains(string(networkGraphJS), "color: selected && !related ? colorWithOpacity(data.color, 0.14) : data.color") {
+		t.Fatalf("focused preview graph should dim unfocused edges without hiding them")
+	}
+	themeRerender := string(app)
+	rerenderIndex := strings.Index(themeRerender, "function rerenderForTheme()")
+	if rerenderIndex == -1 || !strings.Contains(themeRerender[rerenderIndex:], "renderSearchPanels();") {
+		t.Fatalf("preview graph label dark mode contrast should rerender search graph panels")
 	}
 }
 
@@ -912,6 +1007,9 @@ func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI route handling missing %s", want)
 		}
+	}
+	if count := strings.Count(text, "selectSpec(state.selectedId, false, { updateURL: false })"); count < 2 {
+		t.Fatalf("preview UI should not rewrite /graph or /search to a default spec during initial load/reload; found %d guarded selects", count)
 	}
 	if strings.Contains(text, "hashchange") {
 		t.Fatalf("preview UI should use path routing without hash fragments")

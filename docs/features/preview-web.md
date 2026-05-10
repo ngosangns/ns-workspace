@@ -19,14 +19,14 @@ Lệnh `preview` chạy một web server local để đọc thư mục `docs/` c
 - Khi chọn text trong Doc hoặc preview modal, context menu có nút Copy để copy reference dạng `path:start-end`.
 - Topbar chỉ điều hướng các view phụ như Graph và Search; tài liệu đang đọc được chọn trong sidebar và được xác nhận bằng route `/spec/...`.
 - Graph tab hiển thị graph tài liệu từ `_index.md`, metadata, relationship và dependency diagram bằng Sigma/Graphology WebGL renderer; click node chỉ chọn node và cập nhật details panel, còn preview doc/file được mở bằng nút trong details panel.
-- Search tab có bốn panel: Docs Semantic, Docs Graph, Code Semantic và Code Graph. Docs search lấy toàn bộ file text trong `docs/`, còn code search bỏ qua docs root để tránh trùng kết quả. Graph panels dùng semantic results làm anchor rồi mở rộng qua docs graph hoặc graphify graph để hiển thị context nhiều tầng; click graph node trong panels cũng chỉ chọn node để hiển thị preview actions trong details panel.
+- Search tab có bốn panel: Docs Semantic, Docs Graph, Code Semantic và Code Graph. Docs search lấy toàn bộ file text trong `docs/`, còn code search bỏ qua docs root để tránh trùng kết quả. Query nhiều keyword phân tách bằng dấu phẩy có thể chạy theo chế độ tổng keyword hoặc hiệu keyword; hiệu keyword dùng nhóm đầu làm tập gốc rồi loại kết quả match các nhóm sau. Result cards của tài liệu ưu tiên hiển thị metadata `Description` khi doc có khai báo. Graph panels dùng semantic results làm anchor rồi mở rộng qua docs graph hoặc graphify graph để hiển thị context nhiều tầng; click graph node trong panels cũng chỉ chọn node để hiển thị preview actions trong details panel.
 - Link Markdown nội bộ và mention dạng `@doc/...` hoặc `@spec/...` được resolve bằng router preview khi target khớp tài liệu.
 - External link và anchor nội trang vẫn giữ hành vi browser bình thường.
 - API file preview cho phép đọc file UTF-8 trong docs root ngay cả khi extension không thuộc nhóm source code previewable; file ngoài docs vẫn phải qua allowlist extension.
 
 ## API Liên Quan
 
-Preview frontend gọi `/api/project`, `/api/docs`, `/api/docs/{id}`, `/api/graph`, `/api/search`, `/api/files` và `/api/events`. Search graph dùng typed docs graph và dùng thêm `graphify-out/graph.json` nếu file này có trong project root. `/api/search` trả metadata graph optional như anchor, anchorId và depth để mô tả node được neo từ semantic result hay được mở rộng qua quan hệ graph.
+Preview frontend gọi `/api/project`, `/api/docs`, `/api/docs/{id}`, `/api/graph`, `/api/search`, `/api/files` và `/api/events`. Search graph dùng typed docs graph và dùng thêm `graphify-out/graph.json` nếu file này có trong project root. `/api/search` nhận `q`, `limit` và `keywordOp=sum|difference`; response trả metadata graph optional như anchor, anchorId và depth để mô tả node được neo từ semantic result hay được mở rộng qua quan hệ graph.
 
 ## Quan Hệ
 

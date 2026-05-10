@@ -45,6 +45,7 @@ const els = {
     graphStats: document.querySelector("#graphStats"),
     graphFit: document.querySelector("#graphFit"),
     globalSearch: document.querySelector("#globalSearch"),
+    searchKeywordOperator: document.querySelector("#searchKeywordOperator"),
     searchSummary: document.querySelector("#searchSummary"),
     docsSemanticResults: document.querySelector("#docsSemanticResults"),
     docsGraphResults: document.querySelector("#docsGraphResults"),
@@ -129,7 +130,7 @@ async function load() {
     graphView.render();
     renderSpecList();
     if (state.selectedId) {
-        await selectSpec(state.selectedId, false);
+        await selectSpec(state.selectedId, false, { updateURL: false });
     }
     if (!route.tab && !route.spec && state.selectedId) {
         replaceSpecRoute(state.selectedId, route.fragment || "");
@@ -151,7 +152,7 @@ async function reloadPreviewData() {
     graphView.render();
     renderSpecList();
     if (state.selectedId) {
-        await selectSpec(state.selectedId, false);
+        await selectSpec(state.selectedId, false, { updateURL: false });
     }
     if (!route.tab && !route.spec && state.selectedId) {
         replaceSpecRoute(state.selectedId, route.fragment || "");
@@ -202,7 +203,7 @@ async function runSearch() {
     state.searchLoading = true;
     renderSearchPanels();
     state.searchController = new AbortController();
-    const params = new URLSearchParams({ q: query, limit: "8" });
+    const params = searchAPIParams(query);
     const res = await fetch(`/api/search?${params.toString()}`, { signal: state.searchController.signal });
     if (!res.ok)
         throw new Error(await res.text());
@@ -236,7 +237,7 @@ async function reloadCodeGraph() {
     renderSearchPanel("codeGraph", panels.codeGraph || [], "No code graph matches.", true);
     state.codeGraphController = new AbortController();
     try {
-        const params = new URLSearchParams({ q: query, limit: "8" });
+        const params = searchAPIParams(query);
         const res = await fetch(`/api/search?${params.toString()}`, { signal: state.codeGraphController.signal });
         if (!res.ok)
             throw new Error(await res.text());
@@ -264,6 +265,17 @@ async function reloadCodeGraph() {
         }
     }
 }
+function currentSearchKeywordOperator() {
+    return els.searchKeywordOperator?.value === "difference" ? "difference" : "sum";
+}
+function searchAPIParams(query) {
+    const params = new URLSearchParams({ q: query, limit: "8" });
+    const keywordOperator = currentSearchKeywordOperator();
+    if (keywordOperator !== "sum") {
+        params.set("keywordOp", keywordOperator);
+    }
+    return params;
+}
 function updateCodeGraphReloadControl() {
     if (!els.codeGraphReload)
         return;
@@ -290,9 +302,11 @@ function renderSearchSummary(data) {
     const stats = data.stats || {};
     const total = Object.values(stats).reduce((sum, value) => sum + Number(value || 0), 0);
     const warnings = data.warnings || [];
+    const keywordOperator = data.keywordOperator === "difference" ? "difference" : "sum";
     els.searchSummary.innerHTML = `
       <div class="flex flex-wrap items-center gap-2">
       <span class="badge badge-primary badge-sm">${escapeHTML(data.mode || "hybrid")}</span>
+      <span class="badge badge-ghost badge-sm">${keywordOperator === "difference" ? "keyword difference" : "keyword sum"}</span>
       <span class="badge badge-ghost badge-sm">${total} results</span>
       ${warnings
         .slice(0, 2)
@@ -419,10 +433,7 @@ function renderSearchResultGraph(name, graph, canvas, details) {
         return;
     stopSearchGraph(name);
     const selected = state.searchGraphSelections.get(name);
-    const selectedNode = graph.nodes.find((node) => node.id === selected) || graph.nodes[0];
-    if (selectedNode) {
-        state.searchGraphSelections.set(name, selectedNode.id);
-    }
+    const selectedNode = graph.nodes.find((node) => node.id === selected);
     renderSearchGraphDetails(name, graph, details);
     canvas.innerHTML = "";
     const renderer = renderNetworkGraph({
@@ -430,14 +441,27 @@ function renderSearchResultGraph(name, graph, canvas, details) {
         graph,
         selectedId: selectedNode?.id || "",
         nodeColor: searchNodeColor,
-        edgeColor: searchEdgeColor,
+        edgeColor: searchEdgeColorForTheme(state.theme),
         labelColor: state.theme === "dark" ? "#f8fafc" : "#0f172a",
         onSelectNode: (item) => {
-            state.searchGraphSelections.set(name, item.id);
-            renderSearchGraphDetails(name, graph, details);
+            selectSearchGraphNode(name, graph, details, item.id);
         },
+        onClearSelection: () => clearSearchGraphSelection(name, graph, details),
     });
     state.searchGraphRenderers.set(name, renderer);
+}
+function selectSearchGraphNode(name, graph, details, nodeId) {
+    const node = graph.nodes.find((item) => item.id === nodeId);
+    if (!node)
+        return;
+    state.searchGraphSelections.set(name, node.id);
+    state.searchGraphRenderers.get(name)?.setSelected?.(node.id);
+    renderSearchGraphDetails(name, graph, details);
+}
+function clearSearchGraphSelection(name, graph, details) {
+    state.searchGraphSelections.delete(name);
+    state.searchGraphRenderers.get(name)?.setSelected?.("");
+    renderSearchGraphDetails(name, graph, details);
 }
 function renderSearchGraphDetails(name, graph, details) {
     const selected = state.searchGraphSelections.get(name);
@@ -457,7 +481,7 @@ function renderSearchGraphDetails(name, graph, details) {
       </div>
       <div class="flex flex-wrap gap-2">
         ${node.specId ? `<button class="btn btn-primary btn-xs" type="button" data-preview-spec="${escapeHTML(node.specId)}"><i data-lucide="file-text" class="h-3.5 w-3.5"></i>Preview doc</button>` : ""}
-        ${node.path ? `<button class="btn btn-ghost btn-xs" type="button" data-preview-file="${escapeHTML(node.path)}" data-preview-line="${escapeHTML(String(node.line || 0))}"><i data-lucide="file-code" class="h-3.5 w-3.5"></i>Preview file</button>` : ""}
+        ${node.path ? `<button class="btn btn-outline btn-xs" type="button" data-preview-file="${escapeHTML(node.path)}" data-preview-line="${escapeHTML(String(node.line || 0))}"><i data-lucide="file-code" class="h-3.5 w-3.5"></i>Preview file</button>` : ""}
       </div>
       <div>
         <h4 class="mb-1 text-xs font-semibold">Outgoing flows (${outgoing.length})</h4>
@@ -474,6 +498,11 @@ function renderSearchGraphDetails(name, graph, details) {
     });
     details.querySelectorAll("[data-preview-file]").forEach((button) => {
         button.addEventListener("click", () => openFilePreview(button.dataset.previewFile, Number(button.dataset.previewLine || 0), { updateURL: true }));
+    });
+    details.querySelectorAll("[data-select-search-node]").forEach((button) => {
+        button.addEventListener("click", () => {
+            selectSearchGraphNode(name, graph, details, button.dataset.selectSearchNode);
+        });
     });
     refreshIcons();
 }
@@ -493,10 +522,10 @@ function renderSearchGraphEdgeList(edges, side) {
         .slice(0, 10)
         .map((edge) => {
         const related = graphEndpointID(edge[side]);
-        return `<div class="graph-ref-row">
+        return `<button class="graph-ref-row" type="button" data-select-search-node="${escapeHTML(related)}">
             <span class="badge badge-ghost badge-xs">${escapeHTML(edge.type || "references")}</span>
             <span class="min-w-0 truncate">${escapeHTML(related)}</span>
-          </div>`;
+          </button>`;
     })
         .join("")}
     </div>
@@ -520,6 +549,9 @@ function searchNodeColor(node) {
             return "#94a3b8";
     }
 }
+function searchEdgeColorForTheme(theme) {
+    return theme === "dark" ? searchEdgeColor : darkSearchEdgeColor;
+}
 function searchEdgeColor(type) {
     switch (type) {
         case "defines":
@@ -535,6 +567,23 @@ function searchEdgeColor(type) {
             return "#14b8a6";
         default:
             return "#64748b";
+    }
+}
+function darkSearchEdgeColor(type) {
+    switch (type) {
+        case "defines":
+        case "documents":
+            return "#334155";
+        case "depends":
+        case "blocked-by":
+            return "#991b1b";
+        case "implements":
+        case "calls":
+            return "#3730a3";
+        case "references":
+            return "#115e59";
+        default:
+            return "#334155";
     }
 }
 function stopSearchGraph(name) {
@@ -555,7 +604,8 @@ function renderSearchLoading() {
 }
 function renderSearchResult(result, panelName) {
     const path = result.path ? `<div class="search-path">${escapeHTML(formatResultPath(result))}</div>` : "";
-    const excerpt = result.excerpt ? `<p class="search-excerpt">${escapeHTML(result.excerpt)}</p>` : "";
+    const description = result.description || result.excerpt || "";
+    const excerpt = description ? `<p class="search-excerpt">${escapeHTML(description)}</p>` : "";
     const tags = [
         result.kind,
         ...(result.matchedBy || []),
@@ -592,7 +642,7 @@ function renderSearchResultActions(result, panelName) {
         buttons.push(`<button class="btn btn-primary btn-xs" type="button" data-preview-spec="${escapeHTML(result.specId)}"><i data-lucide="file-text" class="h-3.5 w-3.5"></i>Preview doc</button>`);
     }
     if (result.path && (panelName !== "docsSemantic" || !result.specId)) {
-        buttons.push(`<button class="btn btn-ghost btn-xs" type="button" data-preview-file="${escapeHTML(result.path)}" data-preview-line="${escapeHTML(String(result.line || 0))}"><i data-lucide="file-code" class="h-3.5 w-3.5"></i>Preview file</button>`);
+        buttons.push(`<button class="btn btn-outline btn-xs" type="button" data-preview-file="${escapeHTML(result.path)}" data-preview-line="${escapeHTML(String(result.line || 0))}"><i data-lucide="file-code" class="h-3.5 w-3.5"></i>Preview file</button>`);
     }
     if (!buttons.length)
         return "";
@@ -1654,6 +1704,7 @@ function routeFromLocation() {
     const queryRoute = {
         fragment: decodeURIComponent(window.location.hash.replace(/^#/, "")),
         searchQuery: params.get("q") || "",
+        searchKeywordOperator: params.get("keywordOp") || "sum",
         previewType: normalizePreviewType(params.get("preview")),
         previewPath: params.get("path") || "",
         previewLine: Number(params.get("line") || 0),
@@ -1732,6 +1783,10 @@ function buildRouteQuery(tab) {
         if (query) {
             params.set("q", query);
         }
+        const keywordOperator = currentSearchKeywordOperator();
+        if (keywordOperator !== "sum") {
+            params.set("keywordOp", keywordOperator);
+        }
     }
     if (tab === "search" && state.previewRoute?.type && state.previewRoute?.path) {
         params.set("preview", state.previewRoute.type);
@@ -1746,6 +1801,9 @@ function buildRouteQuery(tab) {
 function applySearchRoute(route) {
     if (typeof route.searchQuery === "string" && els.globalSearch) {
         els.globalSearch.value = route.searchQuery;
+    }
+    if (els.searchKeywordOperator) {
+        els.searchKeywordOperator.value = route.searchKeywordOperator === "difference" ? "difference" : "sum";
     }
 }
 async function applyPreviewRoute(route) {
@@ -1952,6 +2010,7 @@ els.search?.addEventListener("input", renderSpecList);
 els.graphSearch?.addEventListener("input", graphView.render);
 els.graphFit?.addEventListener("click", graphView.fit);
 els.globalSearch?.addEventListener("input", scheduleSearch);
+els.searchKeywordOperator?.addEventListener("change", scheduleSearch);
 els.codeGraphReload?.addEventListener("click", () => {
     reloadCodeGraph().catch((error) => {
         state.codeGraphLoading = false;
@@ -2024,6 +2083,7 @@ function rerenderForTheme() {
         selectSpec(state.selectedId, false);
     }
     graphView.render();
+    renderSearchPanels();
 }
 function refreshIcons() {
     if (window.lucide) {

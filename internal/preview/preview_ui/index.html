@@ -116,6 +116,15 @@
                 <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
                 <input id="globalSearch" class="grow" placeholder="Search docs, code, graph nodes; separate keywords with commas" />
               </label>
+              <select
+                id="searchKeywordOperator"
+                class="select select-bordered min-h-11"
+                aria-label="Keyword result operator"
+                title="Keyword result operator"
+              >
+                <option value="sum">Sum keywords</option>
+                <option value="difference">Difference keywords</option>
+              </select>
             </div>
             <div id="searchSummary" class="search-summary border-base-300 border-b"></div>
             <div class="search-grid">

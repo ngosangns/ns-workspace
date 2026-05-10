@@ -28,11 +28,12 @@ const (
 )
 
 type previewSearchResponse struct {
-	Query    string              `json:"query"`
-	Mode     string              `json:"mode"`
-	Panels   previewSearchPanels `json:"panels"`
-	Stats    map[string]int      `json:"stats"`
-	Warnings []string            `json:"warnings,omitempty"`
+	Query           string              `json:"query"`
+	Mode            string              `json:"mode"`
+	KeywordOperator string              `json:"keywordOperator"`
+	Panels          previewSearchPanels `json:"panels"`
+	Stats           map[string]int      `json:"stats"`
+	Warnings        []string            `json:"warnings,omitempty"`
 }
 
 type previewSearchPanels struct {
@@ -43,24 +44,25 @@ type previewSearchPanels struct {
 }
 
 type previewSearchResult struct {
-	ID         string                  `json:"id"`
-	Title      string                  `json:"title"`
-	Path       string                  `json:"path,omitempty"`
-	Kind       string                  `json:"kind,omitempty"`
-	Source     string                  `json:"source,omitempty"`
-	Line       int                     `json:"line,omitempty"`
-	Score      float64                 `json:"score"`
-	MatchedBy  []string                `json:"matchedBy,omitempty"`
-	Excerpt    string                  `json:"excerpt,omitempty"`
-	SpecID     string                  `json:"specId,omitempty"`
-	NodeID     string                  `json:"nodeId,omitempty"`
-	Community  string                  `json:"community,omitempty"`
-	Relation   string                  `json:"relation,omitempty"`
-	Confidence string                  `json:"confidence,omitempty"`
-	Anchor     bool                    `json:"anchor,omitempty"`
-	AnchorID   string                  `json:"anchorId,omitempty"`
-	Depth      int                     `json:"depth,omitempty"`
-	Neighbors  []previewSearchNeighbor `json:"neighbors,omitempty"`
+	ID          string                  `json:"id"`
+	Title       string                  `json:"title"`
+	Path        string                  `json:"path,omitempty"`
+	Kind        string                  `json:"kind,omitempty"`
+	Source      string                  `json:"source,omitempty"`
+	Line        int                     `json:"line,omitempty"`
+	Score       float64                 `json:"score"`
+	MatchedBy   []string                `json:"matchedBy,omitempty"`
+	Description string                  `json:"description,omitempty"`
+	Excerpt     string                  `json:"excerpt,omitempty"`
+	SpecID      string                  `json:"specId,omitempty"`
+	NodeID      string                  `json:"nodeId,omitempty"`
+	Community   string                  `json:"community,omitempty"`
+	Relation    string                  `json:"relation,omitempty"`
+	Confidence  string                  `json:"confidence,omitempty"`
+	Anchor      bool                    `json:"anchor,omitempty"`
+	AnchorID    string                  `json:"anchorId,omitempty"`
+	Depth       int                     `json:"depth,omitempty"`
+	Neighbors   []previewSearchNeighbor `json:"neighbors,omitempty"`
 }
 
 type previewSearchNeighbor struct {
@@ -131,12 +133,13 @@ type codeSearchDoc struct {
 }
 
 type docsSearchDoc struct {
-	ID      string
-	Title   string
-	Path    string
-	Content string
-	SpecID  string
-	Kind    string
+	ID          string
+	Title       string
+	Path        string
+	Content     string
+	Description string
+	SpecID      string
+	Kind        string
 }
 
 type previewEmbeddingConfig struct {
@@ -152,15 +155,16 @@ type previewEmbeddingConfig struct {
 }
 
 type previewEmbeddingChunk struct {
-	ID        string    `json:"id"`
-	Type      string    `json:"type"`
-	Title     string    `json:"title"`
-	Path      string    `json:"path"`
-	SpecID    string    `json:"specId,omitempty"`
-	Line      int       `json:"line,omitempty"`
-	Content   string    `json:"content"`
-	Hash      string    `json:"hash"`
-	Embedding []float32 `json:"embedding"`
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	Title       string    `json:"title"`
+	Path        string    `json:"path"`
+	SpecID      string    `json:"specId,omitempty"`
+	Line        int       `json:"line,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Content     string    `json:"content"`
+	Hash        string    `json:"hash"`
+	Embedding   []float32 `json:"embedding"`
 }
 
 type previewEmbeddingIndex struct {
@@ -209,9 +213,10 @@ func (ps *previewServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	mode := "hybrid"
+	keywordOperator := parseSearchKeywordOperator(r.URL.Query().Get("keywordOp"))
 	limit := parseSearchLimit(r.URL.Query().Get("limit"))
 	graphify := loadGraphifyGraph(ps.opt.projectRoot)
-	response := buildPreviewSearchResponse(project, graphify, ps.opt.projectRoot, query, mode, limit)
+	response := buildPreviewSearchResponse(project, graphify, ps.opt.projectRoot, query, mode, keywordOperator, limit)
 	response.Warnings = append(warnings, response.Warnings...)
 	writeJSON(w, response)
 }
@@ -233,52 +238,57 @@ func emptySearchProject(projectRoot, docsDir string) specProject {
 	}
 }
 
-func buildPreviewSearchResponse(project specProject, graphify graphifyGraph, projectRoot, query, mode string, limit int) previewSearchResponse {
+func buildPreviewSearchResponse(project specProject, graphify graphifyGraph, projectRoot, query, mode, keywordOperator string, limit int) previewSearchResponse {
 	response := previewSearchResponse{
-		Query:    query,
-		Mode:     mode,
-		Stats:    map[string]int{},
-		Warnings: append([]string{}, graphify.Warnings...),
+		Query:           query,
+		Mode:            mode,
+		KeywordOperator: keywordOperator,
+		Stats:           map[string]int{},
+		Warnings:        append([]string{}, graphify.Warnings...),
 	}
 	if query == "" {
 		response.Warnings = append(response.Warnings, "Enter a query to search docs and code.")
 		return response
 	}
-	tokens := searchTokens(query)
+	searchQuery, exclusionQuery := searchQueriesForKeywordOperator(query, keywordOperator)
+	tokens := searchTokens(searchQuery)
 	if len(tokens) == 0 {
 		response.Warnings = append(response.Warnings, "Query has no searchable tokens.")
 		return response
 	}
+	exclusionTokens := searchTokens(exclusionQuery)
 
 	if mode != "graph" {
 		docsDocs, docsWarnings := scanDocsSearchDocs(projectRoot, project.Summary.DocsRoot, project.Documents)
 		response.Warnings = append(response.Warnings, docsWarnings...)
+		docsDocs = filterDocsSearchDocs(docsDocs, exclusionQuery, exclusionTokens)
 		codeDocs, warnings := scanCodeSearchDocs(projectRoot, project.Summary.DocsRoot)
 		response.Warnings = append(response.Warnings, warnings...)
+		codeDocs = filterCodeSearchDocs(codeDocs, exclusionQuery, exclusionTokens)
 		var embedSearch *previewEmbeddingSearch
 		if mode == "semantic" || mode == "hybrid" {
 			embedSearch, _ = loadPreviewEmbeddingSearch(projectRoot, docsDocs, codeDocs)
 		}
 		if embedSearch != nil {
-			docKeyword := searchDocsSemantic(docsDocs, query, tokens, "keyword", limit*2)
-			codeKeyword := searchCodeSemantic(codeDocs, query, tokens, "keyword", limit*2)
-			docSemantic, codeSemantic, err := embedSearch.search(query, limit*2)
+			docKeyword := searchDocsSemantic(docsDocs, searchQuery, tokens, "keyword", limit*2)
+			codeKeyword := searchCodeSemantic(codeDocs, searchQuery, tokens, "keyword", limit*2)
+			docSemantic, codeSemantic, err := embedSearch.search(searchQuery, limit*2)
 			if err == nil {
 				response.Panels.DocsSemantic = combineEmbeddingResults(docKeyword, docSemantic, mode, limit)
 				response.Panels.CodeSemantic = combineEmbeddingResults(codeKeyword, codeSemantic, mode, limit)
 			} else {
 				response.Warnings = append(response.Warnings, "Embedding search failed; using lexical fallback: "+err.Error())
-				response.Panels.DocsSemantic = searchDocsSemantic(docsDocs, query, tokens, mode, limit)
-				response.Panels.CodeSemantic = searchCodeSemantic(codeDocs, query, tokens, mode, limit)
+				response.Panels.DocsSemantic = searchDocsSemantic(docsDocs, searchQuery, tokens, mode, limit)
+				response.Panels.CodeSemantic = searchCodeSemantic(codeDocs, searchQuery, tokens, mode, limit)
 			}
 		} else {
-			response.Panels.DocsSemantic = searchDocsSemantic(docsDocs, query, tokens, mode, limit)
-			response.Panels.CodeSemantic = searchCodeSemantic(codeDocs, query, tokens, mode, limit)
+			response.Panels.DocsSemantic = searchDocsSemantic(docsDocs, searchQuery, tokens, mode, limit)
+			response.Panels.CodeSemantic = searchCodeSemantic(codeDocs, searchQuery, tokens, mode, limit)
 		}
 	}
 	if mode != "keyword" && mode != "semantic" {
-		response.Panels.DocsGraph = searchDocsGraph(project.Graph, graphify, projectRoot, query, tokens, response.Panels.DocsSemantic, limit)
-		response.Panels.CodeGraph = searchCodeGraph(graphify, projectRoot, query, tokens, response.Panels.CodeSemantic, limit)
+		response.Panels.DocsGraph = searchDocsGraph(project.Graph, graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, response.Panels.DocsSemantic, limit)
+		response.Panels.CodeGraph = searchCodeGraph(graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, response.Panels.CodeSemantic, limit)
 		boostSemanticWithGraph(response.Panels.DocsSemantic, response.Panels.DocsGraph)
 		boostSemanticWithGraph(response.Panels.CodeSemantic, response.Panels.CodeGraph)
 	}
@@ -301,6 +311,58 @@ func parseSearchLimit(raw string) int {
 	return limit
 }
 
+func parseSearchKeywordOperator(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "difference":
+		return "difference"
+	default:
+		return "sum"
+	}
+}
+
+func searchQueriesForKeywordOperator(query, operator string) (string, string) {
+	if operator != "difference" {
+		return query, ""
+	}
+	parts := searchQueryParts(query)
+	if len(parts) <= 1 {
+		return query, ""
+	}
+	return parts[0], strings.Join(parts[1:], ",")
+}
+
+func filterDocsSearchDocs(docs []docsSearchDoc, exclusionQuery string, exclusionTokens []string) []docsSearchDoc {
+	if exclusionQuery == "" || len(exclusionTokens) == 0 {
+		return docs
+	}
+	filtered := docs[:0]
+	for _, doc := range docs {
+		if excludedByKeywordSearch(exclusionQuery, exclusionTokens, doc.Title, doc.Path, doc.Content) {
+			continue
+		}
+		filtered = append(filtered, doc)
+	}
+	return filtered
+}
+
+func filterCodeSearchDocs(docs []codeSearchDoc, exclusionQuery string, exclusionTokens []string) []codeSearchDoc {
+	if exclusionQuery == "" || len(exclusionTokens) == 0 {
+		return docs
+	}
+	filtered := docs[:0]
+	for _, doc := range docs {
+		if excludedByKeywordSearch(exclusionQuery, exclusionTokens, doc.Title, doc.Path, doc.Content) {
+			continue
+		}
+		filtered = append(filtered, doc)
+	}
+	return filtered
+}
+
+func excludedByKeywordSearch(query string, tokens []string, title string, path string, content string) bool {
+	return query != "" && len(tokens) > 0 && keywordScore(query, tokens, title, path, content) > 0
+}
+
 func searchDocsSemantic(docs []docsSearchDoc, query string, tokens []string, mode string, limit int) []previewSearchResult {
 	results := []previewSearchResult{}
 	for _, doc := range docs {
@@ -314,15 +376,16 @@ func searchDocsSemantic(docs []docsSearchDoc, query string, tokens []string, mod
 			continue
 		}
 		results = append(results, previewSearchResult{
-			ID:        "doc:" + doc.ID,
-			Title:     doc.Title,
-			Path:      doc.Path,
-			Kind:      doc.Kind,
-			Score:     score,
-			MatchedBy: matchedBy,
-			Excerpt:   excerptForQuery(doc.Content, tokens),
-			SpecID:    doc.SpecID,
-			Source:    "docs",
+			ID:          "doc:" + doc.ID,
+			Title:       doc.Title,
+			Path:        doc.Path,
+			Kind:        doc.Kind,
+			Score:       score,
+			MatchedBy:   matchedBy,
+			Description: doc.Description,
+			Excerpt:     excerptForQuery(doc.Content, tokens),
+			SpecID:      doc.SpecID,
+			Source:      "docs",
 		})
 	}
 	sortSearchResults(results)
@@ -381,13 +444,14 @@ func buildPreviewEmbeddingChunks(docs []docsSearchDoc, codeDocs []codeSearchDoc)
 			continue
 		}
 		chunks = append(chunks, previewEmbeddingChunk{
-			ID:      "doc:" + doc.ID,
-			Type:    "doc",
-			Title:   doc.Title,
-			Path:    doc.Path,
-			SpecID:  doc.SpecID,
-			Content: content,
-			Hash:    contentHash(content),
+			ID:          "doc:" + doc.ID,
+			Type:        "doc",
+			Title:       doc.Title,
+			Path:        doc.Path,
+			SpecID:      doc.SpecID,
+			Description: doc.Description,
+			Content:     content,
+			Hash:        contentHash(content),
 		})
 	}
 	for _, doc := range codeDocs {
@@ -477,16 +541,17 @@ func (s *previewEmbeddingSearch) search(query string, limit int) ([]previewSearc
 			continue
 		}
 		result := previewSearchResult{
-			ID:        chunk.ID,
-			Title:     chunk.Title,
-			Path:      chunk.Path,
-			Kind:      chunk.Type,
-			Source:    "embedding",
-			Score:     roundScore(score),
-			MatchedBy: []string{"semantic"},
-			Excerpt:   compactWhitespace(chunk.Content, 260),
-			SpecID:    chunk.SpecID,
-			Line:      chunk.Line,
+			ID:          chunk.ID,
+			Title:       chunk.Title,
+			Path:        chunk.Path,
+			Kind:        chunk.Type,
+			Source:      "embedding",
+			Score:       roundScore(score),
+			MatchedBy:   []string{"semantic"},
+			Description: chunk.Description,
+			Excerpt:     compactWhitespace(chunk.Content, 260),
+			SpecID:      chunk.SpecID,
+			Line:        chunk.Line,
 		}
 		if chunk.Type == "doc" {
 			docs = append(docs, result)
@@ -708,7 +773,7 @@ func combineSearchScores(keyword, semantic float64, mode string) (float64, []str
 	}
 }
 
-func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
+func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
 	results := searchDocsGraphFromSemantic(graph, semantic, graphExpansionLimit(limit))
 	for _, result := range searchGraphifyFromSemantic(graphify, projectRoot, semantic, graphExpansionLimit(limit), true) {
 		result.ID = "docs-graphify:" + result.NodeID
@@ -716,16 +781,19 @@ func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query
 	}
 	results = dedupeSearchResults(results)
 	if len(results) == 0 {
-		return searchDocsGraphByQuery(graph, graphify, projectRoot, query, tokens, limit)
+		return searchDocsGraphByQuery(graph, graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
 	}
 	sortSearchResults(results)
 	return limitResults(results, graphExpansionLimit(limit))
 }
 
-func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, limit int) []previewSearchResult {
+func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
 	results := []previewSearchResult{}
 	for _, node := range graph.Nodes {
 		haystack := strings.Join([]string{node.ID, node.Label, node.Path, node.Category, node.Status}, " ")
+		if excludedByKeywordSearch(exclusionQuery, exclusionTokens, node.Label, node.Path, haystack) {
+			continue
+		}
 		score := graphScore(query, tokens, haystack)
 		if score <= 0 {
 			continue
@@ -743,7 +811,7 @@ func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot
 			Neighbors: limitNeighbors(docGraphNeighbors(graph, node.ID), 8),
 		})
 	}
-	for _, result := range searchGraphifyNodes(graphify, projectRoot, query, tokens, limit*2, true) {
+	for _, result := range searchGraphifyNodes(graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit*2, true) {
 		result.ID = "docs-graphify:" + result.NodeID
 		results = append(results, result)
 	}
@@ -751,21 +819,21 @@ func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot
 	return limitResults(dedupeSearchResults(results), limit)
 }
 
-func searchCodeGraph(graphify graphifyGraph, projectRoot, query string, tokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
+func searchCodeGraph(graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
 	results := searchGraphifyFromSemantic(graphify, projectRoot, semantic, graphExpansionLimit(limit), false)
 	for i := range results {
 		results[i].ID = "code-graphify:" + results[i].NodeID
 	}
 	results = dedupeSearchResults(results)
 	if len(results) == 0 {
-		return searchCodeGraphByQuery(graphify, projectRoot, query, tokens, limit)
+		return searchCodeGraphByQuery(graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
 	}
 	sortSearchResults(results)
 	return limitResults(results, graphExpansionLimit(limit))
 }
 
-func searchCodeGraphByQuery(graphify graphifyGraph, projectRoot, query string, tokens []string, limit int) []previewSearchResult {
-	results := searchGraphifyNodes(graphify, projectRoot, query, tokens, limit, false)
+func searchCodeGraphByQuery(graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
+	results := searchGraphifyNodes(graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit, false)
 	for i := range results {
 		results[i].ID = "code-graphify:" + results[i].NodeID
 	}
@@ -773,13 +841,16 @@ func searchCodeGraphByQuery(graphify graphifyGraph, projectRoot, query string, t
 	return limitResults(dedupeSearchResults(results), limit)
 }
 
-func searchGraphifyNodes(graph graphifyGraph, projectRoot, query string, tokens []string, limit int, docs bool) []previewSearchResult {
+func searchGraphifyNodes(graph graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int, docs bool) []previewSearchResult {
 	results := []previewSearchResult{}
 	for _, node := range graph.Nodes {
 		if classifyGraphifyNode(node) == "doc" != docs {
 			continue
 		}
 		haystack := strings.Join([]string{node.ID, node.Label, node.NormLabel, node.FileType, node.SourceFile, node.SourceLocation, node.Community}, " ")
+		if excludedByKeywordSearch(exclusionQuery, exclusionTokens, node.Label, relPath(projectRoot, node.SourceFile), haystack) {
+			continue
+		}
 		score := graphScore(query, tokens, haystack)
 		if score <= 0 {
 			continue
@@ -1463,12 +1534,13 @@ func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]d
 	seen := map[string]bool{}
 	for _, doc := range specs {
 		docs = append(docs, docsSearchDoc{
-			ID:      doc.ID,
-			Title:   doc.Title,
-			Path:    doc.Path,
-			Content: doc.Raw,
-			SpecID:  doc.ID,
-			Kind:    "doc",
+			ID:          doc.ID,
+			Title:       doc.Title,
+			Path:        doc.Path,
+			Content:     doc.Raw,
+			Description: doc.Description,
+			SpecID:      doc.ID,
+			Kind:        "doc",
 		})
 		seen[doc.ID] = true
 	}

@@ -39,17 +39,18 @@ type projectSummary struct {
 }
 
 type specDocument struct {
-	ID         string `json:"id"`
-	Title      string `json:"title"`
-	Path       string `json:"path"`
-	Language   string `json:"language,omitempty"`
-	Category   string `json:"category"`
-	Status     string `json:"status,omitempty"`
-	Version    string `json:"version,omitempty"`
-	Compliance string `json:"compliance,omitempty"`
-	Priority   string `json:"priority,omitempty"`
-	Raw        string `json:"raw,omitempty"`
-	HTML       string `json:"html,omitempty"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Path        string `json:"path"`
+	Language    string `json:"language,omitempty"`
+	Category    string `json:"category"`
+	Status      string `json:"status,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Compliance  string `json:"compliance,omitempty"`
+	Priority    string `json:"priority,omitempty"`
+	Description string `json:"description,omitempty"`
+	Raw         string `json:"raw,omitempty"`
+	HTML        string `json:"html,omitempty"`
 }
 
 type specGraph struct {
@@ -94,12 +95,13 @@ type graphConstraint struct {
 }
 
 type moduleMeta struct {
-	Title      string
-	Path       string
-	Status     string
-	Version    string
-	Compliance string
-	Priority   string
+	Title       string
+	Path        string
+	Status      string
+	Version     string
+	Compliance  string
+	Priority    string
+	Description string
 }
 
 type semanticSpecRef struct {
@@ -195,21 +197,19 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 			return nil
 		}
 		raw := string(rawBytes)
-		meta := table[rel]
-		if meta.Path == "" {
-			meta = parseDocumentMeta(rel, raw)
-		}
+		meta := mergeModuleMeta(parseDocumentMeta(rel, raw), table[rel])
 		docs = append(docs, specDocument{
-			ID:         rel,
-			Title:      firstNonEmpty(meta.Title, titleFromMarkdown(raw), rel),
-			Path:       rel,
-			Language:   languageForPath(path),
-			Category:   categoryFor(rel),
-			Status:     meta.Status,
-			Version:    meta.Version,
-			Compliance: meta.Compliance,
-			Priority:   meta.Priority,
-			Raw:        raw,
+			ID:          rel,
+			Title:       firstNonEmpty(meta.Title, titleFromMarkdown(raw), rel),
+			Path:        rel,
+			Language:    languageForPath(path),
+			Category:    categoryFor(rel),
+			Status:      meta.Status,
+			Version:     meta.Version,
+			Compliance:  meta.Compliance,
+			Priority:    meta.Priority,
+			Description: meta.Description,
+			Raw:         raw,
 		})
 		return nil
 	})
@@ -220,6 +220,21 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 		return docs[i].Path < docs[j].Path
 	})
 	return docs, nil
+}
+
+func mergeModuleMeta(docMeta, tableMeta moduleMeta) moduleMeta {
+	if tableMeta.Path == "" {
+		return docMeta
+	}
+	return moduleMeta{
+		Title:       firstNonEmpty(tableMeta.Title, docMeta.Title),
+		Path:        firstNonEmpty(tableMeta.Path, docMeta.Path),
+		Status:      firstNonEmpty(tableMeta.Status, docMeta.Status),
+		Version:     firstNonEmpty(tableMeta.Version, docMeta.Version),
+		Compliance:  firstNonEmpty(tableMeta.Compliance, docMeta.Compliance),
+		Priority:    firstNonEmpty(tableMeta.Priority, docMeta.Priority),
+		Description: firstNonEmpty(tableMeta.Description, docMeta.Description),
+	}
 }
 
 func buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath string, docs []specDocument, sync map[string]string) projectSummary {
@@ -300,12 +315,13 @@ func parseModuleTable(markdown string) map[string]moduleMeta {
 			continue
 		}
 		out[path] = moduleMeta{
-			Title:      stripMarkdown(row["module"]),
-			Path:       path,
-			Status:     stripMarkdown(row["status"]),
-			Version:    stripMarkdown(row["version"]),
-			Compliance: stripMarkdown(row["compliance"]),
-			Priority:   stripMarkdown(row["priority"]),
+			Title:       stripMarkdown(row["module"]),
+			Path:        path,
+			Status:      stripMarkdown(row["status"]),
+			Version:     stripMarkdown(row["version"]),
+			Compliance:  stripMarkdown(row["compliance"]),
+			Priority:    stripMarkdown(row["priority"]),
+			Description: stripMarkdown(row["description"]),
 		}
 	}
 	return out
@@ -324,6 +340,8 @@ func parseDocumentMeta(rel, raw string) moduleMeta {
 			meta.Compliance = stripMarkdown(entry.Value)
 		case "priority":
 			meta.Priority = stripMarkdown(entry.Value)
+		case "description":
+			meta.Description = stripMarkdown(entry.Value)
 		}
 	}
 	for _, line := range strings.Split(firstNonEmpty(block, raw), "\n") {
@@ -337,10 +355,14 @@ func parseDocumentMeta(rel, raw string) moduleMeta {
 		if strings.Contains(trimmed, "**Compliance**") {
 			meta.Compliance = valueAfterColon(trimmed)
 		}
+		if strings.Contains(trimmed, "**Description**") {
+			meta.Description = valueAfterColon(trimmed)
+		}
 		if strings.Contains(trimmed, "**Meta**") {
 			meta.Status = firstNonEmpty(meta.Status, betweenAfter(trimmed, "Status"))
 			meta.Version = firstNonEmpty(meta.Version, betweenAfter(trimmed, "Version"))
 			meta.Compliance = firstNonEmpty(meta.Compliance, betweenAfter(trimmed, "Compliance"))
+			meta.Description = firstNonEmpty(meta.Description, betweenAfter(trimmed, "Description"))
 		}
 	}
 	return meta
