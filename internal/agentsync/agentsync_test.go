@@ -1,7 +1,9 @@
 package agentsync
 
 import (
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,6 +63,56 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	codex := readFile(t, filepath.Join(home, ".codex", "config.toml"))
 	if !strings.Contains(codex, "[mcp_servers.\"context7\"]") {
 		t.Fatalf("codex config did not include MCP preset: %s", codex)
+	}
+}
+
+func TestInstalledHookCommandsRunInProject(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("all"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	projectRoot := mustProjectRoot(t)
+	mustExist(t, filepath.Join(projectRoot, "graphify-out", "graph.json"))
+
+	settingsPaths := []string{
+		filepath.Join(home, ".agents", "settings.json"),
+		filepath.Join(home, ".claude", "settings.json"),
+		filepath.Join(home, ".config", "opencode", "opencode.json"),
+		filepath.Join(home, ".qwen", "settings.json"),
+		filepath.Join(home, ".gemini", "settings.json"),
+	}
+	for _, path := range settingsPaths {
+		t.Run(filepath.Base(filepath.Dir(path))+"/"+filepath.Base(path), func(t *testing.T) {
+			commands := hookCommands(t, path)
+			if len(commands) == 0 {
+				t.Fatalf("expected installed hook commands in %s", path)
+			}
+			for _, command := range commands {
+				cmd := exec.Command("sh", "-c", command)
+				cmd.Dir = projectRoot
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("hook command failed: %v\n%s", err, output)
+				}
+				got := string(output)
+				if !strings.Contains(got, `"hookEventName":"PreToolUse"`) || !strings.Contains(got, "graphify: Knowledge graph exists") {
+					t.Fatalf("hook command did not emit graphify context:\n%s", got)
+				}
+			}
+		})
 	}
 }
 
@@ -151,4 +203,46 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func mustProjectRoot(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.Abs(filepath.Join(wd, "../.."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExist(t, filepath.Join(root, "go.mod"))
+	return root
+}
+
+func hookCommands(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("invalid JSON in %s: %v", path, err)
+	}
+	var commands []string
+	for _, group := range settings.Hooks["PreToolUse"] {
+		for _, hook := range group.Hooks {
+			if hook.Type == "command" && hook.Command != "" {
+				commands = append(commands, hook.Command)
+			}
+		}
+	}
+	return commands
 }
