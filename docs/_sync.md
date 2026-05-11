@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 87da81d942e095afd4bf53842b902141d13a370b
+- **Last Synced Commit**: 60d5ab4213b54034b229d6f93ff3fee4c1afd39b
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-10T13:37:59Z
-- **Scope**: preview web search keyword operator UI/API, doc metadata description in search results, graph node selection/navigation behavior, graph wheel zoom guard, search docs/code/graph behavior, semantic-anchored graph expansion, metadata graph syntax và trigger skill presets.
+- **Sync Date**: 2026-05-11T02:19:23Z
+- **Scope**: preview web default port and graph interaction behavior, agent adapter registry, Kiro/Kiro CLI adapter support, adapter docs/index metadata.
 - **Known Unsynced**: Không có.
