@@ -47,7 +47,7 @@ func run(args []string) error {
 		return err
 	}
 	opt := agentsync.Options{Command: cmd, AgentsDir: homeDefault}
-	tools := fs.String("tools", "all", "comma-separated tools: all,stable,manual,experimental,claude,opencode,kimi,qwen,gemini,codex,cline,windsurf,aider,cursor,github-copilot,jetbrains,antigravity,trae,roo")
+	tools := fs.String("tools", "all", "comma-separated tools: all,stable,manual,experimental,claude,opencode,kimi,kiro,kiro-cli,qwen,gemini,codex,cline,windsurf,aider,cursor,github-copilot,jetbrains,antigravity,trae,roo")
 	fs.StringVar(&opt.AgentsDir, "agents-home", homeDefault, "shared agents home")
 	fs.BoolVar(&opt.DryRun, "dry-run", false, "show planned writes without changing files")
 	fs.BoolVar(&opt.Yes, "yes", false, "skip interactive confirmations")
@@ -102,6 +102,6 @@ Flags:
 Preview flags:
   --project PATH      project root to inspect, default current directory
   --docs-dir PATH     docs directory, default docs
-  --addr HOST:PORT    local server address, default 127.0.0.1:8787
+  --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
   --open              open browser after the server starts`)
 }

@@ -23,6 +23,7 @@
 | TypeScript preview       | [specs/planning/use-full-typescript-for-preview-web.md](./specs/planning/use-full-typescript-for-preview-web.md)                 | implemented | current | current-state | P0       |
 | Renderer graph preview   | [specs/planning/use-specialized-graph-renderer.md](./specs/planning/use-specialized-graph-renderer.md)                           | implemented | current | current-state | P0       |
 | Adapter agent user-level | [specs/planning/user-level-agent-adapter-framework.md](./specs/planning/user-level-agent-adapter-framework.md)                   | draft       | current | current-state | P2       |
+| Adapter Kiro/Kiro CLI    | [specs/planning/add-kiro-agent-adapter.md](./specs/planning/add-kiro-agent-adapter.md)                                           | implemented | current | current-state | P1       |
 
 ## Specs Và Planning
 
@@ -33,6 +34,7 @@
 | [TypeScript cho preview web](./specs/planning/use-full-typescript-for-preview-web.md)         | implemented | [Module preview](./modules/preview.md), [Quy ước phát triển](./development/conventions/preview-frontend.md) |
 | [Renderer graph preview](./specs/planning/use-specialized-graph-renderer.md)                  | implemented | [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md)                            |
 | [Adapter agent user-level](./specs/planning/user-level-agent-adapter-framework.md)            | draft       | [Kiến trúc tổng quan](./architecture/overview.md), [Thuật ngữ](./shared/glossary.md)                        |
+| [Adapter Kiro/Kiro CLI](./specs/planning/add-kiro-agent-adapter.md)                           | implemented | [Kiến trúc tổng quan](./architecture/overview.md), [Adapter agent user-level](./specs/planning/user-level-agent-adapter-framework.md) |
 
 ## Dependency Graph
 
@@ -50,5 +52,7 @@ flowchart LR
   "modules/preview.md" --> "specs/planning/use-specialized-graph-renderer.md"
   "modules/preview.md" --> "development/conventions/preview-frontend.md"
   "architecture/overview.md" --> "specs/planning/user-level-agent-adapter-framework.md"
+  "architecture/overview.md" --> "specs/planning/add-kiro-agent-adapter.md"
+  "specs/planning/add-kiro-agent-adapter.md" --> "specs/planning/user-level-agent-adapter-framework.md"
   "shared/glossary.md" --> "architecture/overview.md"
 ```

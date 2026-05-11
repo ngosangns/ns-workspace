@@ -295,6 +295,7 @@ func (op ManualStep) Path() string         { return op.Dst }
 
 type fileAdapter struct {
 	name         string
+	aliases      []string
 	tier         SupportTier
 	docs         []string
 	notes        string
@@ -311,6 +312,8 @@ type fileAdapter struct {
 }
 
 func (a fileAdapter) Name() string { return a.name }
+
+func (a fileAdapter) Aliases() []string { return a.aliases }
 
 func (a fileAdapter) Capabilities() AgentCapabilities {
 	artifacts := []ArtifactKind{}
@@ -694,6 +697,7 @@ func (m Manager) adapters(ctx Context) []AgentAdapter {
 		claudeAdapter{fileAdapter{name: "claude", tier: TierStable, exes: []string{"claude"}, instruction: filepath.Join(home, ".claude", "CLAUDE.md"), skills: filepath.Join(home, ".claude", "skills"), subagents: filepath.Join(home, ".claude", "agents"), settings: filepath.Join(home, ".claude", "settings.json"), docs: []string{"https://docs.claude.com/en/docs/claude-code/settings", "https://docs.claude.com/en/docs/claude-code/mcp"}}},
 		fileAdapter{name: "opencode", tier: TierStable, exes: []string{"opencode"}, instruction: filepath.Join(xdg, "opencode", "AGENTS.md"), skills: filepath.Join(xdg, "opencode", "skill"), subagents: filepath.Join(xdg, "opencode", "agent"), hooksPath: filepath.Join(xdg, "opencode", "opencode.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(xdg, "opencode", "opencode.json"), mcpKeyPath: []string{"mcp"}, docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"}},
 		fileAdapter{name: "kimi", tier: TierStable, exes: []string{"kimi"}, instruction: filepath.Join(home, ".kimi", "AGENTS.md"), skills: filepath.Join(home, ".kimi", "skills"), mcpPath: filepath.Join(home, ".kimi", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/data-locations.html"}},
+		fileAdapter{name: "kiro", aliases: []string{"kiro-cli"}, tier: TierStable, exes: []string{"kiro", "kiro-cli"}, instruction: filepath.Join(home, ".kiro", "steering", "AGENTS.md"), mcpPath: filepath.Join(home, ".kiro", "settings", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/"}, notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; MCP presets sync to the shared Kiro settings path."},
 		fileAdapter{name: "qwen", tier: TierStable, exes: []string{"qwen"}, instruction: filepath.Join(home, ".qwen", "QWEN.md"), skills: filepath.Join(home, ".qwen", "skills"), hooksPath: filepath.Join(home, ".qwen", "settings.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(home, ".qwen", "settings.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://qwenlm.github.io/qwen-code-docs/en/cli/configuration/", "https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/"}},
 		fileAdapter{name: "gemini", tier: TierStable, exes: []string{"gemini"}, instruction: filepath.Join(home, ".gemini", "GEMINI.md"), skills: filepath.Join(home, ".gemini", "skills"), hooksPath: filepath.Join(home, ".gemini", "settings.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(home, ".gemini", "settings.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"}},
 		codexAdapter{fileAdapter{name: "codex", tier: TierStable, exes: []string{"codex"}, instruction: filepath.Join(home, ".codex", "AGENTS.md"), skills: filepath.Join(home, ".codex", "skills"), docs: []string{"https://github.com/openai/codex/blob/main/docs/config.md", "https://github.com/openai/codex/blob/main/docs/agents_md.md"}}},
@@ -713,6 +717,13 @@ func selected(opt Options, adapter AgentAdapter) bool {
 	name := strings.ToLower(adapter.Name())
 	if opt.ToolFilter["all"] || opt.ToolFilter[name] {
 		return true
+	}
+	if aliased, ok := adapter.(interface{ Aliases() []string }); ok {
+		for _, alias := range aliased.Aliases() {
+			if opt.ToolFilter[strings.ToLower(alias)] {
+				return true
+			}
+		}
 	}
 	tier := string(adapter.Capabilities().Tier)
 	return opt.ToolFilter[tier]

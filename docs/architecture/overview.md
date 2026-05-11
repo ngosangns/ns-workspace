@@ -14,7 +14,7 @@
 ## Thành Phần
 
 - CLI Go trong `main.go` xử lý các lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents` và `preview`.
-- Package `internal/agentsync` gom logic adapter và operation sync cho các agent.
+- Package `internal/agentsync` gom logic adapter và operation sync cho các agent. Stable adapters hiện gồm Claude Code, OpenCode, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf và Aider.
 - Package `internal/preview` scan docs, parse metadata, dựng graph, phục vụ API và embed frontend.
 - Frontend preview dùng TypeScript source trong `internal/preview/preview_ui_src/`, build ra static assets trong `internal/preview/preview_ui/`.
 - Preset agent instruction trong `presets/agents/AGENTS.md` nhận trigger skill dạng `//<tag>` và hiện có các pipeline research, search docs, plan, execution, fix và update-docs.

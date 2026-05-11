@@ -564,6 +564,33 @@ func TestPreviewHelpIsAccepted(t *testing.T) {
 	}
 }
 
+func TestPreviewChildArgsPickAutoPortOnce(t *testing.T) {
+	args, err := previewChildArgs([]string{"--project", "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(args, "--addr") {
+		t.Fatalf("preview child args should include an auto-picked address: %+v", args)
+	}
+	addr := args[len(args)-1]
+	if strings.HasSuffix(addr, ":0") {
+		t.Fatalf("preview child args should pin the selected port instead of passing :0: %+v", args)
+	}
+	if !strings.HasPrefix(addr, "127.0.0.1:") {
+		t.Fatalf("preview child args should use loopback address, got %q", addr)
+	}
+}
+
+func TestPreviewChildArgsPreserveExplicitAddr(t *testing.T) {
+	args, err := previewChildArgs([]string{"--project", ".", "--addr", "127.0.0.1:9999"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(args, " "); got != "--project . --addr 127.0.0.1:9999" {
+		t.Fatalf("preview child args should preserve explicit addr, got %q", got)
+	}
+}
+
 func TestPreviewSourceHotReloadTokenTracksBackendAndFrontend(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "go.mod", "module example.com/preview\n")
@@ -716,20 +743,27 @@ func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html)
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlText := string(html)
+	text := htmlText + "\n" + string(app)
 	for _, want := range []string{
 		`aria-label="Preview sections"`,
+		`id="projectPath"`,
 		`data-tab="graph"`,
 		`data-lucide="git-fork"`,
 		`data-tab="search"`,
 		`data-lucide="search"`,
+		"project.projectRoot",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview topbar icon-only tabs missing %s", want)
 		}
 	}
 	for _, forbidden := range []string{`data-tab="overview"`, `data-lucide="layout-dashboard"`, `data-tab="spec"`, `data-lucide="file-text"`, "overviewTab", ">Overview</button>", ">Graph</button>", ">Search</button>", ">Doc</button>", "id=\"themeLabel\""} {
-		if strings.Contains(text, forbidden) {
+		if strings.Contains(htmlText, forbidden) {
 			t.Fatalf("preview topbar should not render text label %s", forbidden)
 		}
 	}

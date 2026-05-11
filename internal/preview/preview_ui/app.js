@@ -34,6 +34,7 @@ const state = {
 };
 const els = {
     projectName: document.querySelector("#projectName"),
+    projectPath: document.querySelector("#projectPath"),
     search: document.querySelector("#search"),
     specList: document.querySelector("#specList"),
     pageTitle: document.querySelector("#pageTitle"),
@@ -122,7 +123,7 @@ async function load() {
     state.project = project;
     state.specs = specs;
     state.graph = graph;
-    els.projectName.textContent = project.name;
+    renderProjectChrome(project);
     const route = routeFromLocation();
     state.selectedId = validSpecId(route.spec) || defaultSpecId();
     syncRouteSpecFromURL(route);
@@ -145,7 +146,7 @@ async function reloadPreviewData() {
     state.project = project;
     state.specs = specs;
     state.graph = graph;
-    els.projectName.textContent = project.name;
+    renderProjectChrome(project);
     state.selectedId = validSpecId(route.spec) || validSpecId(previousSelection) || defaultSpecId();
     syncRouteSpecFromURL(route);
     applySearchRoute(route);
@@ -159,6 +160,16 @@ async function reloadPreviewData() {
     }
     switchTab(route.tab || state.tab || "spec", { updateURL: false });
     await applyPreviewRoute(route);
+}
+function renderProjectChrome(project) {
+    if (els.projectName) {
+        els.projectName.textContent = project.name;
+    }
+    if (els.projectPath) {
+        const projectPath = project.projectRoot || "";
+        els.projectPath.textContent = projectPath;
+        els.projectPath.setAttribute("title", projectPath);
+    }
 }
 function defaultSpecId() {
     return state.specs[0]?.id || "";
