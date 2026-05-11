@@ -27,6 +27,8 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
 	mustExist(t, filepath.Join(home, ".kimi", "mcp.json"))
+	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
 	mustExist(t, filepath.Join(home, ".gemini", "settings.json"))
 	mustExist(t, filepath.Join(home, ".codex", "config.toml"))
@@ -45,6 +47,14 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "PreToolUse") || !strings.Contains(string(data), "graphify-out/graph.json") {
 		t.Fatalf("qwen settings did not include shared hooks: %s", data)
+	}
+
+	kiro, err := os.ReadFile(filepath.Join(home, ".kiro", "settings", "mcp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(kiro), "context7") || !strings.Contains(string(kiro), "figma") {
+		t.Fatalf("kiro settings did not include MCP preset: %s", kiro)
 	}
 
 	codex, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))

@@ -40,7 +40,7 @@ CLI hiện dùng `~/.agents` làm source of truth rồi đồng bộ sang native
 
 **Tiêu Chí Chấp Nhận:**
 
-- [ ] Claude, OpenCode, Kimi, Qwen, Gemini, Codex, Cline, Windsurf và Aider có adapter stable hoặc guarded theo capability đã xác minh.
+- [ ] Claude, OpenCode, Kimi, Kiro/Kiro CLI, Qwen, Gemini, Codex, Cline, Windsurf và Aider có adapter stable hoặc guarded theo capability đã xác minh.
 - [ ] Cursor, GitHub Copilot, JetBrains, Antigravity, Trae và Roo không ghi tự động nếu chưa có path user-level ổn định.
 
 ## Ghi Chú Thiết Kế

@@ -22,6 +22,8 @@ import (
 //go:embed preview_ui/*
 var previewUIFS embed.FS
 
+const defaultPreviewAddr = "127.0.0.1:0"
+
 type previewOptions struct {
 	projectRoot string
 	docsDir     string
@@ -40,7 +42,7 @@ func Run(args []string) error {
 	if err != nil {
 		return err
 	}
-	opt := previewOptions{projectRoot: cwd, docsDir: "docs", addr: "127.0.0.1:8787"}
+	opt := previewOptions{projectRoot: cwd, docsDir: "docs", addr: defaultPreviewAddr}
 	fs := flag.NewFlagSet("preview", flag.ContinueOnError)
 	fs.StringVar(&opt.projectRoot, "project", opt.projectRoot, "project root to inspect")
 	fs.StringVar(&opt.docsDir, "docs-dir", opt.docsDir, "docs directory relative to project root, or absolute path")
@@ -107,7 +109,10 @@ func previewModuleRoot(start string) (string, bool) {
 func runHotReloadSupervisor(moduleRoot string, args []string) error {
 	fmt.Println("docs preview hot reload: watching Go backend and frontend sources")
 	token := previewSourceToken(moduleRoot)
-	childArgs := stripPreviewSupervisorFlags(args)
+	childArgs, err := previewChildArgs(args)
+	if err != nil {
+		return err
+	}
 	cmd, done, err := startPreviewChild(moduleRoot, childArgs)
 	if err != nil {
 		return err
@@ -151,6 +156,36 @@ func runHotReloadSupervisor(moduleRoot string, args []string) error {
 
 type previewChildResult struct {
 	err error
+}
+
+func previewChildArgs(args []string) ([]string, error) {
+	childArgs := stripPreviewSupervisorFlags(args)
+	if previewArgsHaveAddrFlag(childArgs) {
+		return childArgs, nil
+	}
+	addr, err := pickPreviewAddr()
+	if err != nil {
+		return nil, err
+	}
+	return append(childArgs, "--addr", addr), nil
+}
+
+func previewArgsHaveAddrFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--addr" || arg == "-addr" || strings.HasPrefix(arg, "--addr=") || strings.HasPrefix(arg, "-addr=") {
+			return true
+		}
+	}
+	return false
+}
+
+func pickPreviewAddr() (string, error) {
+	listener, err := net.Listen("tcp", defaultPreviewAddr)
+	if err != nil {
+		return "", err
+	}
+	defer listener.Close()
+	return listener.Addr().String(), nil
 }
 
 func startPreviewChild(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {

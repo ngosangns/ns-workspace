@@ -1,6 +1,6 @@
 # Personal Agent Bootstrap
 
-`ns-workspace` là Go CLI nhỏ dùng để bootstrap và đồng bộ cấu hình cho các AI coding agent cá nhân. Dự án gom các preset về instructions, skills, subagents, settings, hooks và MCP servers, rồi đẩy chúng sang vị trí native của từng tool như Claude Code, OpenCode, Kimi, Qwen, Gemini, Codex, Cline, Windsurf, Aider và một số adapter khác.
+`ns-workspace` là Go CLI nhỏ dùng để bootstrap và đồng bộ cấu hình cho các AI coding agent cá nhân. Dự án gom các preset về instructions, skills, subagents, settings, hooks và MCP servers, rồi đẩy chúng sang vị trí native của từng tool như Claude Code, OpenCode, Kimi, Kiro, Qwen, Gemini, Codex, Cline, Windsurf, Aider và một số adapter khác.
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung, sau đó sync sang các agent khác để cùng một bộ workflow và convention hoạt động trên nhiều tool.
 
@@ -32,7 +32,7 @@ Nếu đang làm trong checkout của repo này:
 ```bash
 go run . status
 go run . doctor
-go run . preview --project . --addr 127.0.0.1:8787 --open
+go run . preview --project . --open
 ```
 
 ## Cách Dùng Đơn Giản
@@ -83,7 +83,8 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 --agents-home ~/.agents
 --tools all
 --tools stable
---tools claude,opencode,kimi,qwen,gemini,codex,cline,windsurf,aider,cursor,trae
+--tools claude,opencode,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,cursor,trae
+--tools kiro-cli
 --dry-run
 --force
 --copy
@@ -101,7 +102,7 @@ Dùng `--copy` nếu không muốn tạo symlink.
 - Registry-managed skills: `~/.agents/registry/skills.json`
 - Shared settings/hooks: `~/.agents/settings.json`
 - Shared MCP presets: `~/.agents/mcp/servers.json`
-- User-level adapters cho Claude Code, OpenCode, Kimi Code CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf, Aider, Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
+- User-level adapters cho Claude Code, OpenCode, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf, Aider, Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 
 ## Adapter Support
 
@@ -112,6 +113,7 @@ Stable adapters ghi vào các user-level path đã biết:
 | Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
 | OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                |
 | Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                  |
+| Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/settings/mcp.json`; `--tools kiro-cli` là alias của `kiro`                          |
 | Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                              |
 | Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với hooks và MCP                                      |
 | Codex CLI     | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml`                                    |
@@ -129,8 +131,8 @@ Ví dụ:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass
-go run github.com/ngosangns/ns-workspace@latest preview --project . --addr 127.0.0.1:8787 --open
-go run . preview --project . --addr 127.0.0.1:8787 --open
+go run github.com/ngosangns/ns-workspace@latest preview --project . --open
+go run . preview --project . --open
 ```
 
 Preview flags:
@@ -138,7 +140,7 @@ Preview flags:
 ```bash
 --project PATH
 --docs-dir docs
---addr 127.0.0.1:8787
+--addr 127.0.0.1:0
 --open
 ```
 

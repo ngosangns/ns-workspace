@@ -31,6 +31,8 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".agents", "skills", "spawn-sub-agent", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
 	mustExist(t, filepath.Join(home, ".gemini", "settings.json"))
 	mustExist(t, filepath.Join(home, ".codex", "config.toml"))
@@ -46,6 +48,11 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 		t.Fatalf("qwen settings did not include shared hooks: %s", qwen)
 	}
 
+	kiro := readFile(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
+	if !strings.Contains(kiro, "context7") || !strings.Contains(kiro, "figma") {
+		t.Fatalf("kiro settings did not include MCP preset: %s", kiro)
+	}
+
 	opencode := readFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
 	if !strings.Contains(opencode, "PreToolUse") || !strings.Contains(opencode, "context7") {
 		t.Fatalf("opencode config did not include hooks and MCP presets: %s", opencode)
@@ -55,6 +62,29 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	if !strings.Contains(codex, "[mcp_servers.\"context7\"]") {
 		t.Fatalf("codex config did not include MCP preset: %s", codex)
 	}
+}
+
+func TestKiroCLISelectionUsesKiroAdapter(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("kiro-cli"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
+	mustNotExist(t, filepath.Join(home, ".qwen", "settings.json"))
 }
 
 func TestStableToolSelectionSkipsManualAdapters(t *testing.T) {
