@@ -30,6 +30,7 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".agents", "AGENTS.md"))
 	mustExist(t, filepath.Join(home, ".agents", "agents", "opencode-intern.md"))
 	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "spawn-claude-code", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".agents", "skills", "spawn-sub-agent", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
