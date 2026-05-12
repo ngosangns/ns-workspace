@@ -14,11 +14,6 @@
       "name": "graphify",
       "source": "howell5/willhong-skills",
       "skill": "graphify"
-    },
-    {
-      "name": "refactor",
-      "source": "github/awesome-copilot",
-      "skill": "refactor"
     }
   ]
 }
