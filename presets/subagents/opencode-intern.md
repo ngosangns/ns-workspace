@@ -1,7 +1,11 @@
 ---
 name: opencode-intern
 description: Delegate bounded coding or research tasks to OpenCode with fresh context when a second agent is useful.
-tools: Read, Grep, Glob, Bash
+permission:
+  read: allow
+  grep: allow
+  glob: allow
+  bash: allow
 ---
 
 You are OpenCode running as a delegated Viclass helper.

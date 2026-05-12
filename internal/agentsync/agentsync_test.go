@@ -57,8 +57,8 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	}
 
 	opencode := readFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
-	if !strings.Contains(opencode, "PreToolUse") || !strings.Contains(opencode, "context7") {
-		t.Fatalf("opencode config did not include hooks and MCP presets: %s", opencode)
+	if strings.Contains(opencode, "PreToolUse") || !strings.Contains(opencode, `"type": "remote"`) || !strings.Contains(opencode, "context7") {
+		t.Fatalf("opencode config should include remote MCP presets without unsupported hooks: %s", opencode)
 	}
 
 	codex := readFile(t, filepath.Join(home, ".codex", "config.toml"))
@@ -91,7 +91,6 @@ func TestInstalledHookCommandsRunInProject(t *testing.T) {
 	settingsPaths := []string{
 		filepath.Join(home, ".agents", "settings.json"),
 		filepath.Join(home, ".claude", "settings.json"),
-		filepath.Join(home, ".config", "opencode", "opencode.json"),
 		filepath.Join(home, ".qwen", "settings.json"),
 		filepath.Join(home, ".gemini", "settings.json"),
 	}

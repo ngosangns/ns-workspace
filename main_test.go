@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -56,6 +57,14 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	}
 	if !strings.Contains(string(kiro), "context7") || !strings.Contains(string(kiro), "figma") {
 		t.Fatalf("kiro settings did not include MCP preset: %s", kiro)
+	}
+
+	opencode, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(opencode), "PreToolUse") || !strings.Contains(string(opencode), `"type": "remote"`) {
+		t.Fatalf("opencode config should include remote MCP presets without unsupported hooks: %s", opencode)
 	}
 
 	codex, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
@@ -113,9 +122,61 @@ func TestDryRunDoesNotWrite(t *testing.T) {
 	}
 }
 
+func TestRegistryCommandBootstrapsCustomAgentsHome(t *testing.T) {
+	home := t.TempDir()
+	agentsHome := filepath.Join(home, "custom-agents")
+	fakeBin := writeFakeNpx(t)
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := run([]string{"registry", "--agents-home", agentsHome}); err != nil {
+		t.Fatalf("registry failed: %v", err)
+	}
+
+	readme := mustRead(t, filepath.Join(agentsHome, "registry", "README.md"))
+	if !strings.Contains(readme, agentsHome) || strings.Contains(readme, "~/.agents") {
+		t.Fatalf("registry README did not use custom agents home: %s", readme)
+	}
+	script := mustRead(t, filepath.Join(agentsHome, "registry", "install.sh"))
+	if !strings.Contains(script, "AGENTS_HOME="+agentsHome) || strings.Contains(script, "~/.agents") {
+		t.Fatalf("registry install script did not use custom agents home: %s", script)
+	}
+	npxEnv := mustRead(t, filepath.Join(home, "npx-agents-home.log"))
+	if !strings.Contains(npxEnv, agentsHome) {
+		t.Fatalf("registry install did not pass custom agents home to npx: %s", npxEnv)
+	}
+	mustExist(t, filepath.Join(agentsHome, "registry", "skills.json"))
+}
+
 func mustExist(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Lstat(path); err != nil {
 		t.Fatalf("expected %s to exist: %v", path, err)
 	}
+}
+
+func mustRead(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("expected %s to be readable: %v", path, err)
+	}
+	return string(data)
+}
+
+func writeFakeNpx(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	name := "npx"
+	data := []byte("#!/usr/bin/env sh\nprintf '%s\\n' \"$AGENTS_HOME\" >> \"$HOME/npx-agents-home.log\"\nexit 0\n")
+	if runtime.GOOS == "windows" {
+		name = "npx.bat"
+		data = []byte("@echo off\r\necho %AGENTS_HOME%>> \"%HOME%\\npx-agents-home.log\"\r\nexit /b 0\r\n")
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

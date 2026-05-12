@@ -379,6 +379,9 @@ func (a fileAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 		if err != nil {
 			return nil, err
 		}
+		if a.name == "opencode" {
+			manifest = opencodeMCPManifest(manifest)
+		}
 		ops = append(ops, MergeJSON{Dst: a.mcpPath, KeyPath: a.mcpKeyPath, Values: manifest.MCPServers})
 	}
 	return ops, nil
@@ -627,6 +630,9 @@ func (m Manager) InstallRegistrySkills(opt Options) error {
 	if err != nil {
 		return err
 	}
+	if err := writeRegistryHelpers(ctx, true); err != nil {
+		return err
+	}
 	return installRegistrySkills(ctx)
 }
 
@@ -695,7 +701,7 @@ func (m Manager) adapters(ctx Context) []AgentAdapter {
 	xdg := ctx.XDGConfigHome
 	return []AgentAdapter{
 		claudeAdapter{fileAdapter{name: "claude", tier: TierStable, exes: []string{"claude"}, instruction: filepath.Join(home, ".claude", "CLAUDE.md"), skills: filepath.Join(home, ".claude", "skills"), subagents: filepath.Join(home, ".claude", "agents"), settings: filepath.Join(home, ".claude", "settings.json"), docs: []string{"https://docs.claude.com/en/docs/claude-code/settings", "https://docs.claude.com/en/docs/claude-code/mcp"}}},
-		fileAdapter{name: "opencode", tier: TierStable, exes: []string{"opencode"}, instruction: filepath.Join(xdg, "opencode", "AGENTS.md"), skills: filepath.Join(xdg, "opencode", "skill"), subagents: filepath.Join(xdg, "opencode", "agent"), hooksPath: filepath.Join(xdg, "opencode", "opencode.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(xdg, "opencode", "opencode.json"), mcpKeyPath: []string{"mcp"}, docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"}},
+		fileAdapter{name: "opencode", tier: TierStable, exes: []string{"opencode"}, instruction: filepath.Join(xdg, "opencode", "AGENTS.md"), skills: filepath.Join(xdg, "opencode", "skill"), subagents: filepath.Join(xdg, "opencode", "agent"), mcpPath: filepath.Join(xdg, "opencode", "opencode.json"), mcpKeyPath: []string{"mcp"}, docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"}},
 		fileAdapter{name: "kimi", tier: TierStable, exes: []string{"kimi"}, instruction: filepath.Join(home, ".kimi", "AGENTS.md"), skills: filepath.Join(home, ".kimi", "skills"), mcpPath: filepath.Join(home, ".kimi", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/data-locations.html"}},
 		fileAdapter{name: "kiro", aliases: []string{"kiro-cli"}, tier: TierStable, exes: []string{"kiro", "kiro-cli"}, instruction: filepath.Join(home, ".kiro", "steering", "AGENTS.md"), mcpPath: filepath.Join(home, ".kiro", "settings", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/"}, notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; MCP presets sync to the shared Kiro settings path."},
 		fileAdapter{name: "qwen", tier: TierStable, exes: []string{"qwen"}, instruction: filepath.Join(home, ".qwen", "QWEN.md"), skills: filepath.Join(home, ".qwen", "skills"), hooksPath: filepath.Join(home, ".qwen", "settings.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(home, ".qwen", "settings.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://qwenlm.github.io/qwen-code-docs/en/cli/configuration/", "https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/"}},
@@ -748,6 +754,28 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 	return manifest, nil
 }
 
+func opencodeMCPManifest(manifest MCPManifest) MCPManifest {
+	out := MCPManifest{MCPServers: map[string]any{}}
+	for name, value := range manifest.MCPServers {
+		server, ok := value.(map[string]any)
+		if !ok {
+			out.MCPServers[name] = value
+			continue
+		}
+		next := map[string]any{}
+		for key, serverValue := range server {
+			next[key] = serverValue
+		}
+		// OpenCode uses "remote" for URL-backed MCP servers; shared presets keep
+		// "http" for other agent config formats.
+		if typ, _ := next["type"].(string); typ == "http" {
+			next["type"] = "remote"
+		}
+		out.MCPServers[name] = next
+	}
+	return out
+}
+
 func readSettingsManifest(ctx Context) (SettingsManifest, error) {
 	var manifest SettingsManifest
 	path := filepath.Join(ctx.Options.AgentsDir, "settings.json")
@@ -789,15 +817,16 @@ func writeRegistryHelpers(ctx Context, replace bool) error {
 	}
 	var script strings.Builder
 	script.WriteString("#!/usr/bin/env sh\nset -eu\n\n")
-	script.WriteString("# Install registry-managed skills. Custom skills live in ~/.agents/skills.\n")
+	script.WriteString(fmt.Sprintf("# Install registry-managed skills. Custom skills live in %s.\n", filepath.Join(ctx.Options.AgentsDir, "skills")))
 	for _, skill := range manifest.Skills {
-		script.WriteString(registryCommand(skill, true, ctx.CopyMode))
+		script.WriteString(registryCommand(skill, true, ctx.CopyMode, ctx.Options.AgentsDir))
 		script.WriteString("\n")
 	}
 	if err := writeFileManaged(ctx, filepath.Join(registryDir, "install.sh"), []byte(script.String()), replace); err != nil {
 		return err
 	}
-	readme := "# Registry Skills\n\nThese skills are installed from the public Skills registry so updates can come from upstream.\n\nRun:\n\n```bash\nsh ~/.agents/registry/install.sh\n```\n"
+	installScript := filepath.Join(ctx.Options.AgentsDir, "registry", "install.sh")
+	readme := fmt.Sprintf("# Registry Skills\n\nThese skills are installed from the public Skills registry so updates can come from upstream.\n\nRun:\n\n```bash\nsh %s\n```\n", shellWord(installScript))
 	return writeFileManaged(ctx, filepath.Join(registryDir, "README.md"), []byte(readme), replace)
 }
 
@@ -827,7 +856,8 @@ func installRegistrySkills(ctx Context) error {
 		return nil
 	}
 	if _, err := exec.LookPath("npx"); err != nil {
-		return fmt.Errorf("npx is required to install registry skills; rerun with --no-registry or run ~/.agents/registry/install.sh later")
+		installScript := filepath.Join(ctx.Options.AgentsDir, "registry", "install.sh")
+		return fmt.Errorf("npx is required to install registry skills; rerun with --no-registry or run %s later", installScript)
 	}
 	for _, skill := range manifest.Skills {
 		args := []string{"--yes", "skills", "add", skill.Source, "--skill", skill.Skill, "--global", "--agent", "*", "--yes"}
@@ -836,13 +866,15 @@ func installRegistrySkills(ctx Context) error {
 		}
 		ctx.Report.Line("registry: %s from %s@%s", skill.Name, skill.Source, skill.Skill)
 		if ctx.DryRun {
-			ctx.Report.Line("run: npx %s", strings.Join(args, " "))
+			ctx.Report.Line("run: %s", registryCommand(skill, true, ctx.CopyMode, ctx.Options.AgentsDir))
 			continue
 		}
 		cmd := exec.Command("npx", args...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin
+		// Keep registry installs aligned with --agents-home instead of the CLI default.
+		cmd.Env = append(os.Environ(), "AGENTS_HOME="+ctx.Options.AgentsDir)
 		if err := cmd.Run(); err != nil {
 			ctx.Report.Line("warning: registry skill %s failed: %v", skill.Name, err)
 			continue
@@ -851,8 +883,8 @@ func installRegistrySkills(ctx Context) error {
 	return nil
 }
 
-func registryCommand(skill RegistrySkill, global bool, copyMode bool) string {
-	parts := []string{"npx --yes skills add", shellWord(skill.Source), "--skill", shellWord(skill.Skill)}
+func registryCommand(skill RegistrySkill, global bool, copyMode bool, agentsDir string) string {
+	parts := []string{fmt.Sprintf("AGENTS_HOME=%s", shellWord(agentsDir)), "npx --yes skills add", shellWord(skill.Source), "--skill", shellWord(skill.Skill)}
 	if global {
 		parts = append(parts, "--global")
 	}
