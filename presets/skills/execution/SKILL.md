@@ -13,9 +13,12 @@ Với task lớn, chỉ dùng skill này sau khi user đã duyệt plan được
 
 - **Không giữ tương thích ngược vô điều kiện:** Khi code mới cần thay đổi contract nội bộ để đúng kiến trúc hơn, được quyền thay đổi. Chỉ giữ tương thích khi user yêu cầu rõ hoặc public contract thật sự bắt buộc.
 - **Giữ scope chặt:** Theo sát yêu cầu, Git diff và module boundary. Không kéo thêm việc phụ.
+- **Review toàn bộ changes sau khi edit:** Sau mỗi lượt sửa file, đọc lại toàn bộ diff mình vừa tạo, xóa phần thừa, gom hoặc đơn giản hóa logic nếu có thể, và đảm bảo không còn thay đổi cơ học không cần thiết.
+- **Tối ưu diff trước khi kết thúc:** Code cuối cùng phải rõ, ít nhánh thừa, ít duplication, đúng helper/pattern hiện có và không chứa dead code, log/debug tạm, TODO vô căn cứ hoặc import không dùng.
+- **Comment bằng tiếng Anh đầy đủ ở vùng đã sửa:** Với code mới hoặc code vừa chạm, thêm/cập nhật comment tiếng Anh cho logic không tự giải thích, edge case quan trọng, contract nội bộ hoặc quyết định kỹ thuật đáng lưu lại. Không thêm comment hiển nhiên chỉ để lấp chỗ.
 - **Báo cáo cô đọng:** Nói thẳng việc đã làm, vì sao làm, validation nào đã chạy.
 - **Không build chỉ để kết thúc:** Không chạy build rộng nếu repo guidance không yêu cầu.
-- **Tự review liên tục:** Sau mỗi lượt sửa đáng kể, đọc lại diff, cleanup phần thừa, rồi lặp lại đến khi không còn vấn đề rõ ràng.
+- **Tự review liên tục:** Lặp lại review và cleanup đến khi diff không còn vấn đề rõ ràng về scope, chất lượng, comment hoặc validation.
 
 ## Nguyên Tắc Thực Thi
 
@@ -31,14 +34,18 @@ Với task lớn, chỉ dùng skill này sau khi user đã duyệt plan được
 2. Kiểm tra chính xác các file cần sửa và pattern code lân cận.
 3. Triển khai thay đổi theo style, helper và kiến trúc hiện có của repo.
 4. Không giữ tương thích ngược trừ khi user yêu cầu rõ hoặc public contract hiện tại bắt buộc phải giữ.
-5. Sau mỗi lượt sửa đáng kể, review lại code đã thay đổi và sửa các vấn đề phát hiện được.
-6. Lặp lại review và cleanup cho đến khi không còn vấn đề rõ ràng cần sửa.
-7. Chạy validation có mục tiêu khi có sẵn và phù hợp, nhưng không chạy full build chỉ để kết thúc nếu guidance của repo nói không cần build.
-8. Nếu thay đổi code ảnh hưởng đến flow, business rule, architecture, quan hệ module hoặc constraint, dùng `update-docs` để cập nhật docs/specs liên quan.
+5. Sau mỗi lượt sửa file, review toàn bộ diff mình vừa tạo, bao gồm logic, imports, tests, docs và comment.
+6. Cleanup ngay các phần thừa: code chết, duplication, naming lệch pattern, debug output, TODO không có chủ đích, whitespace churn hoặc thay đổi ngoài scope.
+7. Rà comment trong vùng code vừa chạm; bổ sung hoặc chuyển sang tiếng Anh ở những điểm cần ngữ cảnh để người sau đọc nhanh hơn, đồng thời giữ comment ngắn, chính xác và không mô tả điều code đã nói rõ.
+8. Lặp lại review và cleanup cho đến khi không còn vấn đề rõ ràng cần sửa.
+9. Chạy validation có mục tiêu khi có sẵn và phù hợp, nhưng không chạy full build chỉ để kết thúc nếu guidance của repo nói không cần build.
+10. Nếu thay đổi code ảnh hưởng đến flow, business rule, architecture, quan hệ module hoặc constraint, dùng `update-docs` để cập nhật docs/specs liên quan.
 
 ## Ràng Buộc
 
 - Không dùng browser tools.
 - Không chạy build chỉ để kết thúc task.
 - Không để nội dung docs/spec cũ nằm cạnh hành vi mới; thay thế các mô tả đã lỗi thời.
+- Không để lại comment tiếng Việt trong code mới hoặc code vừa chạm nếu comment đó thuộc phần mình sửa.
+- Không thêm comment hiển nhiên, verbose hoặc sai lệch với implementation.
 - Không revert các thay đổi worktree không liên quan.
