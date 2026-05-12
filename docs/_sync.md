@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 60d5ab4213b54034b229d6f93ff3fee4c1afd39b
+- **Last Synced Commit**: 2fa0a581ae4c6a4db820bf8b9be2d0f90be9da53 plus current worktree
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-11T02:19:23Z
-- **Scope**: preview web default port and graph interaction behavior, agent adapter registry, Kiro/Kiro CLI adapter support, adapter docs/index metadata.
+- **Sync Date**: 2026-05-12T04:18:38Z
+- **Scope**: agent preset trigger skills, Claude Code sub-agent skill, bootstrap skill sync tests.
 - **Known Unsynced**: Không có.

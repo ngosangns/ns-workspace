@@ -8,6 +8,9 @@ Agent phải nhận diện trigger skill được viết ở đầu message củ
 //<short-tag-of-skill>
 ```
 
+Riêng trigger `/s` ở đầu message là trigger tắt cho skill `spawn-claude-code`,
+dùng để spawn Claude Code process như sub-agent.
+
 Trigger có thể chứa một tag hoặc nhiều tag ghép liền nhau. Khi có nhiều tag, áp
 dụng các skill tương ứng theo đúng thứ tự chữ cái trong trigger.
 
@@ -30,6 +33,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | `//p` | `plan` | Tạo hoặc cập nhật file planning cho task lớn và chờ user duyệt trước khi sửa source. |
 | `//e` | `execution` | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo. |
 | `//u` | `update-docs` | Cập nhật docs/specs để phản ánh trạng thái hiện tại của codebase. |
+| `/s` | `spawn-claude-code` | Spawn Claude Code process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
 
 ## Trigger Ghép
 
