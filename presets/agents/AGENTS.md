@@ -27,6 +27,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 
 | Trigger | Skill | Khi Dùng |
 | --- | --- | --- |
+| `//c` | `commit` | Chuẩn bị và tạo git commit an toàn cho thay đổi hiện tại, với phạm vi staged rõ ràng và message súc tích. |
 | `//f` | `fix` | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể. |
 | `//r` | `read-search-docs` | Search/đọc docs và specs, không sửa file. |
 | `//s` | `spawn-opencode` | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
@@ -41,6 +42,8 @@ Các trigger ghép thường dùng:
 
 | Trigger | Pipeline |
 | --- | --- |
+| `//ec` | Execution thay đổi code, rồi commit nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ. |
+| `//uc` | Update docs/specs, rồi commit nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ. |
 | `//rf` | Search docs/specs liên quan, rồi fix theo nguồn tham chiếu hiện có. |
 | `//sf` | Spawn OpenCode sub-agent, rồi fix khi đã đủ bối cảnh. |
 | `//fu` | Fix lỗi, rồi update docs nếu behavior, architecture, business rules hoặc quan hệ module thay đổi. |
