@@ -9,7 +9,7 @@
 
 ## Tổng Quan
 
-`internal/preview` cung cấp HTTP preview cho knowledge base. Backend Go scan docs, parse metadata, dựng graph và trả API JSON. Frontend TypeScript render UI, router, Markdown preview, raw Markdown toggle, selection copy menu, graph Sigma/Graphology, search panels, modal preview với raw/rendered toggle và hot reload.
+`internal/preview` cung cấp HTTP preview cho knowledge base. Backend Go scan docs, parse metadata, dựng graph và trả API JSON. Frontend TypeScript render UI, router, Markdown preview, Mermaid diagram, Mermaid C4, LikeC4 model fence qua Mermaid C4, raw Markdown toggle, selection copy menu, graph Sigma/Graphology, search panels, modal preview với raw/rendered toggle và hot reload.
 
 ## Data Models Và APIs
 
@@ -28,6 +28,8 @@
 ## Quy Tắc Nghiệp Vụ
 
 Preview không yêu cầu Node ở runtime vì Go embed static assets đã build. Khi sửa frontend, source of truth là `internal/preview/preview_ui_src/`; sau đó chạy build để cập nhật `internal/preview/preview_ui/`.
+
+Markdown diagram rendering chạy ở client. Code fence `mermaid` và block có nội dung bắt đầu bằng Mermaid C4 như `C4Component` được đưa trực tiếp vào Mermaid và dùng chung `svg-pan-zoom`. Code fence `likec4` chỉ auto-render khi nội dung là `model { ... }`; frontend parse subset kiến trúc gồm `softwareSystem`, `container`, `component`, `description` và quan hệ `a.b -> c.d`, rồi chuyển sang Mermaid C4 để dùng cùng pipeline render, sanitize và pan/zoom. Diagram dark theme cấu hình Mermaid theme variables, append `UpdateElementStyle` và `UpdateRelStyle` cho C4 source, rồi post-process SVG C4 styles để container border, container label, edge, marker và edge label giữ màu sáng có tương phản.
 
 Metadata parser ưu tiên bảng `## Modules` trong `docs/_index.md` khi có. Fallback trong từng doc đọc metadata từ frontmatter `---`, bullet trong `## Meta`, hoặc bảng Markdown metadata. Frontend render frontmatter đầu file thành bảng metadata để preview dễ đọc; scalar string được bỏ quote ngoài, còn array như `["docs", "compliance"]` hiển thị thành danh sách badge. Graph metadata đọc các key liên kết như `Links`, `Depends`, `Provides` và `Consumes`.
 

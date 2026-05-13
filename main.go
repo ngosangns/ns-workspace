@@ -90,6 +90,10 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest agents [flags]
   go run github.com/ngosangns/ns-workspace@latest preview [flags]
 
+Local checkout usage:
+  cd /path/to/ns-workspace
+  go run . preview --project /path/to/project --open
+
 Flags:
   --agents-home PATH   shared home, default ~/.agents
   --tools LIST         all,stable,manual,experimental or comma-separated agent names

@@ -35,6 +35,18 @@ go run . doctor
 go run . preview --project . --open
 ```
 
+Khi muốn dùng checkout local này để preview một project khác, hãy chạy `go run .`
+từ thư mục `ns-workspace` và trỏ `--project` sang project cần đọc:
+
+```bash
+cd /Users/ngosangns/Github/ns-workspace
+go run . preview --project /Users/ngosangns/Github/viclass --open
+```
+
+Không dùng dạng `go run /Users/ngosangns/Github/ns-workspace ...` từ một repo
+không có `go.mod`, vì Go sẽ cố tìm module từ current working directory trước
+khi chương trình này kịp chạy.
+
 ## Cách Dùng Đơn Giản
 
 1. Kiểm tra trạng thái hiện tại:
@@ -125,14 +137,15 @@ Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<a
 
 ## Docs Preview
 
-Lệnh `preview` chạy một localhost web server để đọc thư mục `docs/` của project. Dashboard có danh sách docs, Markdown preview, typed docs graph và trang search gồm Docs Semantic, Docs Graph, Code Semantic, Code Graph. Trang tổng quan riêng đã được bỏ; preview mặc định mở tài liệu đầu tiên trong Doc tab. Các graph panel dùng `graphify-out/graph.json` nếu file này tồn tại. Markdown code fence `mermaid` sẽ được render thành diagram trong browser.
+Lệnh `preview` chạy một localhost web server để đọc thư mục `docs/` của project. Dashboard có danh sách docs, Markdown preview, typed docs graph và trang search gồm Docs Semantic, Docs Graph, Code Semantic, Code Graph. Trang tổng quan riêng đã được bỏ; preview mặc định mở tài liệu đầu tiên trong Doc tab. Các graph panel dùng `graphify-out/graph.json` nếu file này tồn tại. Markdown code fence `mermaid` và Mermaid C4 như `C4Component` render trực tiếp trong browser, còn code fence `likec4` chứa `model { ... }` được chuyển sang Mermaid C4 để xem được model kiến trúc trong preview.
 
 Ví dụ:
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass
 go run github.com/ngosangns/ns-workspace@latest preview --project . --open
-go run . preview --project . --open
+cd /Users/ngosangns/Github/ns-workspace
+go run . preview --project /Users/ngosangns/Github/viclass --open
 ```
 
 Preview flags:
