@@ -72,11 +72,14 @@ const markdownRenderer = window.markdownit({
     linkify: true,
     typographer: false,
     highlight: (source, lang) => {
+        const sourceLanguage = String(lang || "").trim();
+        const sourceLanguageAttr = sourceLanguage ? ` data-source-language="${escapeHTML(sourceLanguage)}"` : "";
+        const sourceLanguageClass = sourceLanguage ? ` language-${escapeHTML(sourceLanguage)}` : "";
         const language = normalizeHighlightLanguage(lang);
         if (window.hljs && language && window.hljs.getLanguage(language)) {
-            return `<pre class="hljs"><code class="language-${escapeHTML(language)} is-highlighted" data-highlighted="yes">${window.hljs.highlight(source, { language, ignoreIllegals: true }).value}</code></pre>`;
+            return `<pre class="hljs"><code class="language-${escapeHTML(language)}${sourceLanguageClass} is-highlighted" data-highlighted="yes"${sourceLanguageAttr}>${window.hljs.highlight(source, { language, ignoreIllegals: true }).value}</code></pre>`;
         }
-        return `<pre class="hljs"><code class="is-highlighted" data-highlighted="yes">${escapeHTML(source)}</code></pre>`;
+        return `<pre class="hljs"><code class="${sourceLanguageClass.trim()} is-highlighted" data-highlighted="yes"${sourceLanguageAttr}>${escapeHTML(source)}</code></pre>`;
     },
 });
 markdownRenderer.enable("table");
@@ -883,6 +886,7 @@ async function renderSpecDocumentContent(root, spec, baseClass = "markdown", opt
         decorateMarkdownSourceLines(root, spec.raw || "");
         decorateInternalDocNavigation(root, spec);
         await renderMermaidBlocks(root);
+        await renderLikeC4Blocks(root);
         highlightRenderedCode(root);
         return;
     }
@@ -1390,7 +1394,9 @@ function highlightRenderedCode(root) {
     if (!window.hljs)
         return;
     root.querySelectorAll("pre code").forEach((block) => {
-        if (block.classList.contains("mermaid") || block.classList.contains("language-mermaid"))
+        if (isMermaidDiagramBlock(block))
+            return;
+        if (isLikeC4ModelBlock(block))
             return;
         if (block.dataset.highlighted === "yes" || block.classList.contains("is-highlighted"))
             return;
@@ -1476,16 +1482,184 @@ function languageFromPath(path) {
     return map[ext] || "plaintext";
 }
 async function renderMermaidBlocks(root) {
-    const blocks = [...root.querySelectorAll("pre > code.language-mermaid, pre > code.mermaid")];
+    const blocks = [...root.querySelectorAll("pre > code")].filter(isMermaidDiagramBlock);
     await Promise.all(blocks.map(async (block, index) => {
         const source = block.textContent.trim();
         if (!source)
             return;
         const host = document.createElement("div");
         const id = `mermaid-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}-${++state.diagramSerial}`;
-        await renderMermaidDiagram(host, id, source, "Mermaid", "Mermaid diagram", true);
+        const diagramType = mermaidC4DiagramTypeFromBlock(block);
+        const diagramSource = diagramType && !looksLikeMermaidC4Diagram(source) ? `${diagramType}\n${source}` : source;
+        await renderMermaidDiagram(host, id, diagramSource, "Mermaid", "Mermaid diagram", true);
         block.closest("pre").replaceWith(host);
     }));
+}
+function isMermaidDiagramBlock(block) {
+    if (block.classList.contains("mermaid") || block.classList.contains("language-mermaid"))
+        return true;
+    if (mermaidC4DiagramTypeFromBlock(block))
+        return true;
+    return looksLikeMermaidC4Diagram(block.textContent || "");
+}
+function mermaidC4DiagramTypeFromBlock(block) {
+    const sourceLanguages = [...block.classList, block.dataset.sourceLanguage || ""];
+    const c4Class = sourceLanguages
+        .map((className) => className.match(/^(?:language-)?(c4(?:context|container|component|dynamic|deployment)?)$/i)?.[1])
+        .find(Boolean);
+    if (!c4Class)
+        return "";
+    if (c4Class.toLowerCase() === "c4")
+        return "C4Component";
+    return `C4${c4Class.slice(2, 3).toUpperCase()}${c4Class.slice(3).toLowerCase()}`;
+}
+function looksLikeMermaidC4Diagram(source) {
+    return /^\s*C4(?:Context|Container|Component|Dynamic|Deployment)\b/.test(source);
+}
+async function renderLikeC4Blocks(root) {
+    const blocks = [...root.querySelectorAll("pre > code")].filter(isLikeC4ModelBlock);
+    await Promise.all(blocks.map(async (block, index) => {
+        const source = block.textContent.trim();
+        if (!source || !looksLikeLikeC4Model(source))
+            return;
+        const host = document.createElement("div");
+        const id = `likec4-${state.selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}-${++state.diagramSerial}`;
+        await renderLikeC4ModelDiagram(host, id, source);
+        block.closest("pre").replaceWith(host);
+    }));
+}
+function isLikeC4ModelBlock(block) {
+    const language = String(block.dataset.sourceLanguage || "").toLowerCase();
+    return (block.classList.contains("likec4") ||
+        block.classList.contains("language-likec4") ||
+        language === "likec4" ||
+        looksLikeLikeC4Model(block.textContent || ""));
+}
+function looksLikeLikeC4Model(source) {
+    return /\bmodel\s*\{/.test(source) && /\b(softwareSystem|container|component)\b/.test(source);
+}
+async function renderLikeC4ModelDiagram(host, id, source) {
+    try {
+        const mermaidSource = likeC4ModelToMermaid(source);
+        await renderMermaidDiagram(host, id, mermaidSource, "LikeC4", "LikeC4 model", true);
+    }
+    catch (error) {
+        host.className = "alert alert-error my-2 text-sm";
+        host.textContent = `LikeC4 render failed: ${error.message || error}`;
+    }
+}
+// The preview only needs the architecture-model subset used in specs, so this
+// converts LikeC4 declarations and relations into Mermaid C4 for the existing
+// client-side renderer instead of bundling a second diagram runtime.
+function likeC4ModelToMermaid(source) {
+    const parsed = parseLikeC4Model(source);
+    if (!parsed.nodes.length) {
+        throw new Error("No C4 nodes found in LikeC4 model");
+    }
+    const nodeByPath = new Map(parsed.nodes.map((node) => [node.path, node]));
+    const nodeByLeaf = new Map(parsed.nodes.map((node) => [node.id, node]));
+    const lines = ["C4Component", "title LikeC4 model"];
+    parsed.roots.forEach((node) => appendLikeC4MermaidRoot(lines, node));
+    parsed.relations.forEach((relation) => {
+        const from = resolveLikeC4Endpoint(relation.from, nodeByPath, nodeByLeaf);
+        const to = resolveLikeC4Endpoint(relation.to, nodeByPath, nodeByLeaf);
+        lines.push(`Rel(${from}, ${to}, "${escapeMermaidText(relation.label)}")`);
+    });
+    return lines.join("\n");
+}
+function parseLikeC4Model(source) {
+    const roots = [];
+    const nodes = [];
+    const relations = [];
+    const stack = [];
+    const body = source.replace(/^[\s\S]*?\bmodel\s*\{/, "").replace(/\}\s*$/, "");
+    body.split("\n").forEach((rawLine) => {
+        const line = rawLine.trim();
+        if (!line || line.startsWith("//"))
+            return;
+        const relation = line.match(/^([\w.]+)\s*->\s*([\w.]+)\s+"([^"]*)"/);
+        if (relation) {
+            relations.push({ from: relation[1], to: relation[2], label: relation[3] });
+            return;
+        }
+        const declaration = line.match(/^(\w+)\s*=\s*(softwareSystem|container|component)\s+"([^"]*)"\s*(\{)?/);
+        if (declaration) {
+            const parentPath = stack.at(-1)?.path || "";
+            const path = parentPath ? `${parentPath}.${declaration[1]}` : declaration[1];
+            const node = {
+                id: declaration[1],
+                path,
+                mermaidId: likeC4MermaidId(path),
+                kind: declaration[2],
+                title: declaration[3],
+                description: "",
+                children: [],
+            };
+            const parent = stack.at(-1);
+            if (parent) {
+                parent.children.push(node);
+            }
+            else {
+                roots.push(node);
+            }
+            nodes.push(node);
+            if (line.includes("{") && !line.includes("}")) {
+                stack.push(node);
+            }
+            return;
+        }
+        const description = line.match(/^description\s+"([^"]*)"/);
+        if (description && stack.length) {
+            stack[stack.length - 1].description = description[1];
+            return;
+        }
+        if (line === "}") {
+            stack.pop();
+        }
+    });
+    return { roots, nodes, relations };
+}
+function appendLikeC4MermaidRoot(lines, node) {
+    // C4Component is most reliable when component containers are top-level; a
+    // LikeC4 softwareSystem root is structural context, not a component boundary.
+    if (node.kind === "softwareSystem" && node.children.length) {
+        node.children.forEach((child) => appendLikeC4MermaidNode(lines, child, 0));
+        return;
+    }
+    appendLikeC4MermaidNode(lines, node, 0);
+}
+function appendLikeC4MermaidNode(lines, node, depth) {
+    const pad = "  ".repeat(depth);
+    const title = escapeMermaidText(node.title);
+    const description = escapeMermaidText(node.description);
+    if (node.children.length) {
+        const boundary = node.kind === "softwareSystem" ? "System_Boundary" : "Container_Boundary";
+        lines.push(`${pad}${boundary}(${node.mermaidId}, "${title}") {`);
+        node.children.forEach((child) => appendLikeC4MermaidNode(lines, child, depth + 1));
+        lines.push(`${pad}}`);
+        return;
+    }
+    if (node.kind === "component") {
+        lines.push(`${pad}Component(${node.mermaidId}, "${title}", "Component", "${description}")`);
+        return;
+    }
+    const type = node.kind === "softwareSystem" ? "System" : "Container";
+    lines.push(`${pad}${type}(${node.mermaidId}, "${title}", "${type}", "${description}")`);
+}
+function resolveLikeC4Endpoint(endpoint, nodeByPath, nodeByLeaf) {
+    return nodeByPath.get(endpoint)?.mermaidId || nodeByLeaf.get(endpoint)?.mermaidId || likeC4MermaidId(endpoint);
+}
+function likeC4MermaidId(value) {
+    const id = String(value || "")
+        .replace(/\./g, "_")
+        .replace(/[^A-Za-z0-9_]/g, "_")
+        .replace(/^_+|_+$/g, "");
+    return /^[A-Za-z_]/.test(id) ? id || "likec4_node" : `likec4_${id}`;
+}
+function escapeMermaidText(value) {
+    return String(value || "")
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"');
 }
 async function renderMermaidDiagram(host, id, source, label, title, framed) {
     host.className = framed ? "mermaid diagram-surface my-5 rounded-lg border border-base-300 bg-base-100" : "mermaid diagram-surface";
@@ -1498,17 +1672,169 @@ async function renderMermaidDiagram(host, id, source, label, title, framed) {
         }
         window.mermaid.initialize({
             startOnLoad: false,
-            theme: state.theme === "dark" ? "dark" : "default",
+            ...mermaidThemeConfig(),
             securityLevel: "strict",
         });
-        const result = await window.mermaid.render(id, source);
+        const result = await window.mermaid.render(id, mermaidSourceForTheme(source));
         host.innerHTML = DOMPurify.sanitize(result.svg || "", diagramSanitizeConfig);
+        applyDiagramThemeOverrides(host);
         decorateDiagram(host, id, title);
     }
     catch (error) {
         host.className = "alert alert-error my-2 text-sm";
         host.textContent = `${label} render failed: ${error.message || error}`;
     }
+}
+function mermaidSourceForTheme(source) {
+    if (state.theme !== "dark" || !looksLikeMermaidC4Diagram(source)) {
+        return source;
+    }
+    const elementStyles = mermaidC4ElementStyles(source, "#f8fafc", "#cbd5e1");
+    const relStyles = mermaidC4RelationStyles(source, "#f8fafc", "#cbd5e1");
+    const styles = [...elementStyles, ...relStyles];
+    if (!styles.length) {
+        return source;
+    }
+    return `${source.trim()}\n${styles.join("\n")}`;
+}
+function mermaidC4ElementStyles(source, fontColor, borderColor) {
+    const styles = [];
+    source.split("\n").forEach((rawLine) => {
+        const line = rawLine.trim();
+        const element = line.match(/^(?:Person(?:_[A-Za-z]+)?|System(?:_[A-Za-z]+)?|Container(?:Db|Queue|_[A-Za-z]+)?|Component(?:Db|Queue|_[A-Za-z]+)?|Boundary|Enterprise_Boundary|System_Boundary|Container_Boundary|Deployment_Node|Node(?:_[A-Za-z]+)?)\s*\(\s*([^,\s]+)\s*,/);
+        if (element) {
+            styles.push(c4ElementStyle(element[1], fontColor, borderColor));
+        }
+    });
+    return styles;
+}
+function c4ElementStyle(elementName, fontColor, borderColor) {
+    return `UpdateElementStyle(${elementName}, $fontColor="${fontColor}", $borderColor="${borderColor}")`;
+}
+function mermaidC4RelationStyles(source, textColor, lineColor) {
+    const styles = [];
+    source.split("\n").forEach((rawLine) => {
+        const line = rawLine.trim();
+        const relation = line.match(/^(?:Rel(?:_[A-Za-z]+)?|BiRel)\s*\(\s*([^,\s]+)\s*,\s*([^,\s]+)\s*,/);
+        if (relation) {
+            styles.push(c4RelationStyle(relation[1], relation[2], textColor, lineColor));
+            return;
+        }
+        const indexedRelation = line.match(/^RelIndex\s*\(\s*[^,]+,\s*([^,\s]+)\s*,\s*([^,\s]+)\s*,/);
+        if (indexedRelation) {
+            styles.push(c4RelationStyle(indexedRelation[1], indexedRelation[2], textColor, lineColor));
+        }
+    });
+    return styles;
+}
+function c4RelationStyle(from, to, textColor, lineColor) {
+    return `UpdateRelStyle(${from}, ${to}, $textColor="${textColor}", $lineColor="${lineColor}")`;
+}
+function mermaidThemeConfig() {
+    if (state.theme !== "dark") {
+        return {
+            theme: "default",
+            themeVariables: {
+                lineColor: "#334155",
+                defaultLinkColor: "#334155",
+                edgeLabelBackground: "#ffffff",
+                labelTextColor: "#0f172a",
+                relationColor: "#334155",
+                relationLabelColor: "#0f172a",
+                relationLabelBackground: "#ffffff",
+            },
+        };
+    }
+    return {
+        theme: "dark",
+        themeVariables: {
+            darkMode: true,
+            background: "#111827",
+            primaryTextColor: "#f8fafc",
+            secondaryTextColor: "#f8fafc",
+            tertiaryTextColor: "#f8fafc",
+            textColor: "#f8fafc",
+            titleColor: "#f8fafc",
+            lineColor: "#cbd5e1",
+            defaultLinkColor: "#cbd5e1",
+            arrowheadColor: "#cbd5e1",
+            edgeLabelBackground: "#111827",
+            labelTextColor: "#f8fafc",
+            relationColor: "#cbd5e1",
+            relationLabelColor: "#f8fafc",
+            relationLabelBackground: "#111827",
+        },
+    };
+}
+function applyDiagramThemeOverrides(host) {
+    const dark = state.theme === "dark";
+    const edgeColor = dark ? "#cbd5e1" : "#334155";
+    const labelColor = dark ? "#f8fafc" : "#0f172a";
+    const labelBackground = dark ? "#111827" : "#ffffff";
+    const containerBorderColor = dark ? "#cbd5e1" : "#334155";
+    // Mermaid C4 has fixed relationship styles in some versions, so force only
+    // C4-specific strokes and labels after sanitization when source styling is ignored.
+    applyC4BoundaryThemeOverrides(host, containerBorderColor, labelColor);
+    host
+        .querySelectorAll(".boundary rect, .container rect, .component rect, g[class*='boundary'] rect, g[class*='container'] rect, g[class*='component'] rect")
+        .forEach((node) => {
+        node.setAttribute("stroke", containerBorderColor);
+        node.style.stroke = containerBorderColor;
+    });
+    host
+        .querySelectorAll(".boundary text, .boundary tspan, .container text, .container tspan, .component text, .component tspan, g[class*='boundary'] text, g[class*='boundary'] tspan, g[class*='container'] text, g[class*='container'] tspan, g[class*='component'] text, g[class*='component'] tspan")
+        .forEach((node) => {
+        node.setAttribute("fill", labelColor);
+        node.style.color = labelColor;
+        node.style.fill = labelColor;
+    });
+    host
+        .querySelectorAll(".relationship line, .relationship path, path.relationship, line.relationship, .edgePath path, .flowchart-link")
+        .forEach((node) => {
+        node.setAttribute("stroke", edgeColor);
+        node.style.stroke = edgeColor;
+    });
+    host.querySelectorAll("marker path, marker polygon").forEach((node) => {
+        node.setAttribute("fill", edgeColor);
+        node.setAttribute("stroke", edgeColor);
+        node.style.fill = edgeColor;
+        node.style.stroke = edgeColor;
+    });
+    host
+        .querySelectorAll(".relationshipLabel, .relationshipLabel *, .edgeLabel, .edgeLabel *, .messageText, text[class*='relationship'], text[class*='label']")
+        .forEach((node) => {
+        node.setAttribute("fill", labelColor);
+        node.style.color = labelColor;
+        node.style.fill = labelColor;
+    });
+    host.querySelectorAll(".edgeLabel rect, .relationshipLabel rect, rect[class*='label']").forEach((node) => {
+        node.setAttribute("fill", labelBackground);
+        node.style.fill = labelBackground;
+    });
+    host.querySelectorAll(".edgeLabel foreignObject, .relationshipLabel foreignObject").forEach((node) => {
+        node.style.color = labelColor;
+        node.style.background = labelBackground;
+    });
+}
+function applyC4BoundaryThemeOverrides(host, borderColor, labelColor) {
+    host.querySelectorAll("g").forEach((group) => {
+        const rect = group.querySelector(":scope > rect");
+        if (!rect || !isC4BoundaryRect(rect))
+            return;
+        rect.setAttribute("stroke", borderColor);
+        rect.style.stroke = borderColor;
+        group.querySelectorAll(":scope > text, :scope > text tspan").forEach((label) => {
+            label.setAttribute("fill", labelColor);
+            label.style.color = labelColor;
+            label.style.fill = labelColor;
+        });
+    });
+}
+function isC4BoundaryRect(rect) {
+    const fill = String(rect.getAttribute("fill") || "").toLowerCase();
+    const dash = rect.getAttribute("stroke-dasharray") || "";
+    const parentText = rect.parentElement?.textContent || "";
+    return fill === "none" || Boolean(dash) || /\[(?:container|system|boundary|node)\]/i.test(parentText);
 }
 function decorateDiagram(host, id, title) {
     const svg = host.querySelector("svg");

@@ -1063,6 +1063,19 @@ func TestPreviewDiagramSanitizerKeepsMermaidLabels(t *testing.T) {
 	}
 }
 
+func TestPreviewDiagramUsesThemeAwareEdgesAndLabels(t *testing.T) {
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"mermaidSourceForTheme", "mermaidC4ElementStyles", "UpdateElementStyle", "$fontColor=\"${fontColor}\"", "$borderColor=\"${borderColor}\"", "mermaidC4RelationStyles", "UpdateRelStyle", "$textColor=\"${textColor}\"", "$lineColor=\"${lineColor}\"", "mermaidThemeConfig", "applyDiagramThemeOverrides", "applyC4BoundaryThemeOverrides", "isC4BoundaryRect", "darkMode: true", "lineColor: \"#cbd5e1\"", "edgeLabelBackground: \"#111827\"", "relationColor: \"#cbd5e1\"", "relationLabelColor: \"#f8fafc\"", ":scope > rect", ":scope > text", "stroke-dasharray", ".relationship line", ".relationshipLabel *", ".edgeLabel *", "marker path"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview diagram dark theme edge/label support missing %s", want)
+		}
+	}
+}
+
 func TestPreviewUISupportsDarkMode(t *testing.T) {
 	html, err := os.ReadFile("preview_ui/index.html")
 	if err != nil {
@@ -1073,7 +1086,7 @@ func TestPreviewUISupportsDarkMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app)
-	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "theme: state.theme"} {
+	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "mermaidThemeConfig"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI dark mode missing %s", want)
 		}
@@ -1115,6 +1128,32 @@ func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
 	for _, forbidden := range []string{"id=\"diagramLightbox\"", "openDiagramLightbox", "showModal()", "diagram-lightbox", "diagramViewports"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("preview Mermaid should not use old lightbox/custom viewport code: %s", forbidden)
+		}
+	}
+}
+
+func TestPreviewUIRendersMermaidC4Fences(t *testing.T) {
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"data-source-language", "isMermaidDiagramBlock", "mermaidC4DiagramTypeFromBlock", "looksLikeMermaidC4Diagram", "C4(?:Context|Container|Component|Dynamic|Deployment)", "(?:language-)?(c4(?:context|container|component|dynamic|deployment)?)", "C4Component"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI Mermaid C4 fence rendering missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIRendersLikeC4ModelThroughMermaidC4(t *testing.T) {
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app)
+	for _, want := range []string{"data-source-language", "renderLikeC4Blocks", "isLikeC4ModelBlock", "language-likec4", "looksLikeLikeC4Model", "likeC4ModelToMermaid", "appendLikeC4MermaidRoot", "node.kind === \"softwareSystem\"", "C4Component", "Container_Boundary", "Component(", "Rel(", "LikeC4 model"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI LikeC4 model rendering missing %s", want)
 		}
 	}
 }

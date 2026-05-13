@@ -13,7 +13,7 @@ Lệnh `preview` chạy một web server local để đọc thư mục `docs/` c
 
 ## Hành Vi Chính
 
-- Doc tab render Markdown client-side, hỗ trợ code highlight, Mermaid diagram và pan/zoom cho diagram.
+- Doc tab render Markdown client-side, hỗ trợ code highlight, Mermaid diagram, Mermaid C4 như `C4Component`, LikeC4 `model { ... }` dạng C4 model và pan/zoom cho diagram; dark theme giữ edge, marker và edge label sáng để đọc được trên nền tối.
 - Doc tab có nút xem raw Markdown để chuyển nhanh giữa rendered view và source Markdown.
 - Preview modal cho doc/file có nút chuyển giữa rendered preview và raw source hiện tại.
 - Khi chọn text trong Doc hoặc preview modal, context menu có nút Copy để copy reference dạng `path:start-end`.
