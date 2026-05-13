@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 2fa0a581ae4c6a4db820bf8b9be2d0f90be9da53 plus current worktree
+- **Last Synced Commit**: 854a2331a5800369a0284d05c43460bd423d5d01 plus current worktree
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-12T04:18:38Z
-- **Scope**: agent preset trigger skills, Claude Code sub-agent skill, bootstrap skill sync tests.
+- **Sync Date**: 2026-05-13T02:45:00Z
+- **Scope**: agent preset trigger skills, OpenCode sub-agent skill, bootstrap skill sync docs.
 - **Known Unsynced**: Không có.
