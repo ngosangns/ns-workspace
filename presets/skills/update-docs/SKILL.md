@@ -17,6 +17,8 @@ Dùng skill này để cập nhật knowledge base của repo sau nghiên cứu 
 
 Áp dụng các quy tắc này cho mọi docs mới hoặc docs đang được chỉnh, trừ khi repo có contract riêng rõ ràng hơn.
 
+Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi cập nhật một file cụ thể, chọn nhóm quy tắc theo format của file đó; khi tạo hoặc chuẩn hóa generator docs, xác định format đích trước rồi áp dụng đầy đủ nhóm tương ứng.
+
 ### Nội Dung
 
 - Viết như tài liệu vận hành hiện tại, không như nhật ký thay đổi. Tránh các đoạn “trước đây”, “vừa thêm”, “sẽ đổi sau” nếu không phải là spec/plan đang draft.
