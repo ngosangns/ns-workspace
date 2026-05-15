@@ -3,7 +3,6 @@ type Dictionary<T = unknown> = Record<string, T>;
 interface Window {
   hljs?: HighlightGlobal;
   lucide?: LucideGlobal;
-  markdownit?: MarkdownItFactory;
   mermaid?: MermaidGlobal;
   svgPanZoom?: SvgPanZoomFactory;
 }
@@ -21,13 +20,6 @@ interface HighlightGlobal {
 
 interface LucideGlobal {
   createIcons(): void;
-}
-
-interface MarkdownItFactory {
-  (options: { html: boolean; linkify: boolean; typographer: boolean; highlight: (source: string, lang?: string) => string }): {
-    enable(rule: string | string[]): void;
-    render(raw: string): string;
-  };
 }
 
 interface MermaidGlobal {
@@ -49,4 +41,19 @@ interface SvgPanZoomInstance {
 
 interface SvgPanZoomFactory {
   (svg: SVGElement, options: Dictionary): SvgPanZoomInstance;
+}
+
+interface ToastMarkdownViewerConstructor {
+  new (options: Dictionary): ToastMarkdownViewer;
+}
+
+interface ToastMarkdownViewer {
+  destroy(): void;
+}
+
+interface ToastMarkdownCodeBlockNode {
+  info?: string;
+  lang?: string;
+  language?: string;
+  literal?: string;
 }

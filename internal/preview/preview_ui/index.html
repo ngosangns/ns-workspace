@@ -28,6 +28,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/styles/github-dark.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@toast-ui/editor@3.2.2/dist/toastui-editor-viewer.min.css" />
     <link rel="stylesheet" href="/style.css" />
     <script type="importmap">
       {
@@ -173,25 +174,12 @@
         </section>
 
         <section id="specTab" class="panel active p-5">
-          <div class="mx-auto mb-3 flex max-w-5xl justify-end">
-            <button
-              id="rawMarkdownToggle"
-              class="btn btn-ghost btn-sm"
-              type="button"
-              aria-label="View raw Markdown"
-              title="View raw Markdown"
-              hidden
-            >
-              <i data-lucide="file-code" class="h-4 w-4"></i>
-            </button>
-          </div>
           <article id="specContent" class="markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"></article>
         </section>
       </main>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/languages/go.min.js"></script>

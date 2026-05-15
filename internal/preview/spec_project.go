@@ -13,6 +13,7 @@ import (
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
+	"golang.org/x/net/html"
 )
 
 type specProject struct {
@@ -43,6 +44,7 @@ type specDocument struct {
 	Title       string `json:"title"`
 	Path        string `json:"path"`
 	Language    string `json:"language,omitempty"`
+	Format      string `json:"format,omitempty"`
 	Category    string `json:"category"`
 	Status      string `json:"status,omitempty"`
 	Version     string `json:"version,omitempty"`
@@ -51,6 +53,7 @@ type specDocument struct {
 	Description string `json:"description,omitempty"`
 	Raw         string `json:"raw,omitempty"`
 	HTML        string `json:"html,omitempty"`
+	SearchText  string `json:"-"`
 }
 
 type specGraph struct {
@@ -116,6 +119,20 @@ type semanticSpecRef struct {
 type metadataEntry struct {
 	Key   string
 	Value string
+}
+
+type htmlDocData struct {
+	Meta      moduleMeta
+	Entries   []metadataEntry
+	Relations []htmlDocRelation
+	Text      string
+	BodyText  string
+}
+
+type htmlDocRelation struct {
+	Target string
+	Type   string
+	Raw    string
 }
 
 const defaultSpecRelation = "references"
@@ -197,12 +214,14 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 			return nil
 		}
 		raw := string(rawBytes)
+		format := documentFormatForPath(path)
 		meta := mergeModuleMeta(parseDocumentMeta(rel, raw), table[rel])
 		docs = append(docs, specDocument{
 			ID:          rel,
-			Title:       firstNonEmpty(meta.Title, titleFromMarkdown(raw), rel),
+			Title:       firstNonEmpty(meta.Title, titleFromDocument(raw, format), rel),
 			Path:        rel,
 			Language:    languageForPath(path),
+			Format:      format,
 			Category:    categoryFor(rel),
 			Status:      meta.Status,
 			Version:     meta.Version,
@@ -210,6 +229,7 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 			Priority:    meta.Priority,
 			Description: meta.Description,
 			Raw:         raw,
+			SearchText:  searchTextForDocument(raw, format),
 		})
 		return nil
 	})
@@ -328,6 +348,11 @@ func parseModuleTable(markdown string) map[string]moduleMeta {
 }
 
 func parseDocumentMeta(rel, raw string) moduleMeta {
+	if documentFormatForPath(rel) == "html" {
+		meta := parseHTMLDocumentData(raw).Meta
+		meta.Path = rel
+		return meta
+	}
 	meta := moduleMeta{Title: titleFromMarkdown(raw), Path: rel}
 	block := metadataBlock(raw)
 	for _, entry := range metadataEntries(block) {
@@ -366,6 +391,31 @@ func parseDocumentMeta(rel, raw string) moduleMeta {
 		}
 	}
 	return meta
+}
+
+func documentFormatForPath(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".md", ".markdown":
+		return "markdown"
+	case ".html", ".htm":
+		return "html"
+	default:
+		return "text"
+	}
+}
+
+func titleFromDocument(raw, format string) string {
+	if format == "html" {
+		return parseHTMLDocumentData(raw).Meta.Title
+	}
+	return titleFromMarkdown(raw)
+}
+
+func searchTextForDocument(raw, format string) string {
+	if format == "html" {
+		return parseHTMLDocumentData(raw).BodyText
+	}
+	return raw
 }
 
 func parseSyncState(markdown string) map[string]string {
@@ -477,7 +527,7 @@ func documentGraphID(doc specDocument, diagramLabelSet map[string]bool) string {
 	if name := moduleIDFromPath(doc.Path); name != "" {
 		return canonicalSpecNodeID(name, doc, diagramLabelSet)
 	}
-	return strings.TrimSuffix(doc.Path, ".md")
+	return strings.TrimSuffix(doc.Path, filepath.Ext(doc.Path))
 }
 
 func specAliasesForDoc(name string, doc specDocument) []string {
@@ -494,7 +544,7 @@ func specAliasesForDoc(name string, doc specDocument) []string {
 	add(name)
 	add(strings.ReplaceAll(name, "-", "."))
 	add(strings.ReplaceAll(name, ".", "-"))
-	pathAlias := strings.TrimSuffix(doc.Path, ".md")
+	pathAlias := strings.TrimSuffix(doc.Path, filepath.Ext(doc.Path))
 	add(pathAlias)
 	add(strings.TrimPrefix(pathAlias, "modules/"))
 	add(strings.ToLower(doc.Title))
@@ -712,6 +762,25 @@ func isSpecControlFile(path string) bool {
 }
 
 func parseDocumentMetadataEdges(doc specDocument, from string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
+	if doc.Format == "html" {
+		data := parseHTMLDocumentData(doc.Raw)
+		edges := []graphEdge{}
+		for _, entry := range data.Entries {
+			if !isSpecLinkMetadataKey(entry.Key) {
+				continue
+			}
+			relationType := relationTypeFromText(entry.Key)
+			edges = append(edges, edgesFromSemanticReferences(doc.Path, from, entry.Value, "metadata", docByPath, diagramLabelSet)...)
+			edges = append(edges, edgesFromMarkdownLinks(doc.Path, from, entry.Value, relationType, "metadata", docByPath, diagramLabelSet)...)
+			edges = append(edges, edgesFromPlainDocPaths(doc.Path, from, entry.Value, relationType, "metadata", docByPath, diagramLabelSet)...)
+		}
+		for _, relation := range data.Relations {
+			if target, ok := resolveSpecReference(doc.Path, relation.Target, docByPath, diagramLabelSet); ok && from != target {
+				edges = append(edges, graphEdge{From: from, To: target, Label: relation.Type, Type: relation.Type, Origin: "metadata", Raw: firstNonEmpty(relation.Raw, relation.Target)})
+			}
+		}
+		return dedupeEdges(edges)
+	}
 	meta := metadataBlock(doc.Raw)
 	if meta == "" {
 		return nil
@@ -732,6 +801,9 @@ func parseDocumentMetadataEdges(doc specDocument, from string, docByPath map[str
 
 func parseDocumentContentEdges(doc specDocument, from string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
 	content := contentWithoutMetadata(doc.Raw)
+	if doc.Format == "html" {
+		content = htmlContentWithoutMetadata(doc.Raw)
+	}
 	edges := edgesFromSemanticReferences(doc.Path, from, content, "inline", docByPath, diagramLabelSet)
 	edges = append(edges, edgesFromMarkdownLinks(doc.Path, from, content, defaultSpecRelation, "inline", docByPath, diagramLabelSet)...)
 	edges = append(edges, edgesFromPlainDocPaths(doc.Path, from, content, defaultSpecRelation, "inline", docByPath, diagramLabelSet)...)
@@ -802,6 +874,171 @@ func contentWithoutMetadata(raw string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+func htmlContentWithoutMetadata(raw string) string {
+	return parseHTMLDocumentData(raw).BodyText
+}
+
+func parseHTMLDocumentData(raw string) htmlDocData {
+	root, err := html.Parse(strings.NewReader(raw))
+	if err != nil {
+		text := strings.Join(strings.Fields(raw), " ")
+		return htmlDocData{Text: text, BodyText: text}
+	}
+	data := htmlDocData{}
+	var textParts []string
+	var bodyParts []string
+	var firstHeading string
+	walkHTML(root, func(node *html.Node) {
+		if node.Type != html.TextNode {
+			return
+		}
+		if insideHTMLTag(node, "script") || insideHTMLTag(node, "style") {
+			return
+		}
+		text := strings.TrimSpace(node.Data)
+		if text == "" {
+			return
+		}
+		textParts = append(textParts, text)
+		if !insideHTMLTag(node, "doc-meta") {
+			bodyParts = append(bodyParts, text)
+		}
+	})
+	walkHTML(root, func(node *html.Node) {
+		if node.Type != html.ElementNode {
+			return
+		}
+		switch strings.ToLower(node.Data) {
+		case "doc-meta":
+			data.Meta = htmlDocMeta(node)
+			data.Entries = htmlDocMetadataEntries(node, data.Meta)
+		case "doc-relation":
+			relation := htmlRelationFromNode(node)
+			if relation.Target != "" {
+				data.Relations = append(data.Relations, relation)
+			}
+		case "doc-link":
+			if insideHTMLTag(node, "doc-meta") {
+				relation := htmlRelationFromNode(node)
+				if relation.Target != "" {
+					data.Relations = append(data.Relations, relation)
+				}
+			}
+		case "h1":
+			if firstHeading == "" && !insideHTMLTag(node, "doc-meta") {
+				firstHeading = compactAllWhitespace(htmlNodeText(node))
+			}
+		case "title":
+			if data.Meta.Title == "" {
+				data.Meta.Title = compactAllWhitespace(htmlNodeText(node))
+			}
+		}
+	})
+	data.Meta.Title = firstNonEmpty(data.Meta.Title, firstHeading)
+	data.Text = compactAllWhitespace(strings.Join(textParts, " "))
+	data.BodyText = compactAllWhitespace(strings.Join(bodyParts, " "))
+	return data
+}
+
+func compactAllWhitespace(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func walkHTML(node *html.Node, visit func(*html.Node)) {
+	if node == nil {
+		return
+	}
+	visit(node)
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		walkHTML(child, visit)
+	}
+}
+
+func htmlDocMeta(node *html.Node) moduleMeta {
+	meta := moduleMeta{
+		Status:     htmlAttr(node, "status"),
+		Version:    htmlAttr(node, "version"),
+		Compliance: htmlAttr(node, "compliance"),
+		Priority:   htmlAttr(node, "priority"),
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type != html.ElementNode {
+			continue
+		}
+		text := compactAllWhitespace(htmlNodeText(child))
+		switch strings.ToLower(child.Data) {
+		case "doc-title":
+			meta.Title = text
+		case "doc-description":
+			meta.Description = text
+		}
+	}
+	return meta
+}
+
+func htmlDocMetadataEntries(metaNode *html.Node, meta moduleMeta) []metadataEntry {
+	entries := []metadataEntry{}
+	add := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			entries = append(entries, metadataEntry{Key: key, Value: strings.TrimSpace(value)})
+		}
+	}
+	add("Status", meta.Status)
+	add("Version", meta.Version)
+	add("Compliance", meta.Compliance)
+	add("Priority", meta.Priority)
+	add("Description", meta.Description)
+	for child := metaNode.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type != html.ElementNode || strings.ToLower(child.Data) != "doc-link" {
+			continue
+		}
+		href := htmlAttr(child, "href")
+		if href == "" {
+			continue
+		}
+		relationType := firstNonEmpty(htmlAttr(child, "type"), defaultSpecRelation)
+		add(relationType, href)
+	}
+	return entries
+}
+
+func htmlRelationFromNode(node *html.Node) htmlDocRelation {
+	target := firstNonEmpty(htmlAttr(node, "target"), htmlAttr(node, "href"))
+	relationType := firstNonEmpty(htmlAttr(node, "type"), defaultSpecRelation)
+	if !allowedSpecRelations[relationType] {
+		relationType = defaultSpecRelation
+	}
+	return htmlDocRelation{Target: target, Type: relationType, Raw: compactAllWhitespace(htmlNodeText(node))}
+}
+
+func htmlAttr(node *html.Node, name string) string {
+	for _, attr := range node.Attr {
+		if strings.EqualFold(attr.Key, name) {
+			return strings.TrimSpace(attr.Val)
+		}
+	}
+	return ""
+}
+
+func htmlNodeText(node *html.Node) string {
+	parts := []string{}
+	walkHTML(node, func(next *html.Node) {
+		if next.Type == html.TextNode && !insideHTMLTag(next, "script") && !insideHTMLTag(next, "style") {
+			parts = append(parts, strings.TrimSpace(next.Data))
+		}
+	})
+	return strings.Join(parts, " ")
+}
+
+func insideHTMLTag(node *html.Node, tag string) bool {
+	for parent := node.Parent; parent != nil; parent = parent.Parent {
+		if parent.Type == html.ElementNode && strings.EqualFold(parent.Data, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 func headingLevel(line string) int {
@@ -1176,7 +1413,7 @@ func moduleIDFromPath(rel string) string {
 	if base == "_index" || base == "_sync" || base == "overview" {
 		return ""
 	}
-	if strings.HasSuffix(rel, "_overview.md") {
+	if base == "_overview" {
 		return strings.Trim(strings.TrimSuffix(filepath.Dir(rel), "."), "/")
 	}
 	return strings.ReplaceAll(base, "_", "-")

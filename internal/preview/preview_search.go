@@ -1537,7 +1537,7 @@ func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]d
 			ID:          doc.ID,
 			Title:       doc.Title,
 			Path:        doc.Path,
-			Content:     doc.Raw,
+			Content:     firstNonEmpty(doc.SearchText, doc.Raw),
 			Description: doc.Description,
 			SpecID:      doc.ID,
 			Kind:        "doc",
@@ -1690,8 +1690,8 @@ func languageForPath(path string) string {
 		return "scss"
 	case ".sass":
 		return "sass"
-	case ".html":
-		return "xml"
+	case ".html", ".htm":
+		return "html"
 	case ".json":
 		return "json"
 	case ".yaml", ".yml":
