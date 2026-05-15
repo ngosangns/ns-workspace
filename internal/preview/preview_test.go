@@ -84,6 +84,23 @@ Hello **docs**.
 		t.Fatalf("doc endpoint should preserve document metadata description: %+v", doc)
 	}
 
+	req, err := http.NewRequest(http.MethodPut, ts.URL+"/api/docs/overview.md", strings.NewReader(`{"raw":"# Updated Overview\n\nSaved from preview.\n"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("doc endpoint should be read-only, got %s", res.Status)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "docs", "overview.md")); err != nil || strings.Contains(string(data), "Saved from preview.") {
+		t.Fatalf("read-only doc endpoint should not persist content: %q, %v", string(data), err)
+	}
+
 	res, err = http.Get(ts.URL + "/api/docs/reference%2Fsettings.custom")
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +112,20 @@ Hello **docs**.
 	}
 	if customDoc.ID != "reference/settings.custom" || customDoc.Language != "plaintext" || !strings.Contains(customDoc.Raw, "preview_index_all_docs_files") {
 		t.Fatalf("nested docs file endpoint returned wrong content: %+v", customDoc)
+	}
+
+	req, err = http.NewRequest(http.MethodPut, ts.URL+"/api/docs/reference%2Fsettings.custom", strings.NewReader(`{"raw":"feature_flag: edited\n"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("docs file endpoint should be read-only, got %s", res.Status)
 	}
 
 	res, err = http.Get(ts.URL + "/api/files?path=docs/overview.md")
@@ -676,7 +707,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	}
 	htmlText := string(html)
 	appText := string(app) + "\n" + string(css)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "markdown-it", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "@toast-ui/editor", "toastui-editor-viewer", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
 		if !strings.Contains(htmlText, want) && !strings.Contains(appText, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -826,8 +857,6 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"/api/files?",
 		"highlightRenderedCode",
 		"renderSpecDocumentContent",
-		"rawMarkdownToggle",
-		"showRawMarkdown",
 		"renderCurrentSpecContent",
 		`id="previewRawToggle"`,
 		"previewSource",
@@ -944,13 +973,107 @@ func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
-	if strings.Contains(text, "fallbackHTML") || !strings.Contains(text, "markdownRenderer.render(metadata.body)") {
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app) + "\n" + string(css)
+	if strings.Contains(text, "fallbackHTML") || strings.Contains(text, "markdownRenderer.render(metadata.body)") {
 		t.Fatalf("preview UI should render Markdown from raw content on the client")
 	}
-	for _, want := range []string{`markdownRenderer.enable("table")`, "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
+	for _, want := range []string{"renderMarkdownPreview", "loadToastMarkdownViewer", "toastui-editor-viewer", "toastMarkdownCustomRenderer", "renderToastMarkdownLoading", "Loading Markdown preview...", "codeBlock", "data-source-language", "markdown-wysiwyg-host", "markdown-toast-viewer", ".markdown-toast-viewer .toastui-editor-contents", ".metadata-table", "padding: 18px 25px", "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI Markdown rendering missing %s", want)
+		}
+	}
+}
+
+func TestPreviewUIRendersCompactHTMLDocsClientSide(t *testing.T) {
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(app) + "\n" + string(css)
+	for _, want := range []string{"renderHTMLPreview", "htmlDocSanitizeConfig", "html-doc", "doc-meta", "doc-title", "doc-description", "doc-link", "doc-relation", "doc-callout", "doc-diagram", "doc-code", "doc-section", "doc-grid", "doc-card", "doc-steps", "doc-step", "doc-flow", "doc-flow-step", "doc-graph", "doc-metrics", "doc-metric", "normalizeHTMLDocTags", "htmlMetadataRows", "normalizeDocDiagramLanguage", "language-c4-model", "replaceDocContainer", "replaceDocMetric", "createDocDiagramSource", "doc-relation-${typeClass}", "doc-code-block", "doc-diagram-source", "doc-graph-source", ".markdown-wysiwyg-shell", ".html-doc", ".html-doc table", ".doc-title", ".doc-description", ".doc-callout-info", ".doc-callout-warning", ".doc-relation-depends", ".doc-code-block::before", ".doc-steps", ".doc-flow-step", ".doc-metrics", ".doc-metric-value"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI HTML doc rendering missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{"data-reactroot", "onclick", "onload", "onerror"} {
+		if !strings.Contains(text, forbidden) {
+			t.Fatalf("preview UI HTML sanitizer should explicitly reject %s", forbidden)
+		}
+	}
+}
+
+func TestPreviewUIKeepsMarkdownDocumentsReadOnly(t *testing.T) {
+	html, err := os.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := os.ReadFile("preview_ui_src/app.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(css)
+	for _, want := range []string{
+		".markdown-wysiwyg-host",
+		".toast-markdown-loading",
+		"renderMarkdownPreview",
+		"renderHTMLPreview",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview read-only Markdown UI missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{
+		`id="markdownEditToolbar"`,
+		`id="markdownEditActions"`,
+		`id="markdownEditButton"`,
+		`id="markdownSaveButton"`,
+		`id="markdownCancelButton"`,
+		`id="rawMarkdownToggle"`,
+		`data-markdown-command=`,
+		"showRawMarkdown",
+		"updateRawMarkdownToggle",
+		"rawMarkdown:",
+		"editingMarkdown",
+		"markdownEditor",
+		"saveMarkdownDraft",
+		"applyMarkdownCommand",
+		"mountMarkdownPreviewEditor",
+		"destroyMarkdownPreviewEditor",
+		"loadToastMarkdownEditor",
+		"Loading Markdown editor...",
+		`initialEditType: "wysiwyg"`,
+		"hideModeSwitch: true",
+		`toolbarItems: [["table"]]`,
+		"clickToastTableToolbarItem",
+		"toastui-editor.css",
+		"PUT",
+		"/api/docs/${encodeURIComponent(state.currentSpec.id)}",
+		".markdown-edit-toolbar",
+		".markdown-edit-actions",
+		".markdown-edit-action-group",
+		".metadata-edit-panel",
+		"markdown-editing",
+		"Editing Markdown",
+		"markdownEditorStatus",
+		"replaceSelectedLines",
+		"wrapMarkdownSelection",
+		"replaceMarkdownSelection",
+		".markdown-editor-input",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("preview Markdown read-only UI should not keep editor helper %s", forbidden)
 		}
 	}
 }
@@ -970,10 +1093,17 @@ func TestPreviewUIResolvesInternalLinksAndMentionsThroughRouter(t *testing.T) {
 		"@doc",
 		"@spec",
 		"internalDocMentionPattern",
+		`+\.(?:md|html?)`,
+		"doc-relation-${typeClass}",
+		"relation.href = target",
 		"navigateToSpecTarget",
 		"selectSpec(target.specId, true",
 		"pushSpecRoute",
 		"scrollToSpecFragment",
+		`${pathNoExt}.html`,
+		`${basenameNoExt}.html`,
+		"candidates.add(`${key}.html`)",
+		"candidates.add(`${key}/_overview.html`)",
 		"NodeFilter.SHOW_TEXT",
 		`closest("a, pre, code, script, style")`,
 	} {
@@ -1085,8 +1215,12 @@ func TestPreviewUISupportsDarkMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html) + "\n" + string(app)
-	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "mermaidThemeConfig"} {
+	css, err := os.ReadFile("preview_ui/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(html) + "\n" + string(app) + "\n" + string(css)
+	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "mermaidThemeConfig", `theme: state.theme === "dark" ? "dark" : "default"`, "renderCurrentSpecContent().catch"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI dark mode missing %s", want)
 		}
@@ -1138,7 +1272,7 @@ func TestPreviewUIRendersMermaidC4Fences(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"data-source-language", "isMermaidDiagramBlock", "mermaidC4DiagramTypeFromBlock", "looksLikeMermaidC4Diagram", "C4(?:Context|Container|Component|Dynamic|Deployment)", "(?:language-)?(c4(?:context|container|component|dynamic|deployment)?)", "C4Component"} {
+	for _, want := range []string{"data-source-language", "renderDocumentDiagrams", "isMermaidDiagramBlock", "mermaidC4DiagramTypeFromBlock", "looksLikeMermaidC4Diagram", "C4(?:Context|Container|Component|Dynamic|Deployment)", "replace(/[-_]/g, \"\")", "c4(?:context|container|component|dynamic|deployment)?", "C4Component"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI Mermaid C4 fence rendering missing %s", want)
 		}
@@ -1151,7 +1285,7 @@ func TestPreviewUIRendersLikeC4ModelThroughMermaidC4(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"data-source-language", "renderLikeC4Blocks", "isLikeC4ModelBlock", "language-likec4", "looksLikeLikeC4Model", "likeC4ModelToMermaid", "appendLikeC4MermaidRoot", "node.kind === \"softwareSystem\"", "C4Component", "Container_Boundary", "Component(", "Rel(", "LikeC4 model"} {
+	for _, want := range []string{"data-source-language", "renderLikeC4Blocks", "isLikeC4ModelBlock", "language-likec4", "language-c4-model", "language === \"c4model\"", "looksLikeLikeC4Model", "likeC4ModelToMermaid", "appendLikeC4MermaidRoot", "node.kind === \"softwareSystem\"", "C4Component", "Container_Boundary", "Component(", "Rel(", "relation[3] || \"Uses\"", "LikeC4 model"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI LikeC4 model rendering missing %s", want)
 		}
@@ -1172,7 +1306,7 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "zoomScaleSensitivity: 0.4", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
+	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "Command-scroll to zoom", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "beforeWheel", "event.ctrlKey || event.metaKey", "zoomScaleSensitivity: 0.4", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom API missing %s", want)
 		}

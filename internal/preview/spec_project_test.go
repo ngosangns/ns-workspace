@@ -370,6 +370,39 @@ func TestScanSpecProjectParsesMetadataHeaderTable(t *testing.T) {
 	}
 }
 
+func TestScanSpecProjectParsesCompactHTMLDocs(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/modules/billing.html", `<doc-meta status="Finalized" compliance="current-state" priority="P1" version="v3">
+  <doc-title>Billing</doc-title>
+  <doc-description>Owns invoice lifecycle.</doc-description>
+  <doc-link href="../shared/data-models.html">Data Models</doc-link>
+  <doc-relation type="depends" target="../shared/data-models.html"></doc-relation>
+</doc-meta>
+<main class="prose">
+  <doc-title>Billing</doc-title>
+  <p>Uses shared invoice models from ../shared/data-models.html.</p>
+</main>`)
+	writeTestFile(t, root, "docs/shared/data-models.html", `<doc-meta status="Active"><doc-title>Data Models</doc-title></doc-meta><p>Shared models.</p>`)
+
+	project, err := scanSpecProject(root, "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := findDoc(t, project.Documents, "modules/billing.html")
+	if doc.Format != "html" || doc.Language != "html" || doc.Title != "Billing" {
+		t.Fatalf("HTML doc format/title not parsed: %+v", doc)
+	}
+	if doc.Status != "Finalized" || doc.Version != "v3" || doc.Compliance != "current-state" || doc.Priority != "P1" || doc.Description != "Owns invoice lifecycle." {
+		t.Fatalf("HTML doc metadata not parsed: %+v", doc)
+	}
+	if strings.Contains(doc.SearchText, "doc-meta") || !strings.Contains(doc.SearchText, "Billing") {
+		t.Fatalf("HTML search text should be visible text without metadata tags: %q", doc.SearchText)
+	}
+	if !hasTypedEdge(project.Graph.Edges, "billing", "data-models", "depends", "metadata") {
+		t.Fatalf("HTML doc relation edge not parsed: %+v", project.Graph.Edges)
+	}
+}
+
 func TestRenderMarkdownSupportsGFMTables(t *testing.T) {
 	html, err := renderMarkdown([]byte(`| File | Description |
 | ---- | ----------- |

@@ -109,7 +109,7 @@ interface PreviewState {
   previewShowRaw: boolean;
   previewTitle: string;
   diagramSerial: number;
-  showRawMarkdown: boolean;
+  markdownViewerConstructor: ToastMarkdownViewerConstructor | null;
   selectionCopyTarget: SelectionCopyTarget | null;
 }
 
@@ -192,7 +192,7 @@ const state: PreviewState = {
   previewShowRaw: false,
   previewTitle: "",
   diagramSerial: 0,
-  showRawMarkdown: false,
+  markdownViewerConstructor: null,
   selectionCopyTarget: null,
 };
 
@@ -227,27 +227,9 @@ const els: any = {
   previewDialogBody: document.querySelector("#previewDialogBody"),
   previewRawToggle: document.querySelector("#previewRawToggle"),
   themeToggle: document.querySelector("#themeToggle"),
-  rawMarkdownToggle: document.querySelector("#rawMarkdownToggle"),
   selectionContextMenu: document.querySelector("#selectionContextMenu"),
   selectionCopyButton: document.querySelector("#selectionCopyButton"),
 };
-
-const markdownRenderer = window.markdownit({
-  html: false,
-  linkify: true,
-  typographer: false,
-  highlight: (source, lang) => {
-    const sourceLanguage = String(lang || "").trim();
-    const sourceLanguageAttr = sourceLanguage ? ` data-source-language="${escapeHTML(sourceLanguage)}"` : "";
-    const sourceLanguageClass = sourceLanguage ? ` language-${escapeHTML(sourceLanguage)}` : "";
-    const language = normalizeHighlightLanguage(lang);
-    if (window.hljs && language && window.hljs.getLanguage(language)) {
-      return `<pre class="hljs"><code class="language-${escapeHTML(language)}${sourceLanguageClass} is-highlighted" data-highlighted="yes"${sourceLanguageAttr}>${window.hljs.highlight(source, { language, ignoreIllegals: true }).value}</code></pre>`;
-    }
-    return `<pre class="hljs"><code class="${sourceLanguageClass.trim()} is-highlighted" data-highlighted="yes"${sourceLanguageAttr}>${escapeHTML(source)}</code></pre>`;
-  },
-});
-markdownRenderer.enable("table");
 
 applyTheme(state.theme, { persist: false, rerender: false });
 
@@ -286,6 +268,48 @@ const diagramSanitizeConfig = {
     "dominant-baseline",
     "alignment-baseline",
   ],
+};
+
+const htmlDocSanitizeConfig = {
+  ADD_TAGS: [
+    "doc-meta",
+    "doc-title",
+    "doc-description",
+    "doc-link",
+    "doc-relation",
+    "doc-callout",
+    "doc-diagram",
+    "doc-code",
+    "doc-section",
+    "doc-grid",
+    "doc-card",
+    "doc-steps",
+    "doc-step",
+    "doc-flow",
+    "doc-flow-step",
+    "doc-graph",
+    "doc-metrics",
+    "doc-metric",
+  ],
+  ADD_ATTR: [
+    "status",
+    "compliance",
+    "priority",
+    "version",
+    "tone",
+    "type",
+    "target",
+    "href",
+    "language",
+    "class",
+    "title",
+    "label",
+    "value",
+    "caption",
+    "columns",
+  ],
+  FORBID_TAGS: ["script", "style"],
+  FORBID_ATTR: ["style", "onclick", "onload", "onerror", "data-reactroot"],
 };
 
 const graphView = createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpecPreview, openFilePreview });
@@ -1039,15 +1063,7 @@ async function selectSpec(id, showSpecTab, options: UpdateURLOptions = {}) {
 
 async function renderCurrentSpecContent() {
   if (!state.currentSpec) return;
-  updateRawMarkdownToggle(state.currentSpec);
-  await renderSpecDocumentContent(
-    els.specContent,
-    state.currentSpec,
-    "markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6",
-    {
-      rawMarkdown: state.showRawMarkdown,
-    },
-  );
+  await renderSpecDocumentContent(els.specContent, state.currentSpec, "markdown-wysiwyg-shell bg-base-100 mx-auto max-w-5xl");
 }
 
 async function openSpecPreview(id, options: UpdateURLOptions = {}) {
@@ -1081,26 +1097,22 @@ async function openSpecPreview(id, options: UpdateURLOptions = {}) {
   }
 }
 
-async function renderSpecDocumentContent(root, spec, baseClass = "markdown", options: { rawMarkdown?: boolean } = {}) {
+async function renderSpecDocumentContent(root, spec, baseClass = "markdown") {
   const language = spec.language || languageFromPath(spec.path || "");
   root.dataset.sourcePath = spec.path || spec.id || "";
   if (language === "markdown") {
-    if (options.rawMarkdown) {
-      root.className = baseClass
-        .replace(/\bmarkdown\b/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      root.innerHTML = renderCodePreview(spec.raw || "", "markdown");
-      highlightRenderedCode(root);
-      decorateCodePreviewLines(root);
-      return;
-    }
-    root.className = baseClass.includes("markdown") ? baseClass : `${baseClass} markdown`;
-    root.innerHTML = renderMarkdown(spec.raw || "");
-    decorateMarkdownSourceLines(root, spec.raw || "");
+    root.className = baseClass;
+    await renderMarkdownPreview(root, spec.raw || "");
     decorateInternalDocNavigation(root, spec);
-    await renderMermaidBlocks(root);
-    await renderLikeC4Blocks(root);
+    await renderDocumentDiagrams(root);
+    highlightRenderedCode(root);
+    return;
+  }
+  if (language === "html") {
+    root.className = `${baseClass} html-doc`;
+    await renderHTMLPreview(root, spec.raw || "");
+    decorateInternalDocNavigation(root, spec);
+    await renderDocumentDiagrams(root);
     highlightRenderedCode(root);
     return;
   }
@@ -1281,21 +1293,6 @@ function markdownSourceRanges(raw) {
   return ranges;
 }
 
-function updateRawMarkdownToggle(spec = state.currentSpec) {
-  if (!els.rawMarkdownToggle) return;
-  const language = spec ? spec.language || languageFromPath(spec.path || "") : "";
-  const available = language === "markdown";
-  els.rawMarkdownToggle.hidden = !available;
-  els.rawMarkdownToggle.classList.toggle("btn-active", available && state.showRawMarkdown);
-  els.rawMarkdownToggle.setAttribute("aria-pressed", available && state.showRawMarkdown ? "true" : "false");
-  els.rawMarkdownToggle.setAttribute("aria-label", state.showRawMarkdown ? "View rendered Markdown" : "View raw Markdown");
-  els.rawMarkdownToggle.setAttribute("title", state.showRawMarkdown ? "View rendered Markdown" : "View raw Markdown");
-  els.rawMarkdownToggle.innerHTML = state.showRawMarkdown
-    ? '<i data-lucide="file-text" class="h-4 w-4"></i>'
-    : '<i data-lucide="file-code" class="h-4 w-4"></i>';
-  refreshIcons();
-}
-
 function updatePreviewRawToggle() {
   if (!els.previewRawToggle) return;
   const available = Boolean(state.previewSource);
@@ -1310,12 +1307,249 @@ function updatePreviewRawToggle() {
   refreshIcons();
 }
 
-function renderMarkdown(raw) {
-  if (raw) {
-    const metadata = renderableMarkdownMetadata(raw);
-    return DOMPurify.sanitize(`${metadata.html}${markdownRenderer.render(metadata.body)}`);
+async function renderMarkdownPreview(root: HTMLElement, raw: string) {
+  const metadata = renderableMarkdownMetadata(raw);
+  root.innerHTML = `${metadata.html}<div class="markdown-wysiwyg-host markdown-toast-viewer" data-markdown-viewer></div>`;
+
+  const viewerHost = root.querySelector<HTMLElement>("[data-markdown-viewer]");
+  if (!viewerHost) return;
+
+  viewerHost.innerHTML = renderToastMarkdownLoading("Loading Markdown preview...");
+  const Viewer = await loadToastMarkdownViewer();
+  viewerHost.innerHTML = "";
+  new Viewer({
+    el: viewerHost,
+    height: "auto",
+    initialValue: metadata.body || "No content.",
+    customHTMLRenderer: toastMarkdownCustomRenderer(),
+    theme: state.theme === "dark" ? "dark" : "default",
+    usageStatistics: false,
+  });
+
+  viewerHost.innerHTML = DOMPurify.sanitize(viewerHost.innerHTML);
+  const markdownRoot = viewerHost.querySelector<HTMLElement>(".toastui-editor-contents") || viewerHost;
+  decorateMarkdownSourceLines(markdownRoot, metadata.body || "");
+}
+
+async function renderHTMLPreview(root: HTMLElement, raw: string) {
+  root.innerHTML = DOMPurify.sanitize(raw, htmlDocSanitizeConfig);
+  const meta = root.querySelector("doc-meta");
+  if (meta) {
+    const rows = htmlMetadataRows(meta);
+    const metadata = document.createElement("div");
+    metadata.innerHTML = rows.length ? renderMetadataTable(rows) : "";
+    meta.replaceWith(...metadata.childNodes);
   }
-  return "<p>No content.</p>";
+  normalizeHTMLDocTags(root);
+}
+
+function htmlMetadataRows(meta: Element) {
+  const rows: Array<{ key: string; value: string }> = [];
+  ["status", "compliance", "priority", "version", "tone"].forEach((key) => {
+    const value = meta.getAttribute(key);
+    if (value) rows.push({ key, value });
+  });
+  const title = meta.querySelector("doc-title")?.textContent?.trim();
+  const description = meta.querySelector("doc-description")?.textContent?.trim();
+  if (title) rows.push({ key: "title", value: title });
+  if (description) rows.push({ key: "description", value: description });
+  meta.querySelectorAll("doc-link[href], doc-link[target]").forEach((link) => {
+    const target = link.getAttribute("href") || link.getAttribute("target") || "";
+    const label = link.textContent?.trim() || target;
+    if (target) rows.push({ key: "link", value: label === target ? target : `${label} (${target})` });
+  });
+  meta.querySelectorAll("doc-relation[target]").forEach((relation) => {
+    const target = relation.getAttribute("target") || "";
+    const type = relation.getAttribute("type") || "related";
+    if (target) rows.push({ key: `relation.${type}`, value: target });
+  });
+  return rows;
+}
+
+function normalizeHTMLDocTags(root: HTMLElement) {
+  root.querySelectorAll("doc-title").forEach((node) => replaceDocElement(node, "h1", "doc-title"));
+  root.querySelectorAll("doc-description").forEach((node) => replaceDocElement(node, "p", "doc-description"));
+  root.querySelectorAll("doc-section").forEach((node) => {
+    replaceDocContainer(node, "section", "doc-section", "h2");
+  });
+  root.querySelectorAll("doc-grid").forEach((node) => {
+    const columns = sanitizeClassToken(node.getAttribute("columns") || "");
+    replaceDocElement(node, "div", `doc-grid${columns ? ` doc-grid-${columns}` : ""}`);
+  });
+  root.querySelectorAll("doc-card").forEach((node) => {
+    replaceDocContainer(node, "article", "doc-card", "h3");
+  });
+  root.querySelectorAll("doc-callout").forEach((node) => {
+    const tone = node.getAttribute("tone") || "info";
+    replaceDocContainer(node, "div", `doc-callout doc-callout-${sanitizeClassToken(tone)}`, "strong");
+  });
+  root.querySelectorAll("doc-steps").forEach((node) => replaceDocElement(node, "ol", "doc-steps"));
+  root.querySelectorAll("doc-step").forEach((node) => {
+    replaceDocContainer(node, "li", "doc-step", "strong");
+  });
+  root.querySelectorAll("doc-flow").forEach((node) => replaceDocElement(node, "div", "doc-flow"));
+  root.querySelectorAll("doc-flow-step").forEach((node) => {
+    replaceDocContainer(node, "div", "doc-flow-step", "strong");
+  });
+  root.querySelectorAll("doc-metrics").forEach((node) => replaceDocElement(node, "div", "doc-metrics"));
+  root.querySelectorAll("doc-metric").forEach((node) => replaceDocMetric(node));
+  root.querySelectorAll("doc-link").forEach((node) => {
+    const link = document.createElement("a");
+    link.className = "doc-link";
+    link.href = node.getAttribute("href") || node.getAttribute("target") || "#";
+    moveNodeChildren(node, link);
+    node.replaceWith(link);
+  });
+  root.querySelectorAll("doc-relation").forEach((node) => {
+    const type = node.getAttribute("type") || "related";
+    const typeClass = sanitizeClassToken(type) || "related";
+    const target = node.getAttribute("target") || node.textContent?.trim() || "";
+    const relation = target ? document.createElement("a") : document.createElement("span");
+    relation.className = `doc-relation doc-relation-${typeClass} badge badge-ghost badge-sm`;
+    relation.dataset.relationType = typeClass;
+    if (target && relation instanceof HTMLAnchorElement) {
+      relation.href = target;
+    }
+    relation.textContent = target ? `${type}: ${target}` : type;
+    node.replaceWith(relation);
+  });
+  root.querySelectorAll("doc-code").forEach((node) => {
+    const language = normalizeDocCodeLanguage(node.getAttribute("language") || node.getAttribute("type") || "");
+    const code = document.createElement("code");
+    code.className = `language-${language}`;
+    code.dataset.sourceLanguage = language;
+    code.textContent = node.textContent || "";
+    const pre = document.createElement("pre");
+    pre.className = "doc-code-block";
+    pre.dataset.codeLanguage = language;
+    pre.append(code);
+    node.replaceWith(pre);
+  });
+  root.querySelectorAll("doc-diagram").forEach((node) => {
+    const language = normalizeDocDiagramLanguage(node.getAttribute("type") || node.getAttribute("language") || "mermaid");
+    node.replaceWith(createDocDiagramSource(node.textContent || "", language, "doc-diagram-source"));
+  });
+  root.querySelectorAll("doc-graph").forEach((node) => {
+    const language = normalizeDocDiagramLanguage(node.getAttribute("type") || node.getAttribute("language") || "mermaid");
+    node.replaceWith(createDocDiagramSource(node.textContent || "", language, "doc-diagram-source doc-graph-source"));
+  });
+}
+
+function replaceDocElement(node: Element, tagName: string, className: string) {
+  const element = document.createElement(tagName);
+  element.className = className;
+  moveNodeChildren(node, element);
+  node.replaceWith(element);
+}
+
+function replaceDocContainer(node: Element, tagName: string, className: string, titleTagName: string) {
+  const element = document.createElement(tagName);
+  element.className = className;
+  const title = node.getAttribute("title") || node.getAttribute("label") || "";
+  if (title) {
+    const heading = document.createElement(titleTagName);
+    heading.className = "doc-block-title";
+    heading.textContent = title;
+    element.append(heading);
+  }
+  moveNodeChildren(node, element);
+  node.replaceWith(element);
+}
+
+function replaceDocMetric(node: Element) {
+  const metric = document.createElement("div");
+  metric.className = "doc-metric";
+  const value = node.getAttribute("value") || node.textContent?.trim() || "";
+  const label = node.getAttribute("label") || node.getAttribute("title") || "";
+  const caption = node.getAttribute("caption") || "";
+  metric.innerHTML = `
+    <div class="doc-metric-value">${escapeHTML(value)}</div>
+    ${label ? `<div class="doc-metric-label">${escapeHTML(label)}</div>` : ""}
+    ${caption ? `<div class="doc-metric-caption">${escapeHTML(caption)}</div>` : ""}
+  `;
+  node.replaceWith(metric);
+}
+
+function createDocDiagramSource(source: string, language: string, className: string) {
+  const code = document.createElement("code");
+  code.className = `language-${language}`;
+  code.dataset.sourceLanguage = language;
+  code.textContent = source;
+  const pre = document.createElement("pre");
+  pre.className = className;
+  pre.dataset.diagramLanguage = language;
+  pre.append(code);
+  return pre;
+}
+
+function moveNodeChildren(from: Element, to: Element) {
+  while (from.firstChild) {
+    to.append(from.firstChild);
+  }
+}
+
+function normalizeDocCodeLanguage(language: string) {
+  return sanitizeClassToken(language || "plaintext") || "plaintext";
+}
+
+function normalizeDocDiagramLanguage(language: string) {
+  const normalized = sanitizeClassToken(language).replace(/-/g, "");
+  if (normalized === "c4model" || normalized === "likec4") return "likec4";
+  if (normalized === "c4") return "c4";
+  if (normalized.startsWith("c4")) return normalized;
+  return "mermaid";
+}
+
+function sanitizeClassToken(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function renderToastMarkdownLoading(label: string) {
+  return `
+    <div class="toast-markdown-loading" aria-busy="true">
+      <span class="loading loading-spinner loading-sm text-primary"></span>
+      <span>${escapeHTML(label)}</span>
+    </div>
+  `;
+}
+
+async function loadToastMarkdownViewer(): Promise<ToastMarkdownViewerConstructor> {
+  if (state.markdownViewerConstructor) return state.markdownViewerConstructor;
+  const moduleURL = "https://esm.sh/@toast-ui/editor@3.2.2/dist/toastui-editor-viewer?bundle&target=es2022";
+  const viewerModule = (await import(moduleURL)) as { default?: ToastMarkdownViewerConstructor; Viewer?: ToastMarkdownViewerConstructor };
+  const Viewer = viewerModule.default || viewerModule.Viewer;
+  if (!Viewer) {
+    throw new Error("TOAST UI Viewer failed to load.");
+  }
+  state.markdownViewerConstructor = Viewer;
+  return Viewer;
+}
+
+function toastMarkdownCustomRenderer() {
+  return {
+    codeBlock(node: ToastMarkdownCodeBlockNode) {
+      const language = markdownFenceLanguage(node);
+      const classNames = language ? [`language-${language}`] : [];
+      const attributes = language ? { "data-source-language": language } : {};
+
+      return [
+        { type: "openTag", tagName: "pre", outerNewLine: true },
+        { type: "openTag", tagName: "code", classNames, attributes },
+        { type: "text", content: node.literal || "" },
+        { type: "closeTag", tagName: "code" },
+        { type: "closeTag", tagName: "pre", outerNewLine: true },
+      ];
+    },
+  };
+}
+
+function markdownFenceLanguage(node: ToastMarkdownCodeBlockNode) {
+  const rawInfo = String(node.info || node.language || node.lang || "").trim();
+  return rawInfo.split(/\s+/)[0].toLowerCase();
 }
 
 function renderableMarkdownMetadata(raw) {
@@ -1457,7 +1691,7 @@ function replaceInternalDocMentions(node: Text, spec: SpecDocument) {
 }
 
 function internalDocMentionPattern() {
-  return /@(?:doc|spec)\/[A-Za-z0-9_./-]+(?:#[A-Za-z0-9_-]+)?|(?:\.{1,2}\/|docs\/|specs\/)?[A-Za-z0-9_./-]+\.md(?:#[A-Za-z0-9_-]+)?/g;
+  return /@(?:doc|spec)\/[A-Za-z0-9_./-]+(?:#[A-Za-z0-9_-]+)?|(?:\.{1,2}\/|docs\/|specs\/)?[A-Za-z0-9_./-]+\.(?:md|html?)(?:#[A-Za-z0-9_-]+)?/g;
 }
 
 function createInternalSpecAnchor(label: string, target: InternalSpecTarget) {
@@ -1528,8 +1762,9 @@ function buildSpecLookup() {
 }
 
 function specAliases(spec: SpecDocument) {
-  const pathNoExt = spec.path.replace(/\.md$/i, "");
+  const pathNoExt = spec.path.replace(/\.(?:md|html?)$/i, "");
   const basename = spec.path.split("/").pop() || spec.path;
+  const basenameNoExt = basename.replace(/\.(?:md|html?)$/i, "");
   const title = (spec.title || "").trim().toLowerCase();
   return [
     spec.id,
@@ -1537,11 +1772,15 @@ function specAliases(spec: SpecDocument) {
     `docs/${spec.path}`,
     `specs/${spec.path}`,
     pathNoExt,
+    `${pathNoExt}.md`,
+    `${pathNoExt}.html`,
     pathNoExt.replace(/-/g, "."),
     pathNoExt.replace(/\./g, "-"),
     basename,
-    basename.replace(/\.md$/i, ""),
-    basename.replace(/\.md$/i, "").replace(/-/g, "."),
+    basenameNoExt,
+    `${basenameNoExt}.md`,
+    `${basenameNoExt}.html`,
+    basenameNoExt.replace(/-/g, "."),
     title,
     title.replace(/\s+/g, "-"),
     title.replace(/\s+/g, "."),
@@ -1556,9 +1795,11 @@ function specPathCandidates(path: string, sourcePath: string) {
     const key = normalizeSpecLookupKey(candidate);
     if (!key) return;
     candidates.add(key);
-    if (!key.endsWith(".md") && !key.includes(".")) {
+    if (!key.endsWith(".md") && !key.endsWith(".html") && !key.endsWith(".htm") && !key.includes(".")) {
       candidates.add(`${key}.md`);
+      candidates.add(`${key}.html`);
       candidates.add(`${key}/_overview.md`);
+      candidates.add(`${key}/_overview.html`);
     }
   };
   add(path);
@@ -1680,7 +1921,7 @@ function languageFromPath(path) {
     css: "css",
     scss: "scss",
     sass: "sass",
-    html: "xml",
+    html: "html",
     json: "json",
     yaml: "yaml",
     yml: "yaml",
@@ -1723,6 +1964,11 @@ async function renderMermaidBlocks(root) {
   );
 }
 
+async function renderDocumentDiagrams(root) {
+  await renderLikeC4Blocks(root);
+  await renderMermaidBlocks(root);
+}
+
 function isMermaidDiagramBlock(block) {
   if (block.classList.contains("mermaid") || block.classList.contains("language-mermaid")) return true;
   if (mermaidC4DiagramTypeFromBlock(block)) return true;
@@ -1731,12 +1977,18 @@ function isMermaidDiagramBlock(block) {
 
 function mermaidC4DiagramTypeFromBlock(block) {
   const sourceLanguages = [...block.classList, block.dataset.sourceLanguage || ""];
-  const c4Class = sourceLanguages
-    .map((className) => className.match(/^(?:language-)?(c4(?:context|container|component|dynamic|deployment)?)$/i)?.[1])
-    .find(Boolean);
-  if (!c4Class) return "";
-  if (c4Class.toLowerCase() === "c4") return "C4Component";
-  return `C4${c4Class.slice(2, 3).toUpperCase()}${c4Class.slice(3).toLowerCase()}`;
+  const c4Type = sourceLanguages
+    .map((className) =>
+      String(className || "")
+        .replace(/^language-/i, "")
+        .replace(/[-_]/g, "")
+        .toLowerCase(),
+    )
+    .find((className) => /^c4(?:context|container|component|dynamic|deployment)?$/.test(className));
+  if (!c4Type) return "";
+  if (c4Type === "c4") return "C4Component";
+  const c4Class = c4Type.slice(2);
+  return `C4${c4Class.slice(0, 1).toUpperCase()}${c4Class.slice(1)}`;
 }
 
 function looksLikeMermaidC4Diagram(source) {
@@ -1758,11 +2010,16 @@ async function renderLikeC4Blocks(root) {
 }
 
 function isLikeC4ModelBlock(block) {
-  const language = String(block.dataset.sourceLanguage || "").toLowerCase();
+  const language = String(block.dataset.sourceLanguage || "")
+    .replace(/[-_]/g, "")
+    .toLowerCase();
   return (
     block.classList.contains("likec4") ||
     block.classList.contains("language-likec4") ||
+    block.classList.contains("language-c4-model") ||
+    block.classList.contains("language-c4model") ||
     language === "likec4" ||
+    language === "c4model" ||
     looksLikeLikeC4Model(block.textContent || "")
   );
 }
@@ -1810,9 +2067,9 @@ function parseLikeC4Model(source): LikeC4ParseResult {
   body.split("\n").forEach((rawLine) => {
     const line = rawLine.trim();
     if (!line || line.startsWith("//")) return;
-    const relation = line.match(/^([\w.]+)\s*->\s*([\w.]+)\s+"([^"]*)"/);
+    const relation = line.match(/^([\w.]+)\s*->\s*([\w.]+)(?:\s+"([^"]*)")?/);
     if (relation) {
-      relations.push({ from: relation[1], to: relation[2], label: relation[3] });
+      relations.push({ from: relation[1], to: relation[2], label: relation[3] || "Uses" });
       return;
     }
     const declaration = line.match(/^(\w+)\s*=\s*(softwareSystem|container|component)\s+"([^"]*)"\s*(\{)?/);
@@ -2129,7 +2386,7 @@ function decorateDiagram(host, id, title) {
   const viewport = document.createElement("div");
   viewport.className = "diagram-viewport";
   viewport.tabIndex = 0;
-  viewport.setAttribute("aria-label", `${title}. Scroll to zoom, drag to pan.`);
+  viewport.setAttribute("aria-label", `${title}. Command-scroll to zoom, drag to pan.`);
   viewport.append(svg);
   host.innerHTML = "";
   host.append(toolbar, viewport);
@@ -2170,6 +2427,7 @@ function initDiagramPanZoom(id) {
         controlIconsEnabled: false,
         dblClickZoomEnabled: true,
         mouseWheelZoomEnabled: true,
+        beforeWheel: (event: WheelEvent) => !(event.ctrlKey || event.metaKey),
         preventMouseEventsDefault: true,
         zoomScaleSensitivity: 0.4,
         minZoom: 0.2,
@@ -2634,12 +2892,6 @@ els.codeGraphReload?.addEventListener("click", () => {
 els.themeToggle.addEventListener("click", () => {
   applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true, rerender: true });
 });
-els.rawMarkdownToggle?.addEventListener("click", () => {
-  if (!state.currentSpec) return;
-  state.showRawMarkdown = !state.showRawMarkdown;
-  destroyDiagramsIn(els.specContent);
-  renderCurrentSpecContent().catch(() => {});
-});
 els.previewRawToggle?.addEventListener("click", () => {
   if (!state.previewSource) return;
   state.previewShowRaw = !state.previewShowRaw;
@@ -2693,7 +2945,7 @@ function updateThemeControl() {
 
 function rerenderForTheme() {
   if (state.selectedId) {
-    selectSpec(state.selectedId, false);
+    renderCurrentSpecContent().catch(() => {});
   }
   graphView.render();
   renderSearchPanels();
