@@ -13,6 +13,50 @@ Dùng skill này để cập nhật knowledge base của repo sau nghiên cứu 
 - **Báo cáo cô đọng:** Giao tiếp thẳng thắn, đi vào trọng tâm, nêu rõ docs nào đã đổi và validation nào đã chạy.
 - **Cập nhật tinh gọn:** Khi cập nhật specs, nội dung phải phản ánh thiết kế/logic mới nhất. Bắt buộc xóa nội dung cũ không còn chính xác, không giữ lại rồi thêm correction bên cạnh.
 
+## Bộ Quy Tắc Viết Docs
+
+Áp dụng các quy tắc này cho mọi docs mới hoặc docs đang được chỉnh, trừ khi repo có contract riêng rõ ràng hơn.
+
+### Nội Dung
+
+- Viết như tài liệu vận hành hiện tại, không như nhật ký thay đổi. Tránh các đoạn “trước đây”, “vừa thêm”, “sẽ đổi sau” nếu không phải là spec/plan đang draft.
+- Mỗi doc phải có phạm vi rõ: feature doc mô tả hành vi người dùng hoặc workflow đã shipped; module doc mô tả boundary, API, data model, business rules và quan hệ module; spec/plan mô tả yêu cầu chưa hoặc đang triển khai.
+- Ưu tiên câu ngắn, heading rõ, danh sách có ý nghĩa. Xóa mô tả lặp, wrapper văn bản rỗng, câu chung chung và mọi phần không giúp người đọc quyết định hoặc implement.
+- Khi behavior thay đổi, sửa statement cũ tại chỗ. Không thêm “Correction”, “Update”, “Note mới” bên cạnh nội dung stale.
+- Ghi rõ constraint, assumption, failure mode, security/compliance rule và business rule nếu chúng ảnh hưởng đến cách hệ thống vận hành.
+- Source references phải trỏ tới path thật và ổn định. Chỉ liệt kê nguồn trực tiếp; không biến phần tham khảo thành dump mọi file từng đọc.
+
+### Link Và Quan Hệ
+
+- Dùng link tương đối thật tới tài liệu tồn tại. Với Markdown dùng `[Tên](../path/doc.md)`; với HTML dùng thẻ `<a href="../path/doc.html">Tên</a>` bình thường.
+- Không dùng custom tag cho internal navigation nếu thẻ HTML chuẩn đã đủ. Trong HTML docs, dùng `<a>` cho internal links; chỉ dùng custom tag khi tag đó mang semantic mà HTML chuẩn không thể hiện được.
+- Không tạo link placeholder. Nếu target chưa tồn tại, hoặc tạo doc đó trong cùng scope, hoặc ghi known-unsynced ngắn trong `docs/_sync.md` khi thật sự cần.
+- Giữ quan hệ hai chiều ở mức cần thiết: khi một module doc link tới feature/shared model quan trọng, kiểm tra doc đích có cần link ngược hoặc cập nhật quan hệ không.
+- Source References có thể là `<a href="..."><code>path</code></a>` khi target mở được, hoặc `<code>path</code>` khi chỉ là path tham khảo chưa chắc tồn tại trong checkout. Không dùng path label khác href một cách gây hiểu nhầm.
+
+### Markdown Docs
+
+- Dùng Markdown cho docs thủ công hoặc repo chưa có HTML contract. Frontmatter và `## Meta` phải ngắn, nhất quán, không chứa history.
+- Một doc nhỏ không cần đủ mọi heading template. Chỉ giữ các section giúp mô tả trạng thái hiện tại.
+- Code path dùng inline code; snippet dài dùng fenced code block có language khi biết.
+- Mermaid/diagram chỉ thêm khi giúp giải thích dependency, flow hoặc state machine rõ hơn văn bản ngắn.
+
+### HTML Docs
+
+- Generated HTML nên là fragment nội dung, không phải full document shell: không `<!doctype>`, `<html>`, `<head>`, `<body>` nếu preview chỉ cần fragment.
+- Dùng custom metadata tags tối thiểu khi repo hỗ trợ HTML docs: `doc-meta`, `doc-title`, `doc-description`, và các custom semantic tags đã được repo preview support.
+- Internal navigation trong `doc-meta` hoặc body dùng `<a>` bình thường. Không dùng `doc-link` trừ khi repo hiện tại yêu cầu explicit để parser dựng graph.
+- Output phải ngắn gọn và ổn định: không inline `<script>`, `<style>`, event handler, framework attributes, id tự sinh, class rỗng, class trùng, wrapper chỉ để trang trí, hoặc attribute không phục vụ semantic/rendering thật.
+- Tailwind/class chỉ dùng khi tạo khác biệt layout hoặc meaning rõ ràng. Baseline custom tag styling của preview phải đủ đọc khi class bị bỏ.
+- Metadata không được lặp lại thành một phần body chỉ để parser đọc. Nếu cần hiển thị metadata, preview nên render từ metadata source.
+- Diagram/code trong HTML dùng contract repo hỗ trợ, ví dụ `doc-diagram`, `doc-graph`, `doc-code`, hoặc `<pre><code class="language-*">`.
+
+### Chất Lượng Diff
+
+- Giữ diff nhỏ và có chủ đích. Không rewrite hàng loạt chỉ để đổi style nếu task không yêu cầu.
+- Không trộn normalize docs với thay đổi behavior lớn nếu có thể tách riêng.
+- Sau khi edit, đọc lại diff để bắt link sai cấp thư mục, stale statement, duplicate section, whitespace churn và metadata không khớp nội dung.
+
 ## Quy Ước Thư Mục
 
 Dùng `docs/` làm root của knowledge base. Không tạo cây `specs/` ở root trừ khi user yêu cầu rõ hoặc repo đã yêu cầu như vậy.
