@@ -30,7 +30,7 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 
 ### Link Và Quan Hệ
 
-- Dùng link tương đối thật tới tài liệu tồn tại. Với Markdown dùng `[Tên](../path/doc.md)`; với HTML dùng thẻ `<a href="../path/doc.html">Tên</a>` bình thường.
+- Dùng link tương đối thật tới tài liệu tồn tại. Với Markdown dùng `[Tên](../path/doc.md)`; với HTML chỉ dùng thẻ `<a href="../path/doc.html">Tên</a>`: label là nội dung bên trong thẻ `<a>`, target luôn đặt trong `href`.
 - Không dùng custom tag cho internal navigation nếu thẻ HTML chuẩn đã đủ. Trong HTML docs, dùng `<a>` cho internal links; chỉ dùng custom tag khi tag đó mang semantic mà HTML chuẩn không thể hiện được.
 - Không tạo link placeholder. Nếu target chưa tồn tại, hoặc tạo doc đó trong cùng scope, hoặc ghi known-unsynced ngắn trong `docs/_sync.md` khi thật sự cần.
 - Giữ quan hệ hai chiều ở mức cần thiết: khi một module doc link tới feature/shared model quan trọng, kiểm tra doc đích có cần link ngược hoặc cập nhật quan hệ không.
@@ -47,7 +47,7 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 
 - Generated HTML nên là fragment nội dung, không phải full document shell: không `<!doctype>`, `<html>`, `<head>`, `<body>` nếu preview chỉ cần fragment.
 - Dùng custom metadata tags tối thiểu khi repo hỗ trợ HTML docs: `doc-meta`, `doc-title`, `doc-description`, và các custom semantic tags đã được repo preview support.
-- Internal navigation trong `doc-meta` hoặc body dùng `<a>` bình thường. Không dùng `doc-link` trừ khi repo hiện tại yêu cầu explicit để parser dựng graph.
+- Internal navigation trong `doc-meta` hoặc body chỉ dùng `<a href="...">label</a>`. Không dùng custom tag riêng cho link; label nằm trong content của `<a>`, link nằm trong `href`.
 - Output phải ngắn gọn và ổn định: không inline `<script>`, `<style>`, event handler, framework attributes, id tự sinh, class rỗng, class trùng, wrapper chỉ để trang trí, hoặc attribute không phục vụ semantic/rendering thật.
 - Tailwind/class chỉ dùng khi tạo khác biệt layout hoặc meaning rõ ràng. Baseline custom tag styling của preview phải đủ đọc khi class bị bỏ.
 - Metadata không được lặp lại thành một phần body chỉ để parser đọc. Nếu cần hiển thị metadata, preview nên render từ metadata source.

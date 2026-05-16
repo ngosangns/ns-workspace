@@ -275,7 +275,6 @@ const htmlDocSanitizeConfig = {
     "doc-meta",
     "doc-title",
     "doc-description",
-    "doc-link",
     "doc-relation",
     "doc-callout",
     "doc-diagram",
@@ -311,6 +310,9 @@ const htmlDocSanitizeConfig = {
   FORBID_TAGS: ["script", "style"],
   FORBID_ATTR: ["style", "onclick", "onload", "onerror", "data-reactroot"],
 };
+
+const htmlMVPStylesheetURL = "https://cdn.jsdelivr.net/npm/mvp.css@1.17.3/mvp.css";
+let htmlMVPStylesheetPromise: Promise<void> | null = null;
 
 const graphView = createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpecPreview, openFilePreview });
 
@@ -1332,6 +1334,7 @@ async function renderMarkdownPreview(root: HTMLElement, raw: string) {
 }
 
 async function renderHTMLPreview(root: HTMLElement, raw: string) {
+  void ensureHTMLMVPStylesheet();
   root.innerHTML = DOMPurify.sanitize(raw, htmlDocSanitizeConfig);
   const meta = root.querySelector("doc-meta");
   if (meta) {
@@ -1341,6 +1344,69 @@ async function renderHTMLPreview(root: HTMLElement, raw: string) {
     meta.replaceWith(...metadata.childNodes);
   }
   normalizeHTMLDocTags(root);
+}
+
+async function ensureHTMLMVPStylesheet() {
+  if (document.querySelector("style[data-html-mvp-css]")) return;
+  if (!htmlMVPStylesheetPromise) {
+    htmlMVPStylesheetPromise = fetch(htmlMVPStylesheetURL)
+      .then((response) => {
+        if (!response.ok) throw new Error(`MVP.css request failed with ${response.status}`);
+        return response.text();
+      })
+      .then((css) => {
+        const style = document.createElement("style");
+        style.dataset.htmlMvpCss = "yes";
+        style.textContent = scopeMVPStylesheet(css);
+        const appStylesheet = document.querySelector<HTMLLinkElement>('link[href="/style.css"]');
+        document.head.insertBefore(style, appStylesheet || null);
+      })
+      .catch(() => {
+        htmlMVPStylesheetPromise = null;
+      });
+  }
+  await htmlMVPStylesheetPromise;
+}
+
+function scopeMVPStylesheet(css: string) {
+  // MVP.css is element-first and global by design; scope selectors so HTML docs
+  // get the semantic defaults without changing the preview shell itself.
+  try {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    return [...sheet.cssRules].map(scopeMVPRule).join("\n");
+  } catch {
+    return "";
+  }
+}
+
+function scopeMVPRule(rule: CSSRule): string {
+  if (rule instanceof CSSStyleRule) {
+    const selectors = rule.selectorText
+      .split(",")
+      .map((selector) => scopeMVPSelector(selector.trim()))
+      .filter(Boolean)
+      .join(", ");
+    return selectors ? `${selectors}{${rule.style.cssText}}` : "";
+  }
+  if (rule instanceof CSSMediaRule) {
+    const rules = [...rule.cssRules].map(scopeMVPRule).join("\n");
+    return `@media ${rule.conditionText}{${rules}}`;
+  }
+  if (rule instanceof CSSSupportsRule) {
+    const rules = [...rule.cssRules].map(scopeMVPRule).join("\n");
+    return `@supports ${rule.conditionText}{${rules}}`;
+  }
+  return rule.cssText;
+}
+
+function scopeMVPSelector(selector: string) {
+  if (!selector || selector.startsWith("@")) return selector;
+  if (selector === ":root" || selector === "html" || selector === "body") return ".html-doc";
+  if (selector.startsWith(":root ") || selector.startsWith("html ") || selector.startsWith("body ")) {
+    return selector.replace(/^(?::root|html|body)/, ".html-doc");
+  }
+  return `.html-doc ${selector}`;
 }
 
 function htmlMetadataRows(meta: Element) {
@@ -1353,8 +1419,8 @@ function htmlMetadataRows(meta: Element) {
   const description = meta.querySelector("doc-description")?.textContent?.trim();
   if (title) rows.push({ key: "title", value: title });
   if (description) rows.push({ key: "description", value: description });
-  meta.querySelectorAll("doc-link[href], doc-link[target]").forEach((link) => {
-    const target = link.getAttribute("href") || link.getAttribute("target") || "";
+  meta.querySelectorAll("a[href]").forEach((link) => {
+    const target = link.getAttribute("href") || "";
     const label = link.textContent?.trim() || target;
     if (target) rows.push({ key: "link", value: label === target ? target : `${label} (${target})` });
   });
@@ -1393,13 +1459,6 @@ function normalizeHTMLDocTags(root: HTMLElement) {
   });
   root.querySelectorAll("doc-metrics").forEach((node) => replaceDocElement(node, "div", "doc-metrics"));
   root.querySelectorAll("doc-metric").forEach((node) => replaceDocMetric(node));
-  root.querySelectorAll("doc-link").forEach((node) => {
-    const link = document.createElement("a");
-    link.className = "doc-link";
-    link.href = node.getAttribute("href") || node.getAttribute("target") || "#";
-    moveNodeChildren(node, link);
-    node.replaceWith(link);
-  });
   root.querySelectorAll("doc-relation").forEach((node) => {
     const type = node.getAttribute("type") || "related";
     const typeClass = sanitizeClassToken(type) || "related";
