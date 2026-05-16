@@ -14,7 +14,7 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 ## Nguyên Tắc Bắt Buộc
 
 - **Tái hiện trước:** Cố gắng tái hiện lỗi bằng test, command, log hoặc đọc code path cụ thể trước khi sửa.
-- **Sửa nguyên nhân gốc:** Sửa nguyên nhân trực tiếp và phạm vi ảnh hưởng liên quan, tránh vá triệu chứng nếu còn có thể truy ra nguyên nhân.
+- **Sửa nguyên nhân gốc với góc nhìn tổng quát:** Trước khi sửa, phải phân biệt triệu chứng, nguyên nhân trực tiếp và nguyên nhân gốc rễ trong bối cảnh hệ thống. Nhìn đủ rộng để hiểu module boundary, contract và luồng dữ liệu liên quan, rồi thu hẹp vào fix nhỏ nhất đúng nguyên nhân.
 - **Thay đổi nhỏ nhưng trọn vẹn:** Giữ diff nhỏ nhất có thể, nhưng vẫn sạch, đúng kiến trúc hiện tại và không tạo workaround khó bảo trì.
 - **Chặn regression:** Khi phù hợp, thêm hoặc cập nhật test để lỗi không quay lại.
 - **Validation mục tiêu:** Chạy validation sát với lỗi đã sửa; không cần full build nếu repo guidance không yêu cầu.
@@ -27,14 +27,15 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 1. Đọc bug report, failing output hoặc triệu chứng user đưa.
 2. Kiểm tra git status để nhận diện thay đổi đang có và tránh đè việc của user.
 3. Xác định code path liên quan bằng `rg`, test hiện có, docs/specs hoặc call site gần nhất.
-4. Tái hiện lỗi bằng command nhỏ nhất có thể, hoặc ghi rõ nếu không tái hiện được nhưng đã có bằng chứng đủ từ code/log.
-5. Sửa nguyên nhân gốc theo pattern hiện có của repo.
-6. Thêm hoặc cập nhật test/regression guard nếu bug có bề mặt test hợp lý.
-7. Sau mỗi lượt sửa file, review toàn bộ diff mình vừa tạo: kiểm tra scope, imports, naming, duplication, test coverage, dead code, debug output và docs/comment bị lệch.
-8. Cleanup ngay những phần thừa hoặc kém tối ưu; ưu tiên fix nhỏ, trực tiếp, đọc được và phù hợp với kiến trúc hiện tại.
-9. Rà comment trong vùng code vừa chạm; bổ sung hoặc chuyển sang tiếng Anh nếu fix phụ thuộc vào edge case, invariant hoặc ràng buộc khó thấy từ code.
-10. Chạy lại command tái hiện lỗi và validation mục tiêu.
-11. Review diff lần cuối, cleanup các thay đổi thừa, rồi báo ngắn gọn nguyên nhân và cách đã xác minh.
+4. Dựng giả thuyết nguyên nhân gốc rễ: vì sao lỗi phát sinh, contract hoặc invariant nào bị phá, dữ liệu đi qua đâu, và khu vực nào không nên chạm.
+5. Tái hiện lỗi bằng command nhỏ nhất có thể, hoặc ghi rõ nếu không tái hiện được nhưng đã có bằng chứng đủ từ code/log.
+6. Sửa nguyên nhân gốc theo pattern hiện có của repo.
+7. Thêm hoặc cập nhật test/regression guard nếu bug có bề mặt test hợp lý.
+8. Sau mỗi lượt sửa file, review toàn bộ diff mình vừa tạo: kiểm tra scope, imports, naming, duplication, test coverage, dead code, debug output và docs/comment bị lệch.
+9. Cleanup ngay những phần thừa hoặc kém tối ưu; ưu tiên fix nhỏ, trực tiếp, đọc được và phù hợp với kiến trúc hiện tại.
+10. Rà comment trong vùng code vừa chạm; bổ sung hoặc chuyển sang tiếng Anh nếu fix phụ thuộc vào edge case, invariant hoặc ràng buộc khó thấy từ code.
+11. Chạy lại command tái hiện lỗi và validation mục tiêu.
+12. Review diff lần cuối, cleanup các thay đổi thừa, rồi báo ngắn gọn nguyên nhân gốc rễ, cách sửa và cách đã xác minh.
 
 ## Ràng Buộc
 

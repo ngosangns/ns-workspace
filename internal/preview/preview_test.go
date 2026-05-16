@@ -1175,6 +1175,11 @@ func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
 			t.Fatalf("preview UI route handling missing %s", want)
 		}
 	}
+	for _, want := range []string{"validSpecFolderPath", "selectSpecFolder", "renderSpecFolderContent", "data-folder-path", "state.routeFolderPath"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI folder route handling missing %s", want)
+		}
+	}
 	if count := strings.Count(text, "selectSpec(state.selectedId, false, { updateURL: false })"); count < 2 {
 		t.Fatalf("preview UI should not rewrite /graph or /search to a default spec during initial load/reload; found %d guarded selects", count)
 	}

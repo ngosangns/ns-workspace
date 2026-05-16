@@ -17,6 +17,11 @@ Các công việc nhỏ và rõ ràng có thể bỏ qua skill này.
 - Khi cấu trúc, luồng dữ liệu, mô hình C4, luồng quyết định hoặc quan hệ module khó hiểu bằng chữ, thêm Mermaid để làm rõ. Chỉ thêm Mermaid khi giúp người đọc hiểu nhanh hơn.
 - Nếu dùng Mermaid, giữ sơ đồ nhỏ, đúng trọng tâm và đặt cạnh phần giải thích liên quan.
 
+## Nguyên Tắc Bắt Buộc
+
+- **Tìm nguyên nhân gốc rễ trước khi lập hướng đi:** Kế hoạch phải thể hiện vì sao vấn đề tồn tại hoặc vì sao thay đổi là cần thiết, phân biệt triệu chứng, nguyên nhân trực tiếp, nguyên nhân gốc rễ và động lực thiết kế.
+- **Nhìn tổng quát nhưng giữ trọng tâm:** Kế hoạch phải bao quát đủ context hệ thống, module boundary, contract, luồng dữ liệu và rủi ro liên quan, nhưng chỉ đề xuất công việc nằm trong phạm vi cần thiết để giải quyết mục tiêu.
+
 ## Vị Trí Lưu Kế Hoạch
 
 Tạo file kế hoạch trong:
@@ -84,12 +89,14 @@ Thay vào đó, kế hoạch phải chuyển hóa thông tin đã đọc thành:
 ## Quy Trình
 
 1. Đảm bảo bước nghiên cứu đã xác định docs/specs liên quan, đường dẫn code, ràng buộc và các giả định chưa được giải quyết.
-2. Nếu user đưa tên branch hoặc commit/ref, đọc toàn bộ thay đổi liên quan bằng lệnh Git chỉ đọc, không switch branch và không làm đổi worktree.
-3. Tạo hoặc cập nhật một file kế hoạch tập trung trong `docs/specs/planning/`.
-4. Bao gồm bối cảnh, nguyên nhân, lý do chọn hướng đi, cấu trúc logic của giải pháp, logic nghiệp vụ, mô hình C4 khi phù hợp, khu vực bị ảnh hưởng, công việc triển khai, rủi ro, tiêu chí chấp nhận và cách kiểm chứng.
-5. Giữ kế hoạch theo trạng thái hiện tại hoặc trạng thái thiết kế suy ra từ branch/commit. Không viết changelog, bảng lịch sử commit, migration history, incremental sync log hoặc danh sách file changes.
-6. Trình bày tóm tắt kế hoạch cho user một cách cô đọng bằng tiếng Việt có dấu.
-7. Dừng lại và chờ user phê duyệt rõ ràng trước khi sửa mã nguồn cho công việc lớn.
+2. Làm rõ nguyên nhân gốc rễ hoặc động lực thiết kế chính: vấn đề thật sự là gì, vì sao xảy ra, contract/invariant nào liên quan và hậu quả nếu chỉ vá triệu chứng.
+3. Xác định bức tranh tổng quan vừa đủ rồi thu hẹp trọng tâm: module boundary, luồng dữ liệu, API/contract, vùng bị ảnh hưởng, vùng ngoài phạm vi và tiêu chí giữ scope.
+4. Nếu user đưa tên branch hoặc commit/ref, đọc toàn bộ thay đổi liên quan bằng lệnh Git chỉ đọc, không switch branch và không làm đổi worktree.
+5. Tạo hoặc cập nhật một file kế hoạch tập trung trong `docs/specs/planning/`.
+6. Bao gồm bối cảnh, nguyên nhân gốc rễ, lý do chọn hướng đi, cấu trúc logic của giải pháp, logic nghiệp vụ, mô hình C4 khi phù hợp, khu vực bị ảnh hưởng, công việc triển khai, rủi ro, tiêu chí chấp nhận và cách kiểm chứng.
+7. Giữ kế hoạch theo trạng thái hiện tại hoặc trạng thái thiết kế suy ra từ branch/commit. Không viết changelog, bảng lịch sử commit, migration history, incremental sync log hoặc danh sách file changes.
+8. Trình bày tóm tắt kế hoạch cho user một cách cô đọng bằng tiếng Việt có dấu.
+9. Dừng lại và chờ user phê duyệt rõ ràng trước khi sửa mã nguồn cho công việc lớn.
 
 ## Mẫu Kế Hoạch Gợi Ý
 
@@ -99,6 +106,8 @@ Thay vào đó, kế hoạch phải chuyển hóa thông tin đã đọc thành:
 ## Bối Cảnh
 
 ## Nguyên Nhân Và Lý Do Thiết Kế
+
+## Góc Nhìn Tổng Quan Và Phạm Vi Tập Trung
 
 ## Mục Tiêu
 

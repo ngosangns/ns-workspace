@@ -21,7 +21,9 @@ const state = {
     diagramPanZoomTargets: new Map(),
     expandedPaths: new Set(),
     selectedId: "",
+    selectedFolderPath: "",
     routeSpecId: "",
+    routeFolderPath: "",
     tab: "spec",
     applyingRoute: false,
     previewSource: null,
@@ -153,12 +155,18 @@ async function load() {
     state.graph = graph;
     renderProjectChrome(project);
     const route = routeFromLocation();
-    state.selectedId = validSpecId(route.spec) || defaultSpecId();
+    const routeSpecId = validSpecId(route.spec);
+    const routeFolderPath = validSpecFolderPath(route.spec);
+    state.selectedId = routeSpecId || (routeFolderPath ? "" : defaultSpecId());
+    state.selectedFolderPath = routeFolderPath;
     syncRouteSpecFromURL(route);
     applySearchRoute(route);
     graphView.render();
     renderSpecList();
-    if (state.selectedId) {
+    if (state.selectedFolderPath) {
+        await selectSpecFolder(state.selectedFolderPath, false, { updateURL: false });
+    }
+    else if (state.selectedId) {
         await selectSpec(state.selectedId, false, { updateURL: false });
     }
     if (!route.tab && !route.spec && state.selectedId) {
@@ -169,18 +177,25 @@ async function load() {
 }
 async function reloadPreviewData() {
     const previousSelection = state.selectedId;
+    const previousFolderPath = state.selectedFolderPath;
     const route = routeFromLocation();
     const [project, specs, graph] = await Promise.all([fetchJSON("/api/project"), fetchJSON("/api/docs"), fetchJSON("/api/graph")]);
     state.project = project;
     state.specs = specs;
     state.graph = graph;
     renderProjectChrome(project);
-    state.selectedId = validSpecId(route.spec) || validSpecId(previousSelection) || defaultSpecId();
+    const routeSpecId = validSpecId(route.spec);
+    const routeFolderPath = validSpecFolderPath(route.spec);
+    state.selectedId = routeSpecId || (routeFolderPath ? "" : validSpecId(previousSelection) || defaultSpecId());
+    state.selectedFolderPath = routeFolderPath || (!state.selectedId ? validSpecFolderPath(previousFolderPath) : "");
     syncRouteSpecFromURL(route);
     applySearchRoute(route);
     graphView.render();
     renderSpecList();
-    if (state.selectedId) {
+    if (state.selectedFolderPath) {
+        await selectSpecFolder(state.selectedFolderPath, false, { updateURL: false });
+    }
+    else if (state.selectedId) {
         await selectSpec(state.selectedId, false, { updateURL: false });
     }
     if (!route.tab && !route.spec && state.selectedId) {
@@ -206,6 +221,35 @@ function validSpecId(id) {
     if (!id)
         return "";
     return state.specs.some((spec) => spec.id === id) ? id : "";
+}
+function validSpecFolderPath(path) {
+    const normalized = normalizeSpecFolderPath(path);
+    if (!normalized)
+        return "";
+    if (normalized === "docs")
+        return state.specs.length ? normalized : "";
+    return specFolderPaths().has(normalized) ? normalized : "";
+}
+function normalizeSpecFolderPath(path) {
+    let normalized = decodeURIComponent(String(path || ""))
+        .replace(/\\/g, "/")
+        .replace(/^\/+|\/+$/g, "");
+    if (!normalized)
+        return "";
+    if (normalized.toLowerCase() === "docs")
+        return "docs";
+    normalized = normalized.replace(/^docs\/+/i, "").replace(/^specs\/+/i, "specs/");
+    return normalized.replace(/\/{2,}/g, "/");
+}
+function specFolderPaths() {
+    const paths = new Set();
+    state.specs.forEach((spec) => {
+        const parts = spec.path.split("/");
+        for (let index = 1; index < parts.length; index++) {
+            paths.add(parts.slice(0, index).join("/"));
+        }
+    });
+    return paths;
 }
 async function fetchJSON(path) {
     const res = await fetch(path);
@@ -771,8 +815,9 @@ function renderTreeNodes(children, parent, depth) {
 }
 function renderFolderNode(node, parent, depth) {
     const expanded = state.expandedPaths.has(node.path);
+    const active = activeRouteFolderPath() === node.path;
     const button = document.createElement("button");
-    button.className = "tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 px-2 text-left font-medium";
+    button.className = `tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 px-2 text-left font-medium ${active ? "btn-active" : ""}`;
     button.style.paddingLeft = `${8 + depth * 16}px`;
     button.innerHTML = `
     <i data-lucide="chevron-right" class="tree-chevron h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}"></i>
@@ -786,7 +831,7 @@ function renderFolderNode(node, parent, depth) {
         else {
             state.expandedPaths.add(node.path);
         }
-        renderSpecList();
+        selectSpecFolder(node.path, true).catch((error) => renderPreviewError(error));
     });
     parent.append(button);
 }
@@ -812,8 +857,11 @@ function displaySpecName(spec) {
         return spec.title;
     return spec.title || base;
 }
+function folderDisplayName(path) {
+    return path.split("/").filter(Boolean).pop() || "Docs";
+}
 function autoExpandForSelection() {
-    const activeSpecId = activeRouteSpecId() || state.selectedId;
+    const activeSpecId = activeRouteSpecId() || activeRouteFolderPath() || state.selectedFolderPath || state.selectedId;
     if (!activeSpecId)
         return;
     const parts = activeSpecId.split("/");
@@ -823,6 +871,9 @@ function autoExpandForSelection() {
 }
 function activeRouteSpecId() {
     return validSpecId(state.routeSpecId) ? state.routeSpecId : "";
+}
+function activeRouteFolderPath() {
+    return validSpecFolderPath(state.routeFolderPath) ? state.routeFolderPath : "";
 }
 function expandAllVisibleFolders(node) {
     if (!node.children)
@@ -838,6 +889,7 @@ async function selectSpec(id, showSpecTab, options = {}) {
     const updateURL = options.updateURL !== false;
     const spec = await fetchJSON(`/api/docs/${encodeURIComponent(id)}`);
     state.selectedId = id;
+    state.selectedFolderPath = "";
     state.currentSpec = spec;
     if (state.tab === "spec" || showSpecTab) {
         setPageChromeForTab("spec");
@@ -852,10 +904,105 @@ async function selectSpec(id, showSpecTab, options = {}) {
         updateRouteURL("spec");
     }
 }
+async function selectSpecFolder(path, showSpecTab, options = {}) {
+    const folderPath = validSpecFolderPath(path);
+    if (!folderPath)
+        return;
+    const updateURL = options.updateURL !== false;
+    state.selectedFolderPath = folderPath;
+    state.selectedId = "";
+    state.currentSpec = null;
+    if (state.tab === "spec" || showSpecTab) {
+        setPageChromeForTab("spec");
+    }
+    destroyDiagramsIn(els.specContent);
+    renderSpecFolderContent(els.specContent, folderPath);
+    renderSpecList();
+    if (showSpecTab) {
+        switchTab("spec", { updateURL });
+    }
+    else if (updateURL && state.tab === "spec") {
+        updateRouteURL("spec");
+    }
+}
 async function renderCurrentSpecContent() {
     if (!state.currentSpec)
         return;
     await renderSpecDocumentContent(els.specContent, state.currentSpec, "markdown-wysiwyg-shell bg-base-100 mx-auto max-w-5xl");
+}
+function renderSpecFolderContent(root, folderPath) {
+    const listing = specFolderListing(folderPath);
+    root.dataset.sourcePath = folderPath;
+    root.innerHTML = `
+    <section class="markdown-wysiwyg-shell bg-base-100 mx-auto max-w-5xl">
+      <div class="mb-6 border-b border-base-300 pb-5">
+        <p class="text-sm font-medium text-base-content/60">${escapeHTML(folderPath)}</p>
+        <h1 class="mt-1 text-3xl font-semibold tracking-normal">${escapeHTML(folderDisplayName(folderPath))}</h1>
+      </div>
+      <div class="grid gap-3">
+        ${listing.folders.map(renderFolderListingCard).join("")}
+        ${listing.docs.map(renderDocListingCard).join("")}
+      </div>
+      ${listing.folders.length || listing.docs.length
+        ? ""
+        : `<div class="rounded border border-base-300 bg-base-200/50 p-4 text-sm text-base-content/65">No docs in this folder.</div>`}
+    </section>
+  `;
+    root.querySelectorAll("[data-folder-path]").forEach((button) => {
+        button.addEventListener("click", () => selectSpecFolder(button.dataset.folderPath || "", true).catch((error) => renderPreviewError(error)));
+    });
+    root.querySelectorAll("[data-doc-id]").forEach((button) => {
+        button.addEventListener("click", () => selectSpec(button.dataset.docId || "", true).catch((error) => renderPreviewError(error)));
+    });
+    refreshIcons();
+}
+function specFolderListing(folderPath) {
+    const prefix = folderPath === "docs" ? "" : `${folderPath}/`;
+    const folders = new Map();
+    const docs = [];
+    state.specs.forEach((spec) => {
+        if (!spec.path.startsWith(prefix))
+            return;
+        const rest = spec.path.slice(prefix.length);
+        const [first, ...tail] = rest.split("/");
+        if (!first)
+            return;
+        if (tail.length) {
+            const path = `${folderPath}/${first}`;
+            const folder = folders.get(path) || { path, name: first, count: 0 };
+            folder.count += 1;
+            folders.set(path, folder);
+            return;
+        }
+        docs.push(spec);
+    });
+    return {
+        folders: [...folders.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        docs: docs.sort((a, b) => displaySpecName(a).localeCompare(displaySpecName(b))),
+    };
+}
+function renderFolderListingCard(folder) {
+    return `
+    <button class="btn btn-ghost h-auto min-h-12 w-full justify-start gap-3 rounded border border-base-300 px-3 py-2 text-left" type="button" data-folder-path="${escapeHTML(folder.path)}">
+      <i data-lucide="folder" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate font-medium">${escapeHTML(folder.name)}</span>
+        <span class="block text-xs text-base-content/55">${folder.count} docs</span>
+      </span>
+    </button>
+  `;
+}
+function renderDocListingCard(spec) {
+    return `
+    <button class="btn btn-ghost h-auto min-h-12 w-full justify-start gap-3 rounded border border-base-300 px-3 py-2 text-left" type="button" data-doc-id="${escapeHTML(spec.id)}">
+      <i data-lucide="file-text" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate font-medium">${escapeHTML(displaySpecName(spec))}</span>
+        <span class="block truncate text-xs text-base-content/55">${escapeHTML(spec.path)}</span>
+      </span>
+      ${spec.status ? `<span class="badge badge-ghost badge-sm max-w-24 truncate">${escapeHTML(spec.status)}</span>` : ""}
+    </button>
+  `;
 }
 async function openSpecPreview(id, options = {}) {
     if (!id)
@@ -1212,13 +1359,13 @@ function htmlMetadataRows(meta) {
         const target = link.getAttribute("href") || "";
         const label = link.textContent?.trim() || target;
         if (target)
-            rows.push({ key: "link", value: label === target ? target : `${label} (${target})` });
+            rows.push({ key: "link", value: label, href: target });
     });
     meta.querySelectorAll("doc-relation[target]").forEach((relation) => {
         const target = relation.getAttribute("target") || "";
         const type = relation.getAttribute("type") || "related";
         if (target)
-            rows.push({ key: `relation.${type}`, value: target });
+            rows.push({ key: `relation.${type}`, value: target, href: target });
     });
     return rows;
 }
@@ -1393,21 +1540,24 @@ function markdownFenceLanguage(node) {
 }
 function renderableMarkdownMetadata(raw) {
     const lines = String(raw || "").split("\n");
+    const rows = [];
+    let body = raw;
     if (lines[0]?.trim() !== "---") {
-        return { html: "", body: raw };
+        const section = markdownBodyMetadata(body);
+        return section.rows.length ? { html: renderMetadataTable(section.rows), body: section.body } : { html: "", body: raw };
     }
     const end = lines.slice(1).findIndex((line) => line.trim() === "---");
-    if (end < 0) {
-        return { html: "", body: raw };
+    if (end >= 0) {
+        const metadataLines = lines.slice(1, end + 1);
+        rows.push(...markdownMetadataRows(metadataLines));
+        body = lines.slice(end + 2).join("\n");
     }
-    const metadataLines = lines.slice(1, end + 1);
-    const rows = markdownMetadataRows(metadataLines);
-    if (!rows.length) {
-        return { html: "", body: raw };
-    }
+    const section = markdownBodyMetadata(body);
+    rows.push(...section.rows);
+    body = section.body;
     return {
-        html: renderMetadataTable(rows),
-        body: lines.slice(end + 2).join("\n"),
+        html: rows.length ? renderMetadataTable(rows) : "",
+        body,
     };
 }
 function markdownMetadataRows(lines) {
@@ -1432,16 +1582,122 @@ function markdownMetadataRows(lines) {
     });
     return rows.filter((row) => row.key);
 }
+function markdownBodyMetadata(raw) {
+    const lines = String(raw || "").split("\n");
+    const start = lines.findIndex((line) => /^##\s+Meta\s*$/i.test(line.trim()));
+    if (start < 0)
+        return { rows: [], body: raw };
+    const relativeEnd = lines.slice(start + 1).findIndex((line) => /^##\s+\S/.test(line.trim()));
+    const end = relativeEnd < 0 ? lines.length : start + 1 + relativeEnd;
+    const metadataLines = lines.slice(start + 1, end);
+    const rows = markdownBodyMetadataRows(metadataLines);
+    if (!rows.length)
+        return { rows: [], body: raw };
+    const body = [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n");
+    return { rows, body };
+}
+function markdownBodyMetadataRows(lines) {
+    const rows = [];
+    let current = null;
+    lines.forEach((line) => {
+        const bullet = line.match(/^\s*-\s+(?:\*\*)?(.+?)(?:\*\*)?:\s*(.*)$/);
+        if (bullet) {
+            current = { key: cleanMetadataScalar(bullet[1]), value: bullet[2].trim() };
+            rows.push(current);
+            return;
+        }
+        const listItem = line.match(/^\s*-\s+(.*)$/);
+        if (listItem && current) {
+            current.value = appendMetadataValue(current.value, listItem[1].trim());
+            return;
+        }
+        const continuation = line.trim();
+        if (continuation && current) {
+            current.value = appendMetadataValue(current.value, continuation);
+        }
+    });
+    return rows.filter((row) => row.key);
+}
 function renderMetadataTable(rows) {
-    const body = rows.map((row) => `<tr><th>${escapeHTML(row.key)}</th><td>${renderMetadataValue(row.value)}</td></tr>`).join("");
+    const body = groupMetadataRows(rows)
+        .map((group) => `<tr><th>${escapeHTML(group.key)}</th><td>${renderMetadataGroupValue(group)}</td></tr>`)
+        .join("");
     return `<table class="metadata-table"><thead><tr><th>Metadata</th><th>Value</th></tr></thead><tbody>${body}</tbody></table>\n`;
 }
-function renderMetadataValue(raw) {
+function groupMetadataRows(rows) {
+    const groups = [];
+    rows.forEach((row) => {
+        const key = String(row.key || "").trim();
+        if (!key)
+            return;
+        const existing = groups.find((group) => group.key === key);
+        if (existing) {
+            existing.rows.push(row);
+            return;
+        }
+        groups.push({ key, rows: [row] });
+    });
+    return groups;
+}
+function renderMetadataGroupValue(group) {
+    if (group.rows.length === 1) {
+        const row = group.rows[0];
+        return renderMetadataValue(row.value, row.key, row.href);
+    }
+    if (isMetadataReferenceKey(group.key) || group.rows.some((row) => row.href)) {
+        const links = group.rows.flatMap((row) => {
+            if (row.href)
+                return [{ label: cleanMetadataScalar(row.value) || row.href, href: row.href }];
+            return metadataReferenceLinks(row.value);
+        });
+        if (links.length)
+            return renderMetadataLinkBadges(links);
+    }
+    return `<span class="metadata-badges">${group.rows
+        .map((row) => cleanMetadataScalar(row.value))
+        .filter(Boolean)
+        .map((value) => `<span class="badge badge-ghost badge-sm">${escapeHTML(value)}</span>`)
+        .join("")}</span>`;
+}
+function renderMetadataValue(raw, key = "", href = "") {
+    if (href) {
+        return renderMetadataLinkBadges([{ label: cleanMetadataScalar(raw) || href, href }]);
+    }
+    if (isMetadataReferenceKey(key)) {
+        const links = metadataReferenceLinks(raw);
+        if (links.length)
+            return renderMetadataLinkBadges(links);
+    }
     const values = metadataArrayValues(raw);
     if (values.length) {
         return `<span class="metadata-badges">${values.map((value) => `<span class="badge badge-ghost badge-sm">${escapeHTML(value)}</span>`).join("")}</span>`;
     }
     return escapeHTML(cleanMetadataScalar(raw));
+}
+function isMetadataReferenceKey(key) {
+    const normalized = String(key || "")
+        .trim()
+        .toLowerCase();
+    return (["link", "links", "related", "relations", "refs", "references", "docs_refs", "docs-refs"].includes(normalized) ||
+        normalized.startsWith("relation."));
+}
+function renderMetadataLinkBadges(links) {
+    return `<span class="metadata-badges metadata-link-badges">${links
+        .filter((link) => link.href)
+        .map((link) => `<a class="badge badge-ghost badge-sm" href="${escapeHTML(link.href)}" title="${escapeHTML(link.href)}">${escapeHTML(link.label || link.href)}</a>`)
+        .join("")}</span>`;
+}
+function metadataReferenceLinks(raw) {
+    const value = String(raw || "").trim();
+    if (!value)
+        return [];
+    const markdownLinks = [...value.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)].map((match) => ({
+        label: cleanMetadataScalar(match[1]),
+        href: cleanMetadataScalar(match[2]),
+    }));
+    if (markdownLinks.length)
+        return markdownLinks;
+    return metadataListValues(value).map((item) => ({ label: item, href: item }));
 }
 function metadataArrayValues(raw) {
     const value = String(raw || "").trim();
@@ -1459,6 +1715,15 @@ function metadataArrayValues(raw) {
         }
     }
     return [];
+}
+function metadataListValues(raw) {
+    const arrayValues = metadataArrayValues(raw);
+    if (arrayValues.length)
+        return arrayValues;
+    return String(raw || "")
+        .split(",")
+        .map(cleanMetadataScalar)
+        .filter(Boolean);
 }
 function cleanMetadataScalar(value) {
     const trimmed = String(value || "").trim();
@@ -2376,7 +2641,7 @@ function routeFromLocation() {
 function updateRouteURL(tab) {
     if (state.applyingRoute)
         return;
-    const route = tab === "spec" ? specRoutePath(state.selectedId || defaultSpecId()) : `/${tab}`;
+    const route = tab === "spec" ? specRoutePath(activeSpecRoutePath()) : `/${tab}`;
     const query = buildRouteQuery(tab);
     const next = `${route}${query}`;
     const current = `${window.location.pathname}${window.location.search}`;
@@ -2418,10 +2683,14 @@ function replaceSpecRoute(specId, fragment = "") {
 }
 function syncRouteSpecFromURL(route = routeFromLocation()) {
     state.routeSpecId = validSpecId(route.spec) || "";
+    state.routeFolderPath = state.routeSpecId ? "" : validSpecFolderPath(route.spec) || "";
 }
 function specRoutePath(specId, fragment = "") {
     const hash = fragment ? `#${encodeURIComponent(fragment)}` : "";
     return `/spec/${encodeSpecPath(specId)}${hash}`;
+}
+function activeSpecRoutePath() {
+    return state.selectedFolderPath || state.selectedId || defaultSpecId();
 }
 function buildRouteQuery(tab) {
     const params = new URLSearchParams();
@@ -2490,8 +2759,14 @@ function pageTitleForTab(name) {
         };
     }
     if (name === "spec") {
+        if (state.selectedFolderPath) {
+            return { title: folderDisplayName(state.selectedFolderPath), path: state.selectedFolderPath };
+        }
         const spec = state.currentSpec || state.specs.find((item) => item.id === state.selectedId);
         return { title: spec?.title || "Doc", path: spec?.path || state.selectedId || "" };
+    }
+    if (state.selectedFolderPath) {
+        return { title: folderDisplayName(state.selectedFolderPath), path: state.selectedFolderPath };
     }
     const spec = state.currentSpec || state.specs.find((item) => item.id === state.selectedId);
     return { title: spec?.title || "Doc", path: spec?.path || state.selectedId || "" };
@@ -2635,6 +2910,9 @@ async function applyRouteFromLocation() {
         if (route.spec && validSpecId(route.spec)) {
             await selectSpec(route.spec, false, { updateURL: false });
             scrollToSpecFragment(route.fragment || "");
+        }
+        else if (route.spec && validSpecFolderPath(route.spec)) {
+            await selectSpecFolder(route.spec, false, { updateURL: false });
         }
         else if (!route.tab && !route.spec && state.selectedId) {
             replaceSpecRoute(state.selectedId, route.fragment || "");

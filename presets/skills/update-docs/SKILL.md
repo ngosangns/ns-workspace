@@ -26,7 +26,7 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 - Ưu tiên câu ngắn, heading rõ, danh sách có ý nghĩa. Xóa mô tả lặp, wrapper văn bản rỗng, câu chung chung và mọi phần không giúp người đọc quyết định hoặc implement.
 - Khi behavior thay đổi, sửa statement cũ tại chỗ. Không thêm “Correction”, “Update”, “Note mới” bên cạnh nội dung stale.
 - Ghi rõ constraint, assumption, failure mode, security/compliance rule và business rule nếu chúng ảnh hưởng đến cách hệ thống vận hành.
-- Source references phải trỏ tới path thật và ổn định. Chỉ liệt kê nguồn trực tiếp; không biến phần tham khảo thành dump mọi file từng đọc.
+- Source references và docs references phải nằm trong metadata thay vì section body riêng. Với Markdown, dùng một field có nhiều values như frontmatter `source_paths`/`related` hoặc field `Nguồn code`/`Links` trong `## Meta`; với HTML, đặt link/reference trong `doc-meta` bằng `<a href="...">label</a>` hoặc `doc-relation`. Preview render frontmatter, `## Meta` và `doc-meta` docs refs thành badge links và gom các refs cùng key vào một row, nên label phải ngắn, target phải thật và ổn định. Chỉ liệt kê nguồn trực tiếp; không biến phần tham khảo thành dump mọi file từng đọc.
 
 ### Link Và Quan Hệ
 
@@ -34,7 +34,7 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 - Không dùng custom tag cho internal navigation nếu thẻ HTML chuẩn đã đủ. Trong HTML docs, dùng `<a>` cho internal links; chỉ dùng custom tag khi tag đó mang semantic mà HTML chuẩn không thể hiện được.
 - Không tạo link placeholder. Nếu target chưa tồn tại, hoặc tạo doc đó trong cùng scope, hoặc ghi known-unsynced ngắn trong `docs/_sync.md` khi thật sự cần.
 - Giữ quan hệ hai chiều ở mức cần thiết: khi một module doc link tới feature/shared model quan trọng, kiểm tra doc đích có cần link ngược hoặc cập nhật quan hệ không.
-- Source References có thể là `<a href="..."><code>path</code></a>` khi target mở được, hoặc `<code>path</code>` khi chỉ là path tham khảo chưa chắc tồn tại trong checkout. Không dùng path label khác href một cách gây hiểu nhầm.
+- Source/docs references trong HTML phải nằm trong `doc-meta` và dùng `<a href="..."><code>path</code></a>` khi target mở được; preview sẽ hiển thị chúng thành badge links trong metadata table. Nếu target chỉ là path tham khảo chưa chắc tồn tại trong checkout, giữ trong metadata dạng text/code thay vì tạo link placeholder. Không dùng path label khác href một cách gây hiểu nhầm.
 
 ### Markdown Docs
 
@@ -50,7 +50,7 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 - Internal navigation trong `doc-meta` hoặc body chỉ dùng `<a href="...">label</a>`. Không dùng custom tag riêng cho link; label nằm trong content của `<a>`, link nằm trong `href`.
 - Output phải ngắn gọn và ổn định: không inline `<script>`, `<style>`, event handler, framework attributes, id tự sinh, class rỗng, class trùng, wrapper chỉ để trang trí, hoặc attribute không phục vụ semantic/rendering thật.
 - Tailwind/class chỉ dùng khi tạo khác biệt layout hoặc meaning rõ ràng. Baseline custom tag styling của preview phải đủ đọc khi class bị bỏ.
-- Metadata không được lặp lại thành một phần body chỉ để parser đọc. Nếu cần hiển thị metadata, preview nên render từ metadata source.
+- Metadata không được lặp lại thành một phần body chỉ để parser đọc. Không tạo các section như `Source References`, `Docs Refs`, `Checked Sources` hoặc bảng tham khảo tương đương trong body nếu cùng dữ liệu đã nằm trong metadata. Nếu cần hiển thị metadata, preview nên render từ metadata source.
 - Diagram/code trong HTML dùng contract repo hỗ trợ, ví dụ `doc-diagram`, `doc-graph`, `doc-code`, hoặc `<pre><code class="language-*">`.
 
 ### Chất Lượng Diff
@@ -139,8 +139,8 @@ Các field:
 - `status`: Trạng thái hiện tại của nội dung. Với docs shipped dùng `implemented` hoặc `active`; với planning/spec chưa duyệt dùng `draft` hoặc `proposed`; với nội dung không còn dùng nữa chỉ đặt `deprecated` hoặc `archived` khi doc vẫn cần giữ.
 - `tags`: Nhãn ngắn cho domain, module, capability hoặc workflow. Dùng lowercase/kebab-case khi có thể.
 - `owners`: Nhóm, module hoặc area chịu trách nhiệm. Bỏ qua nếu repo không có ownership rõ.
-- `source_paths`: Code path chính mà doc mô tả. Chỉ liệt kê path ổn định và trực tiếp, không liệt kê mọi file phụ.
-- `related`: Markdown path tương đối tới docs liên quan trực tiếp. Chỉ link tài liệu tồn tại.
+- `source_paths`: Code path chính hoặc source-doc path chính mà doc mô tả. Chỉ liệt kê path ổn định và trực tiếp, không liệt kê mọi file phụ.
+- `related`: Markdown path tương đối tới docs liên quan trực tiếp. Chỉ link tài liệu tồn tại. Dùng field này cho docs refs thay vì tạo section tham khảo riêng trong body; preview hiển thị array này thành badge links.
 
 Không dùng frontmatter để lưu `last_updated`, commit history, version timeline, migration notes hoặc danh sách commit. Sync commit thuộc về `docs/_sync.md`.
 
