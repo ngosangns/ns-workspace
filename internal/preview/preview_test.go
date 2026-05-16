@@ -998,10 +998,13 @@ func TestPreviewUIRendersCompactHTMLDocsClientSide(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(app) + "\n" + string(css)
-	for _, want := range []string{"renderHTMLPreview", "htmlDocSanitizeConfig", "html-doc", "doc-meta", "doc-title", "doc-description", "doc-link", "doc-relation", "doc-callout", "doc-diagram", "doc-code", "doc-section", "doc-grid", "doc-card", "doc-steps", "doc-step", "doc-flow", "doc-flow-step", "doc-graph", "doc-metrics", "doc-metric", "normalizeHTMLDocTags", "htmlMetadataRows", "normalizeDocDiagramLanguage", "language-c4-model", "replaceDocContainer", "replaceDocMetric", "createDocDiagramSource", "doc-relation-${typeClass}", "doc-code-block", "doc-diagram-source", "doc-graph-source", ".markdown-wysiwyg-shell", ".html-doc", ".html-doc table", ".doc-title", ".doc-description", ".doc-callout-info", ".doc-callout-warning", ".doc-relation-depends", ".doc-code-block::before", ".doc-steps", ".doc-flow-step", ".doc-metrics", ".doc-metric-value"} {
+	for _, want := range []string{"renderHTMLPreview", "htmlDocSanitizeConfig", "htmlMVPStylesheetURL", "mvp.css@1.17.3", "scopeMVPStylesheet", "data-html-mvp-css", "html-doc", "doc-meta", "doc-title", "doc-description", "doc-relation", "doc-callout", "doc-diagram", "doc-code", "doc-section", "doc-grid", "doc-card", "doc-steps", "doc-step", "doc-flow", "doc-flow-step", "doc-graph", "doc-metrics", "doc-metric", "normalizeHTMLDocTags", "htmlMetadataRows", "normalizeDocDiagramLanguage", "language-c4-model", "replaceDocContainer", "replaceDocMetric", "createDocDiagramSource", "doc-relation-${typeClass}", "doc-code-block", "doc-diagram-source", "doc-graph-source", ".markdown-wysiwyg-shell", ".html-doc", ".html-doc table", ".html-doc a", ".doc-title", ".doc-description", ".doc-callout-info", ".doc-callout-warning", ".doc-relation-depends", ".doc-code-block::before", ".doc-steps", ".doc-flow-step", ".doc-metrics", ".doc-metric-value", ".hero-panel", ".metric-grid", ".insight-card", ".risk-panel", ".evidence-card.success", ".timeline-list"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI HTML doc rendering missing %s", want)
 		}
+	}
+	if strings.Contains(text, "doc-link") {
+		t.Fatalf("preview UI HTML doc link contract should use plain <a href> links only")
 	}
 	for _, forbidden := range []string{"data-reactroot", "onclick", "onload", "onerror"} {
 		if !strings.Contains(text, forbidden) {
@@ -1124,7 +1127,7 @@ func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(css)
-	for _, want := range []string{".markdown td code", ".markdown th", "text-align: left", "overflow-wrap: anywhere", "word-break: break-word", "overflow-x: auto"} {
+	for _, want := range []string{".markdown td code", ".markdown table th,\n.markdown table td", ".html-doc table th,\n.html-doc table td", ".metadata-table th,\n.metadata-table td", "text-align: left !important", "overflow-wrap: anywhere", "word-break: break-word", "overflow-x: auto"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview table CSS missing %s", want)
 		}

@@ -398,6 +398,18 @@ figure,
 .html-doc {
   display: grid;
   gap: 1rem;
+  --color: hsl(var(--p));
+  --color-accent: hsl(var(--a));
+  --color-bg: hsl(var(--b1));
+  --color-bg-secondary: hsl(var(--b2));
+  --color-secondary: hsl(var(--s));
+  --color-secondary-accent: hsl(var(--sf, var(--s)));
+  --color-shadow: hsl(var(--bc) / 0.08);
+  --color-table: hsl(var(--b2));
+  --color-text: hsl(var(--bc));
+  --color-text-secondary: hsl(var(--bc) / 0.68);
+  --border-radius: 0.5rem;
+  --box-shadow: 0 1px 2px hsl(var(--bc) / 0.08), 0 12px 28px hsl(var(--bc) / 0.06);
   color: hsl(var(--bc));
   line-height: 1.66;
 }
@@ -409,12 +421,32 @@ figure,
   gap: 1rem;
 }
 
+.html-doc > main {
+  width: min(100%, 68rem);
+  margin-inline: auto;
+}
+
+.html-doc section {
+  min-width: 0;
+}
+
+.html-doc article {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .html-doc h1,
 .html-doc h2,
 .html-doc h3,
 .html-doc h4 {
   scroll-margin-top: 96px;
   letter-spacing: 0;
+}
+
+.html-doc h1 {
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  font-weight: 850;
+  line-height: 1.08;
 }
 
 .html-doc h2 {
@@ -433,6 +465,21 @@ figure,
 
 .html-doc p {
   margin: 0;
+}
+
+.html-doc .lead {
+  max-width: 72ch;
+  color: hsl(var(--bc) / 0.76);
+  font-size: 1.08rem;
+  line-height: 1.72;
+}
+
+.html-doc .eyebrow {
+  color: hsl(var(--p));
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .html-doc ul,
@@ -470,10 +517,14 @@ figure,
   overflow-wrap: anywhere;
 }
 
+.html-doc table th,
+.html-doc table td {
+  text-align: left !important;
+}
+
 .html-doc th {
   background: hsl(var(--b2));
   font-weight: 700;
-  text-align: left;
 }
 
 .html-doc code {
@@ -495,6 +546,85 @@ figure,
   background: transparent;
   padding: 0;
   color: inherit;
+}
+
+.html-doc .hero-panel,
+.html-doc .summary-panel,
+.html-doc .callout-panel,
+.html-doc .risk-panel {
+  border: 1px solid hsl(var(--b3));
+  border-radius: 0.5rem;
+  background: hsl(var(--b1));
+  padding: clamp(1rem, 2vw, 1.5rem);
+  box-shadow: var(--box-shadow);
+}
+
+.html-doc .hero-panel {
+  gap: 1.2rem;
+}
+
+.html-doc .summary-panel,
+.html-doc .callout-panel,
+.html-doc .risk-panel {
+  margin-block: 0.25rem;
+}
+
+.html-doc .callout-panel {
+  border-color: hsl(var(--in) / 0.34);
+  background: hsl(var(--in) / 0.08);
+}
+
+.html-doc .risk-panel {
+  border-color: hsl(var(--wa) / 0.42);
+  background: hsl(var(--wa) / 0.1);
+}
+
+.html-doc .metric-grid,
+.html-doc .insight-grid,
+.html-doc .evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.875rem;
+}
+
+.html-doc .metric-card,
+.html-doc .insight-card,
+.html-doc .evidence-card {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  border: 1px solid hsl(var(--b3));
+  border-radius: 0.5rem;
+  background: hsl(var(--b1));
+  padding: 0.875rem;
+}
+
+.html-doc .metric-card strong {
+  color: hsl(var(--p));
+  font-size: 1.85rem;
+  line-height: 1;
+}
+
+.html-doc .metric-card span,
+.html-doc .evidence-card p {
+  color: hsl(var(--bc) / 0.68);
+  font-size: 0.88rem;
+}
+
+.html-doc .evidence-card.success {
+  border-color: hsl(var(--su) / 0.36);
+  background: hsl(var(--su) / 0.08);
+}
+
+.html-doc .timeline-list {
+  display: grid;
+  gap: 0.65rem;
+  padding-left: 1.25rem;
+}
+
+.html-doc .timeline-list li::marker {
+  color: hsl(var(--p));
+  font-weight: 800;
 }
 
 .doc-title {
@@ -681,7 +811,7 @@ figure,
   font-size: 0.82rem;
 }
 
-.doc-link {
+.html-doc a {
   color: hsl(var(--p));
   font-weight: 650;
   text-decoration: underline;
@@ -892,6 +1022,11 @@ figure,
   white-space: normal;
 }
 
+.markdown table th,
+.markdown table td {
+  text-align: left !important;
+}
+
 .markdown td code,
 .markdown th code {
   white-space: normal;
@@ -902,7 +1037,6 @@ figure,
 .markdown th {
   background: hsl(var(--b2));
   font-weight: 700;
-  text-align: left;
 }
 
 .metadata-table {
@@ -931,10 +1065,14 @@ figure,
   white-space: normal;
 }
 
+.metadata-table th,
+.metadata-table td {
+  text-align: left !important;
+}
+
 .metadata-table th {
   background: hsl(var(--b2));
   font-weight: 700;
-  text-align: left;
 }
 
 .metadata-badges {

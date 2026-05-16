@@ -375,7 +375,7 @@ func TestScanSpecProjectParsesCompactHTMLDocs(t *testing.T) {
 	writeTestFile(t, root, "docs/modules/billing.html", `<doc-meta status="Finalized" compliance="current-state" priority="P1" version="v3">
   <doc-title>Billing</doc-title>
   <doc-description>Owns invoice lifecycle.</doc-description>
-  <doc-link href="../shared/data-models.html">Data Models</doc-link>
+  <a href="../shared/data-models.html">Data Models</a>
   <doc-relation type="depends" target="../shared/data-models.html"></doc-relation>
 </doc-meta>
 <main class="prose">

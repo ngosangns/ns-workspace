@@ -919,7 +919,7 @@ func parseHTMLDocumentData(raw string) htmlDocData {
 			if relation.Target != "" {
 				data.Relations = append(data.Relations, relation)
 			}
-		case "doc-link":
+		case "a":
 			if insideHTMLTag(node, "doc-meta") {
 				relation := htmlRelationFromNode(node)
 				if relation.Target != "" {
@@ -991,7 +991,10 @@ func htmlDocMetadataEntries(metaNode *html.Node, meta moduleMeta) []metadataEntr
 	add("Priority", meta.Priority)
 	add("Description", meta.Description)
 	for child := metaNode.FirstChild; child != nil; child = child.NextSibling {
-		if child.Type != html.ElementNode || strings.ToLower(child.Data) != "doc-link" {
+		if child.Type != html.ElementNode {
+			continue
+		}
+		if !strings.EqualFold(child.Data, "a") {
 			continue
 		}
 		href := htmlAttr(child, "href")
