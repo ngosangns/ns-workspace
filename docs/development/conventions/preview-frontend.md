@@ -22,4 +22,6 @@ npm run build:preview
 
 Sau khi chỉnh UI, chạy build để đồng bộ `app.js` và `js/graph.js`. Nếu thay đổi route hoặc HTML static, cập nhật test preview tương ứng trong `internal/preview/preview_test.go`.
 
-Tài liệu preview phải dùng metadata đúng parser hiện tại: `_sync.md` có `## Current Sync`, `_index.md` có `## Modules`, và mỗi doc chính có frontmatter `---` hoặc `## Meta` với key tiếng Anh dạng bullet/table. Không sửa tay JavaScript generated trong `internal/preview/preview_ui/` nếu logic source TypeScript chưa được cập nhật tương ứng.
+Tài liệu preview phải dùng metadata đúng parser hiện tại: `_sync.md` có `## Current Sync`, `_index.md` có `## Modules`, và mỗi doc chính có frontmatter `---` hoặc `## Meta` với key tiếng Anh dạng bullet/table. Docs refs trong metadata dùng key như `related`, `Links`, `link` hoặc `relation.*` để preview render thành badge links. Không sửa tay JavaScript generated trong `internal/preview/preview_ui/` nếu logic source TypeScript chưa được cập nhật tương ứng.
+
+Styling cho rendered docs nằm trong `internal/preview/preview_ui/style.css`. Link state phải nhất quán giữa unvisited và visited để preview không đổi màu sau khi đọc, còn inline code phải khác biệt với text thường bằng background, radius, text color và font weight riêng nhưng không ảnh hưởng code block.

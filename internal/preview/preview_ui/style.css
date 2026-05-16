@@ -10,8 +10,17 @@
   --scrollbar-thumb: color-mix(in oklab, hsl(var(--bc)) 24%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--bc)) 34%, transparent);
   --scrollbar-track: color-mix(in oklab, hsl(var(--b2)) 78%, transparent);
+  --preview-link-color: #1d4ed8;
+  --preview-code-bg: color-mix(in oklab, #e0f2fe 72%, hsl(var(--b1)) 28%);
+  --preview-code-text: #075985;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   scrollbar-width: thin;
+}
+
+html[data-theme="dark"] {
+  --preview-link-color: #93c5fd;
+  --preview-code-bg: color-mix(in oklab, #0f172a 78%, #38bdf8 22%);
+  --preview-code-text: #bae6fd;
 }
 
 * {
@@ -529,9 +538,11 @@ figure,
 
 .html-doc code {
   border-radius: 0.35rem;
-  background: hsl(var(--b2));
+  background: var(--preview-code-bg);
   padding: 0.12rem 0.32rem;
+  color: var(--preview-code-text);
   font-size: 0.9em;
+  font-weight: 650;
 }
 
 .html-doc pre {
@@ -812,10 +823,14 @@ figure,
 }
 
 .html-doc a {
-  color: hsl(var(--p));
+  color: var(--preview-link-color);
   font-weight: 650;
   text-decoration: underline;
   text-underline-offset: 0.18em;
+}
+
+.html-doc a:visited {
+  color: var(--preview-link-color);
 }
 
 .doc-relation {
@@ -973,16 +988,22 @@ figure,
 }
 
 .markdown a {
-  color: hsl(var(--p));
+  color: var(--preview-link-color);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
+.markdown a:visited {
+  color: var(--preview-link-color);
+}
+
 .markdown code {
   border-radius: 0.35rem;
-  background: hsl(var(--b2));
+  background: var(--preview-code-bg);
   padding: 0.12rem 0.32rem;
+  color: var(--preview-code-text);
   font-size: 0.9em;
+  font-weight: 650;
 }
 
 .markdown pre {
@@ -1079,6 +1100,15 @@ figure,
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+.metadata-link-badges a {
+  color: var(--preview-link-color);
+  text-decoration: none;
+}
+
+.metadata-link-badges a:visited {
+  color: var(--preview-link-color);
 }
 
 .markdown blockquote {
