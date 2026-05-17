@@ -14,10 +14,24 @@ import (
 )
 
 type previewFileResponse struct {
+	Type     string `json:"type"`
 	Path     string `json:"path"`
 	Title    string `json:"title"`
 	Language string `json:"language"`
 	Raw      string `json:"raw"`
+}
+
+type previewFolderEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
+}
+
+type previewFolderResponse struct {
+	Type    string              `json:"type"`
+	Path    string              `json:"path"`
+	Title   string              `json:"title"`
+	Entries []previewFolderEntry `json:"entries"`
 }
 
 func (ps *previewServer) handleProject(w http.ResponseWriter, r *http.Request) {
@@ -103,8 +117,35 @@ func (ps *previewServer) handleFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	info, err := os.Stat(absPath)
-	if err != nil || info.IsDir() {
+	if err != nil {
 		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+	if info.IsDir() {
+		dirents, err := os.ReadDir(absPath)
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		entries := make([]previewFolderEntry, 0, len(dirents))
+		for _, d := range dirents {
+			name := d.Name()
+			if strings.HasPrefix(name, ".") {
+				continue
+			}
+			childRel := filepath.ToSlash(filepath.Join(rel, name))
+			entries = append(entries, previewFolderEntry{
+				Name:  name,
+				Path:  childRel,
+				IsDir: d.IsDir(),
+			})
+		}
+		writeJSON(w, previewFolderResponse{
+			Type:    "folder",
+			Path:    filepath.ToSlash(rel),
+			Title:   filepath.Base(absPath),
+			Entries: entries,
+		})
 		return
 	}
 	if info.Size() > maxSearchFileBytes {
@@ -125,6 +166,7 @@ func (ps *previewServer) handleFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, previewFileResponse{
+		Type:     "file",
 		Path:     filepath.ToSlash(rel),
 		Title:    filepath.Base(absPath),
 		Language: languageForPath(absPath),

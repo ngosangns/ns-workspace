@@ -5,7 +5,7 @@
 - **Status**: active
 - **Description**: Mô tả hành vi shipped của preview web, bao gồm Doc view read-only, Markdown/HTML rendering, Graph view, Search tab, routing nội bộ và các API frontend.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Module preview](../modules/preview.md), [Kiến trúc tổng quan](../architecture/overview.md), [Remove preview editor](../specs/planning/remove-preview-web-editor.md), [HTML docs](../specs/planning/generate-docs-html-tailwind-custom-tags.md), [Mermaid/C4 rendering](../specs/planning/support-mermaid-and-c4-model-rendering.md), [Trang search preview](../specs/planning/add-preview-search-page.md), [Internal links và mentions](../specs/planning/resolve-preview-internal-links-and-mentions.md), [Renderer graph preview](../specs/planning/use-specialized-graph-renderer.md)
+- **Links**: [Chỉ mục](../_index.md), [Module preview](../modules/preview.md), [Kiến trúc tổng quan](../architecture/overview.md), [HTML docs](../specs/planning/generate-docs-html-tailwind-custom-tags.md), [Mermaid/C4 rendering](../specs/planning/support-mermaid-and-c4-model-rendering.md), [Trang search preview](../specs/planning/add-preview-search-page.md), [Internal links và mentions](../specs/planning/resolve-preview-internal-links-and-mentions.md), [Renderer graph preview](../specs/planning/use-specialized-graph-renderer.md)
 
 ## Tổng Quan
 
@@ -33,4 +33,4 @@ Preview frontend gọi `/api/project`, `/api/docs`, `/api/docs/{id}`, `/api/grap
 
 ## Quan Hệ
 
-Feature này được implement bởi [Module preview](../modules/preview.md). Các kế hoạch đã triển khai được mô tả trong [Remove preview editor](../specs/planning/remove-preview-web-editor.md), [HTML docs](../specs/planning/generate-docs-html-tailwind-custom-tags.md), [Mermaid/C4 rendering](../specs/planning/support-mermaid-and-c4-model-rendering.md), [Trang search preview](../specs/planning/add-preview-search-page.md), [Internal links và mentions](../specs/planning/resolve-preview-internal-links-and-mentions.md), [TypeScript cho preview web](../specs/planning/use-full-typescript-for-preview-web.md) và [Renderer graph preview](../specs/planning/use-specialized-graph-renderer.md).
+Feature này được implement bởi [Module preview](../modules/preview.md). Các kế hoạch đã triển khai được mô tả trong [HTML docs](../specs/planning/generate-docs-html-tailwind-custom-tags.md), [Mermaid/C4 rendering](../specs/planning/support-mermaid-and-c4-model-rendering.md), [Trang search preview](../specs/planning/add-preview-search-page.md), [Internal links và mentions](../specs/planning/resolve-preview-internal-links-and-mentions.md) và [Renderer graph preview](../specs/planning/use-specialized-graph-renderer.md).

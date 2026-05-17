@@ -42,6 +42,10 @@ type RegistryManifest struct {
 	Skills []RegistrySkill `json:"skills"`
 }
 
+type OpenCodeConfigManifest struct {
+	Permission any `json:"permission,omitempty"`
+}
+
 type RegistrySkill struct {
 	Name   string `json:"name"`
 	Source string `json:"source"`
@@ -379,9 +383,6 @@ func (a fileAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 		if err != nil {
 			return nil, err
 		}
-		if a.name == "opencode" {
-			manifest = opencodeMCPManifest(manifest)
-		}
 		ops = append(ops, MergeJSON{Dst: a.mcpPath, KeyPath: a.mcpKeyPath, Values: manifest.MCPServers})
 	}
 	return ops, nil
@@ -396,6 +397,49 @@ func (a fileAdapter) StatusPaths(ctx Context) []string {
 }
 
 func (a fileAdapter) DoctorExecutables() []string { return a.exes }
+
+type opencodeAdapter struct {
+	fileAdapter
+	configPath string
+}
+
+func (a opencodeAdapter) Capabilities() AgentCapabilities {
+	caps := a.fileAdapter.Capabilities()
+	caps.Artifacts = append(caps.Artifacts, ArtifactMCP)
+	return caps
+}
+
+func (a opencodeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
+	ops, err := a.fileAdapter.Plan(ctx, update)
+	if err != nil {
+		return nil, err
+	}
+	if !ctx.NoMCP && a.configPath != "" {
+		manifest, err := readMCPManifest(ctx)
+		if err != nil {
+			return nil, err
+		}
+		manifest = opencodeMCPManifest(manifest)
+		ops = append(ops, MergeJSON{Dst: a.configPath, KeyPath: []string{"mcp"}, Values: manifest.MCPServers})
+	}
+	configManifest, err := readOpenCodeConfigManifest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if configManifest.Permission != nil {
+		permission := map[string]any{"permission": configManifest.Permission}
+		ops = append(ops, MergeJSON{Dst: a.configPath, KeyPath: []string{}, Values: permission})
+	}
+	return ops, nil
+}
+
+func (a opencodeAdapter) StatusPaths(ctx Context) []string {
+	paths := a.fileAdapter.StatusPaths(ctx)
+	if a.configPath != "" {
+		paths = append(paths, a.configPath)
+	}
+	return compact(paths)
+}
 
 type claudeAdapter struct{ fileAdapter }
 
@@ -701,7 +745,7 @@ func (m Manager) adapters(ctx Context) []AgentAdapter {
 	xdg := ctx.XDGConfigHome
 	return []AgentAdapter{
 		claudeAdapter{fileAdapter{name: "claude", tier: TierStable, exes: []string{"claude"}, instruction: filepath.Join(home, ".claude", "CLAUDE.md"), skills: filepath.Join(home, ".claude", "skills"), subagents: filepath.Join(home, ".claude", "agents"), settings: filepath.Join(home, ".claude", "settings.json"), docs: []string{"https://docs.claude.com/en/docs/claude-code/settings", "https://docs.claude.com/en/docs/claude-code/mcp"}}},
-		fileAdapter{name: "opencode", tier: TierStable, exes: []string{"opencode"}, instruction: filepath.Join(xdg, "opencode", "AGENTS.md"), skills: filepath.Join(xdg, "opencode", "skill"), subagents: filepath.Join(xdg, "opencode", "agent"), mcpPath: filepath.Join(xdg, "opencode", "opencode.json"), mcpKeyPath: []string{"mcp"}, docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"}},
+		opencodeAdapter{fileAdapter: fileAdapter{name: "opencode", tier: TierStable, exes: []string{"opencode"}, instruction: filepath.Join(xdg, "opencode", "AGENTS.md"), skills: filepath.Join(xdg, "opencode", "skill"), subagents: filepath.Join(xdg, "opencode", "agent"), docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"}}, configPath: filepath.Join(xdg, "opencode", "opencode.json")},
 		fileAdapter{name: "kimi", tier: TierStable, exes: []string{"kimi"}, instruction: filepath.Join(home, ".kimi", "AGENTS.md"), skills: filepath.Join(home, ".kimi", "skills"), mcpPath: filepath.Join(home, ".kimi", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/data-locations.html"}},
 		fileAdapter{name: "kiro", aliases: []string{"kiro-cli"}, tier: TierStable, exes: []string{"kiro", "kiro-cli"}, instruction: filepath.Join(home, ".kiro", "steering", "AGENTS.md"), mcpPath: filepath.Join(home, ".kiro", "settings", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/"}, notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; MCP presets sync to the shared Kiro settings path."},
 		fileAdapter{name: "qwen", tier: TierStable, exes: []string{"qwen"}, instruction: filepath.Join(home, ".qwen", "QWEN.md"), skills: filepath.Join(home, ".qwen", "skills"), hooksPath: filepath.Join(home, ".qwen", "settings.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(home, ".qwen", "settings.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://qwenlm.github.io/qwen-code-docs/en/cli/configuration/", "https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/"}},
@@ -747,6 +791,18 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 		if err != nil {
 			return manifest, err
 		}
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return manifest, err
+	}
+	return manifest, nil
+}
+
+func readOpenCodeConfigManifest(ctx Context) (OpenCodeConfigManifest, error) {
+	var manifest OpenCodeConfigManifest
+	data, err := fs.ReadFile(ctx.Presets, "presets/opencode/opencode.json")
+	if err != nil {
+		return manifest, err
 	}
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return manifest, err

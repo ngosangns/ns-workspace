@@ -10,7 +10,7 @@ import (
 	"github.com/ngosangns/ns-workspace/internal/preview"
 )
 
-//go:embed presets/agents presets/mcp presets/registry presets/settings presets/skills/* presets/subagents
+//go:embed presets/agents presets/mcp presets/opencode presets/registry presets/settings presets/skills/* presets/subagents
 var presetFS embed.FS
 
 func main() {

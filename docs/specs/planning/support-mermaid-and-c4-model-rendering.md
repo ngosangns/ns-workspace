@@ -5,7 +5,7 @@
 - **Status**: draft
 - **Description**: Kế hoạch chuẩn hóa và mở rộng khả năng render Mermaid, Mermaid C4 và C4 model trong preview web, bao gồm Markdown fences và hướng tương thích với HTML custom tags.
 - **Compliance**: planned
-- **Links**: [Chỉ mục](../../_index.md), [Preview web](../../features/preview-web.md), [Module preview](../../modules/preview.md), [Generate docs bằng HTML Tailwind và custom tags](./generate-docs-html-tailwind-custom-tags.md), [Loại bỏ editor trong preview web](./remove-preview-web-editor.md), [Quy ước frontend preview](../../development/conventions/preview-frontend.md)
+- **Links**: [Chỉ mục](../../_index.md), [Preview web](../../features/preview-web.md), [Module preview](../../modules/preview.md), [Generate docs bằng HTML Tailwind và custom tags](./generate-docs-html-tailwind-custom-tags.md), [Quy ước frontend preview](../../development/conventions/preview-frontend.md)
 
 ## Bối Cảnh
 

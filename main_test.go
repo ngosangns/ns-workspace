@@ -63,8 +63,8 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(opencode), "PreToolUse") || !strings.Contains(string(opencode), `"type": "remote"`) {
-		t.Fatalf("opencode config should include remote MCP presets without unsupported hooks: %s", opencode)
+	if strings.Contains(string(opencode), "PreToolUse") || !strings.Contains(string(opencode), `"type": "remote"`) || !strings.Contains(string(opencode), `"permission": "allow"`) {
+		t.Fatalf("opencode config should include remote MCP presets with permission allow, without unsupported hooks: %s", opencode)
 	}
 
 	codex, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))

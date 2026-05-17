@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-//go:embed preview_ui/*
+//go:embed preview_ui
 var previewUIFS embed.FS
 
 const defaultPreviewAddr = "127.0.0.1:0"
@@ -108,7 +108,10 @@ func previewModuleRoot(start string) (string, bool) {
 
 func runHotReloadSupervisor(moduleRoot string, args []string) error {
 	fmt.Println("docs preview hot reload: watching Go backend and frontend sources")
-	token := previewSourceToken(moduleRoot)
+	if err := buildPreviewFrontend(moduleRoot); err != nil {
+		return err
+	}
+	tokens := previewSourceTokens(moduleRoot)
 	childArgs, err := previewChildArgs(args)
 	if err != nil {
 		return err
@@ -137,11 +140,19 @@ func runHotReloadSupervisor(moduleRoot string, args []string) error {
 			}
 			return nil
 		case <-ticker.C:
-			nextToken := previewSourceToken(moduleRoot)
-			if nextToken == token {
+			nextTokens := previewSourceTokens(moduleRoot)
+			if nextTokens == tokens {
 				continue
 			}
-			token = nextToken
+			frontendChanged := nextTokens.frontend != tokens.frontend
+			tokens = nextTokens
+			if frontendChanged {
+				fmt.Println("docs preview hot reload: frontend changed, building preview assets")
+				if err := buildPreviewFrontend(moduleRoot); err != nil {
+					fmt.Printf("docs preview hot reload: frontend build failed: %v\n", err)
+					continue
+				}
+			}
 			fmt.Println("docs preview hot reload: source changed, restarting")
 			stopPreviewChild(cmd)
 			<-done
@@ -156,6 +167,22 @@ func runHotReloadSupervisor(moduleRoot string, args []string) error {
 
 type previewChildResult struct {
 	err error
+}
+
+type previewSourceTokensValue struct {
+	backend  string
+	frontend string
+}
+
+func buildPreviewFrontend(moduleRoot string) error {
+	if !fileExists(filepath.Join(moduleRoot, "package.json")) || !fileExists(filepath.Join(moduleRoot, "vite.config.ts")) {
+		return nil
+	}
+	cmd := exec.Command("npm", "run", "build:preview")
+	cmd.Dir = moduleRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func previewChildArgs(args []string) ([]string, error) {
@@ -253,18 +280,43 @@ func stripPreviewOpenFlag(args []string) []string {
 }
 
 func previewSourceToken(moduleRoot string) string {
-	var newest int64
-	var count int
-	walkPreviewSource(moduleRoot, func(path string, info fs.FileInfo) {
-		count++
-		if mod := info.ModTime().UnixNano(); mod > newest {
-			newest = mod
-		}
-	})
-	return fmt.Sprintf("%d:%d", newest, count)
+	tokens := previewSourceTokens(moduleRoot)
+	return tokens.backend + "|" + tokens.frontend
 }
 
-func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
+func previewSourceTokens(moduleRoot string) previewSourceTokensValue {
+	var backendNewest int64
+	var backendCount int
+	var frontendNewest int64
+	var frontendCount int
+	walkPreviewSource(moduleRoot, func(path string, info fs.FileInfo, kind previewSourceKind) {
+		switch kind {
+		case previewSourceFrontend:
+			frontendCount++
+			if mod := info.ModTime().UnixNano(); mod > frontendNewest {
+				frontendNewest = mod
+			}
+		default:
+			backendCount++
+			if mod := info.ModTime().UnixNano(); mod > backendNewest {
+				backendNewest = mod
+			}
+		}
+	})
+	return previewSourceTokensValue{
+		backend:  fmt.Sprintf("%d:%d", backendNewest, backendCount),
+		frontend: fmt.Sprintf("%d:%d", frontendNewest, frontendCount),
+	}
+}
+
+type previewSourceKind int
+
+const (
+	previewSourceBackend previewSourceKind = iota
+	previewSourceFrontend
+)
+
+func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo, previewSourceKind)) {
 	uiRoot := filepath.Join(moduleRoot, "internal", "preview", "preview_ui")
 	uiSourceRoot := filepath.Join(moduleRoot, "internal", "preview", "preview_ui_src")
 	_ = filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
@@ -272,8 +324,11 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
 			return nil
 		}
 		if d.IsDir() {
-			if path == moduleRoot || path == uiRoot || path == uiSourceRoot {
+			if path == moduleRoot || path == uiSourceRoot {
 				return nil
+			}
+			if path == uiRoot {
+				return filepath.SkipDir
 			}
 			name := d.Name()
 			switch name {
@@ -283,7 +338,7 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
 			if strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
-			if strings.HasPrefix(path, uiRoot+string(os.PathSeparator)) || strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator)) {
+			if strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator)) {
 				return nil
 			}
 			return nil
@@ -292,27 +347,36 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo)) {
 		if err != nil {
 			return nil
 		}
-		if !isPreviewSourceFile(rel, path, uiRoot, uiSourceRoot) {
+		kind, ok := previewSourceFileKind(rel, path, uiSourceRoot)
+		if !ok {
 			return nil
 		}
 		info, err := d.Info()
 		if err != nil {
 			return nil
 		}
-		visit(path, info)
+		visit(path, info, kind)
 		return nil
 	})
 }
 
 func isPreviewSourceFile(rel, path, uiRoot, uiSourceRoot string) bool {
+	_, ok := previewSourceFileKind(rel, path, uiSourceRoot)
+	return ok || strings.HasPrefix(path, uiRoot+string(os.PathSeparator))
+}
+
+func previewSourceFileKind(rel, path, uiSourceRoot string) (previewSourceKind, bool) {
 	if rel == "go.mod" || rel == "go.sum" || filepath.Ext(path) == ".go" {
-		return true
+		return previewSourceBackend, true
 	}
 	switch rel {
-	case "package.json", "package-lock.json", "tsconfig.preview.json", "eslint.config.mjs", ".prettierrc.json", ".prettierignore":
-		return true
+	case "package.json", "package-lock.json", "tsconfig.preview.json", "tsconfig.vue.json", "vite.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore":
+		return previewSourceFrontend, true
 	}
-	return strings.HasPrefix(path, uiRoot+string(os.PathSeparator)) || strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator))
+	if strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator)) {
+		return previewSourceFrontend, true
+	}
+	return previewSourceBackend, false
 }
 
 func fileExists(path string) bool {
@@ -355,10 +419,24 @@ func spaFileServer(static fs.FS) http.Handler {
 			files.ServeHTTP(w, r)
 			return
 		}
+		// Missing static assets should stay 404; returning the SPA HTML here makes
+		// browsers reject module scripts with a misleading MIME type error.
+		if isPreviewStaticAssetPath(path) {
+			http.NotFound(w, r)
+			return
+		}
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/"
 		files.ServeHTTP(w, r2)
 	})
+}
+
+func isPreviewStaticAssetPath(path string) bool {
+	return path == "favicon.svg" ||
+		path == "style.css" ||
+		strings.HasPrefix(path, "assets/") ||
+		strings.Contains(path, "/assets/") ||
+		strings.HasPrefix(path, "js/")
 }
 
 func (ps *previewServer) shutdown(ctx context.Context) error {

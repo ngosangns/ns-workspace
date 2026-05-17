@@ -5,7 +5,7 @@
 - **Status**: active
 - **Description**: Tài liệu module `internal/preview`, mô tả data models, API read-only, parser metadata Markdown/HTML, search, graph và ràng buộc build frontend.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Preview web](../features/preview-web.md), [Kiến trúc tổng quan](../architecture/overview.md), [Remove preview editor](../specs/planning/remove-preview-web-editor.md), [HTML docs](../specs/planning/generate-docs-html-tailwind-custom-tags.md), [Mermaid/C4 rendering](../specs/planning/support-mermaid-and-c4-model-rendering.md), [TypeScript cho preview web](../specs/planning/use-full-typescript-for-preview-web.md), [Renderer graph preview](../specs/planning/use-specialized-graph-renderer.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md)
+- **Links**: [Chỉ mục](../_index.md), [Preview web](../features/preview-web.md), [Kiến trúc tổng quan](../architecture/overview.md), [HTML docs](../specs/planning/generate-docs-html-tailwind-custom-tags.md), [Mermaid/C4 rendering](../specs/planning/support-mermaid-and-c4-model-rendering.md), [Renderer graph preview](../specs/planning/use-specialized-graph-renderer.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md)
 
 ## Tổng Quan
 

@@ -5,7 +5,7 @@
 - **Status**: active
 - **Description**: Quy ước phát triển frontend preview, gồm source TypeScript, generated assets, lệnh kiểm tra và metadata docs được preview scan.
 - **Compliance**: current-state
-- **Links**: [Module preview](../../modules/preview.md), [Preview web](../../features/preview-web.md), [TypeScript cho preview web](../../specs/planning/use-full-typescript-for-preview-web.md)
+- **Links**: [Module preview](../../modules/preview.md), [Preview web](../../features/preview-web.md)
 
 ## Quy Ước
 
