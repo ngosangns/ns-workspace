@@ -100,7 +100,7 @@ Thay vào đó, kế hoạch phải chuyển hóa thông tin đã đọc thành:
 
 ## Mẫu Kế Hoạch Gợi Ý
 
-~~~markdown
+````markdown
 # [Tên Công Việc]
 
 ## Bối Cảnh
@@ -133,7 +133,7 @@ flowchart LR
 ## Rủi Ro Và Ràng Buộc
 
 ## Kiểm Chứng
-~~~
+````
 
 ## Ràng Buộc
 

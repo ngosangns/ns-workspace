@@ -1,0 +1,15 @@
+{
+  "extends": ["html-validate:recommended"],
+  "elements": ["html5", "./htmlvalidate-doc-elements.json"],
+  "rules": {
+    "doctype-html": "off",
+    "doctype-style": "off",
+    "element-permitted-content": "off",
+    "heading-level": "off",
+    "no-inline-style": "off",
+    "prefer-button": "off",
+    "require-sri": "off",
+    "script-type": "off",
+    "void-style": "off"
+  }
+}

@@ -28,3 +28,6 @@ temp/
 # Generated output
 graphify-out/
 node_modules/
+
+# Preview UI build output
+internal/preview/preview_ui/

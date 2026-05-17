@@ -1,0 +1,117 @@
+{
+  "$schema": "https://html-validate.org/schemas/elements.json",
+  "doc-meta": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-title": {
+    "flow": true,
+    "phrasing": true,
+    "permittedContent": ["@phrasing"]
+  },
+  "doc-description": {
+    "flow": true,
+    "permittedContent": ["@flow"]
+  },
+  "doc-relation": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-callout": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-code": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-diagram": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-graph": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-section": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-grid": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-card": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-steps": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-step": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-flow": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-flow-step": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-metrics": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  },
+  "doc-metric": {
+    "flow": true,
+    "permittedContent": ["@flow"],
+    "attributes": {
+      "*": []
+    }
+  }
+}

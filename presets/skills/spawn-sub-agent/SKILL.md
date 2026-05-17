@@ -75,16 +75,19 @@ Nhiệm vụ:
 <one bounded task>
 
 Phạm vi:
+
 - Bạn sở hữu các file/module này: <paths>
 - Không sửa ngoài phạm vi này trừ khi thật sự cần thiết; nếu bị chặn, báo lại trước.
 - Main agent hoặc agent khác có thể đang sửa code gần đó. Không revert thay đổi không liên quan.
 
 Bối cảnh:
+
 - Mục tiêu của user: <goal>
 - Docs/specs/tests liên quan: <paths or snippets>
 - Triệu chứng hiện tại hoặc hành vi mong đợi: <details>
 
 Kết quả cần trả về:
+
 - Bạn đã tìm thấy gì
 - File đã sửa, nếu có
 - Command đã chạy và kết quả

@@ -58,8 +58,8 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	}
 
 	opencode := readFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
-	if strings.Contains(opencode, "PreToolUse") || !strings.Contains(opencode, `"type": "remote"`) || !strings.Contains(opencode, "context7") {
-		t.Fatalf("opencode config should include remote MCP presets without unsupported hooks: %s", opencode)
+	if strings.Contains(opencode, "PreToolUse") || !strings.Contains(opencode, `"type": "remote"`) || !strings.Contains(opencode, "context7") || !strings.Contains(opencode, `"permission": "allow"`) {
+		t.Fatalf("opencode config should include remote MCP presets with permission allow, without unsupported hooks: %s", opencode)
 	}
 
 	codex := readFile(t, filepath.Join(home, ".codex", "config.toml"))

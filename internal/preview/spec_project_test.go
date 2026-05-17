@@ -403,6 +403,23 @@ func TestScanSpecProjectParsesCompactHTMLDocs(t *testing.T) {
 	}
 }
 
+func TestScanSpecProjectExtractsHTMLBodyLinks(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/modules/billing.html", `<doc-meta status="Active"><doc-title>Billing</doc-title></doc-meta>
+<main>
+  <p>See <a href="../shared/data-models.html">Data Models</a> for details.</p>
+</main>`)
+	writeTestFile(t, root, "docs/shared/data-models.html", `<doc-meta status="Active"><doc-title>Data Models</doc-title></doc-meta><p>Models.</p>`)
+
+	project, err := scanSpecProject(root, "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasEdge(project.Graph.Edges, "billing", "data-models") {
+		t.Fatalf("expected edge from billing to data-models for body link, got: %+v", project.Graph.Edges)
+	}
+}
+
 func TestRenderMarkdownSupportsGFMTables(t *testing.T) {
 	html, err := renderMarkdown([]byte(`| File | Description |
 | ---- | ----------- |

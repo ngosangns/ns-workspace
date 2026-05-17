@@ -3,24 +3,35 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:preview": "tsc -p tsconfig.preview.json",
-    "check:preview": "tsc -p tsconfig.preview.json --noEmit",
+    "build:preview": "vite build",
+    "check:preview": "vue-tsc -p tsconfig.vue.json --noEmit",
+    "lint:docs": "npm run lint:docs:markdown && npm run lint:docs:html",
+    "lint:docs:html": "html-validate \"docs/**/*.html\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/index.html\"",
+    "lint:docs:markdown": "markdownlint-cli2 \"README.md\" \"docs/**/*.md\" \"presets/**/*.md\"",
     "lint:preview": "eslint internal/preview/preview_ui_src",
-    "format:preview": "prettier --ignore-unknown --write package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.ts\" internal/preview/preview_ui/index.html",
-    "format:preview:check": "prettier --ignore-unknown --check package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.ts\" internal/preview/preview_ui/index.html"
+    "format:docs": "prettier --ignore-unknown --write README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/index.html\"",
+    "format:docs:check": "prettier --ignore-unknown --check README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/index.html\"",
+    "format:preview": "prettier --ignore-unknown --write package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.{ts,vue}\" internal/preview/preview_ui/index.html",
+    "format:preview:check": "prettier --ignore-unknown --check package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.{ts,vue}\" internal/preview/preview_ui/index.html"
   },
   "devDependencies": {
     "@eslint/js": "^9.26.0",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
+    "@vitejs/plugin-vue": "^5.2.3",
     "eslint": "^9.26.0",
+    "html-validate": "^11.1.0",
+    "markdownlint-cli2": "^0.22.1",
     "prettier": "^3.5.3",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.32.0"
+    "typescript-eslint": "^8.32.0",
+    "vite": "^5.4.14",
+    "vue-tsc": "^3.2.9"
   },
   "dependencies": {
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
-    "sigma": "^3.0.3"
+    "sigma": "^3.0.3",
+    "vue": "^3.5.13"
   }
 }

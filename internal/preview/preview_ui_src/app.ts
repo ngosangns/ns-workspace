@@ -320,6 +320,30 @@ let htmlMVPStylesheetPromise: Promise<void> | null = null;
 
 const graphView = createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpecPreview, openFilePreview });
 
+function toggleGraphFullscreen() {
+  const graphShell = document.querySelector(".graph-shell");
+  if (!graphShell) return;
+  const isFullscreen = graphShell.classList.toggle("is-fullscreen");
+  const btn = document.querySelector("#graphFullscreen");
+  if (btn) {
+    btn.innerHTML = isFullscreen ? '<i data-lucide="minimize" class="h-4 w-4"></i>' : '<i data-lucide="maximize" class="h-4 w-4"></i>';
+    refreshIcons();
+  }
+  if (isFullscreen) {
+    graphView.fit();
+    graphShell.addEventListener("click", handleGraphFullscreenBackdrop);
+  } else {
+    graphShell.removeEventListener("click", handleGraphFullscreenBackdrop);
+  }
+}
+
+function handleGraphFullscreenBackdrop(event: Event) {
+  const target = event.target as HTMLElement;
+  if (target.classList.contains("graph-shell")) {
+    toggleGraphFullscreen();
+  }
+}
+
 async function load() {
   const [project, specs, graph] = await Promise.all([fetchJSON("/api/project"), fetchJSON("/api/docs"), fetchJSON("/api/graph")]);
   state.project = project;
@@ -605,14 +629,25 @@ function renderSearchPanel(name, results, emptyText, loading) {
 function renderSearchGraphPanel(name, results, list) {
   const graph = searchResultsToGraph(results, name);
   list.innerHTML = `
-    <div class="search-graph-shell">
+    <div class="search-graph-shell" data-search-graph-shell="${escapeHTML(name)}">
       <div class="search-graph-canvas" data-search-graph="${escapeHTML(name)}" role="img" aria-label="${escapeHTML(name)} search graph"></div>
-      <aside class="search-graph-details" data-search-graph-details="${escapeHTML(name)}"></aside>
+      <aside class="search-graph-details" data-search-graph-details="${escapeHTML(name)}">
+        <div class="search-graph-toolbar">
+          <span class="text-sm font-semibold">${escapeHTML(name === "docsGraph" ? "Docs Graph" : "Code Graph")}</span>
+          <button class="btn btn-ghost btn-xs search-graph-fullscreen" type="button" aria-label="Toggle full screen" title="Toggle full screen" data-fullscreen-graph="${escapeHTML(name)}">
+            <i data-lucide="maximize" class="h-3.5 w-3.5"></i>
+          </button>
+        </div>
+      </aside>
     </div>
   `;
   const canvas = list.querySelector(`[data-search-graph="${name}"]`);
   const details = list.querySelector(`[data-search-graph-details="${name}"]`);
   renderSearchResultGraph(name, graph, canvas, details);
+  const fullscreenBtn = list.querySelector(`[data-fullscreen-graph="${name}"]`);
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener("click", () => toggleSearchGraphFullscreen(name));
+  }
 }
 
 function searchResultsToGraph(results, panelName) {
@@ -729,12 +764,15 @@ function renderSearchGraphDetails(name, graph, details) {
   const selected = state.searchGraphSelections.get(name);
   const node = graph.nodes.find((item) => item.id === selected) || graph.nodes[0];
   if (!node) {
-    details.innerHTML = '<div class="p-4 text-sm text-base-content/60">No graph results.</div>';
+    const content = details.querySelector(".search-graph-details-content");
+    if (content) {
+      content.innerHTML = '<div class="p-4 text-sm text-base-content/60">No graph results.</div>';
+    }
     return;
   }
   const incoming = graph.links.filter((edge) => graphEndpointID(edge.target) === node.id);
   const outgoing = graph.links.filter((edge) => graphEndpointID(edge.source) === node.id);
-  details.innerHTML = `
+  const contentHtml = `
     <div class="grid gap-3 p-3">
       <div>
         <div class="text-xs uppercase tracking-wide text-base-content/50">${escapeHTML(node.type || "node")}</div>
@@ -755,6 +793,13 @@ function renderSearchGraphDetails(name, graph, details) {
       </div>
     </div>
   `;
+  let content = details.querySelector(".search-graph-details-content");
+  if (!content) {
+    content = document.createElement("div");
+    content.className = "search-graph-details-content";
+    details.appendChild(content);
+  }
+  content.innerHTML = contentHtml;
   details.querySelectorAll("[data-preview-spec]").forEach((button) => {
     button.addEventListener("click", () => openSpecPreview(button.dataset.previewSpec, { updateURL: true }));
   });
@@ -862,6 +907,36 @@ function stopSearchGraph(name) {
   if (renderer) {
     renderer.kill();
     state.searchGraphRenderers.delete(name);
+  }
+}
+
+function toggleSearchGraphFullscreen(name) {
+  const shell = document.querySelector(`[data-search-graph-shell="${name}"]`);
+  if (!shell) return;
+  const isFullscreen = shell.classList.toggle("is-fullscreen");
+  const btn = shell.querySelector(`[data-fullscreen-graph="${name}"]`);
+  if (btn) {
+    btn.innerHTML = isFullscreen
+      ? '<i data-lucide="minimize" class="h-3.5 w-3.5"></i>'
+      : '<i data-lucide="maximize" class="h-3.5 w-3.5"></i>';
+    refreshIcons();
+  }
+  const renderer = state.searchGraphRenderers.get(name);
+  if (renderer) {
+    setTimeout(() => renderer.fit(), 50);
+  }
+  if (isFullscreen) {
+    shell.addEventListener("click", handleSearchGraphFullscreenBackdrop);
+  } else {
+    shell.removeEventListener("click", handleSearchGraphFullscreenBackdrop);
+  }
+}
+
+function handleSearchGraphFullscreenBackdrop(event: Event) {
+  const target = event.target as HTMLElement;
+  if (target.classList.contains("search-graph-shell")) {
+    const name = target.getAttribute("data-search-graph-shell");
+    if (name) toggleSearchGraphFullscreen(name);
   }
 }
 
@@ -1138,14 +1213,14 @@ async function selectSpecFolder(path, showSpecTab, options: UpdateURLOptions = {
 
 async function renderCurrentSpecContent() {
   if (!state.currentSpec) return;
-  await renderSpecDocumentContent(els.specContent, state.currentSpec, "markdown-wysiwyg-shell bg-base-100 mx-auto max-w-5xl");
+  await renderSpecDocumentContent(els.specContent, state.currentSpec, "markdown-wysiwyg-shell bg-base-100 mx-auto w-full");
 }
 
 function renderSpecFolderContent(root: HTMLElement, folderPath: string) {
   const listing = specFolderListing(folderPath);
   root.dataset.sourcePath = folderPath;
   root.innerHTML = `
-    <section class="markdown-wysiwyg-shell bg-base-100 mx-auto max-w-5xl">
+    <section class="markdown-wysiwyg-shell bg-base-100 mx-auto w-full">
       <div class="mb-6 border-b border-base-300 pb-5">
         <p class="text-sm font-medium text-base-content/60">${escapeHTML(folderPath)}</p>
         <h1 class="mt-1 text-3xl font-semibold tracking-normal">${escapeHTML(folderDisplayName(folderPath))}</h1>
@@ -1288,7 +1363,21 @@ async function openFilePreview(path, line, options: UpdateURLOptions = {}) {
     updateSearchRouteURL({ replace: false });
   }
   try {
-    const file = await fetchJSON(`/api/files?${new URLSearchParams({ path }).toString()}`);
+    const data = await fetchJSON(`/api/files?${new URLSearchParams({ path }).toString()}`);
+    if (data.type === "folder") {
+      els.previewDialogTitle.textContent = data.title || "Folder";
+      els.previewDialogPath.textContent = data.path || path;
+      state.previewTitle = `Folder: ${data.title || path}`;
+      state.previewSource = null;
+      state.previewShowRaw = false;
+      updateDocumentTitle();
+      destroyDiagramsIn(els.previewDialogBody);
+      updatePreviewRawToggle();
+      renderFolderPreviewContent(els.previewDialogBody, data);
+      refreshIcons();
+      return;
+    }
+    const file = data;
     els.previewDialogTitle.textContent = file.title || "File preview";
     els.previewDialogPath.textContent = line ? `${file.path}:${line}` : file.path;
     state.previewTitle = `File preview: ${line ? `${file.title}:${line}` : file.title}`;
@@ -1351,6 +1440,58 @@ function renderPreviewError(error) {
   updatePreviewRawToggle();
   els.previewDialogBody.className = "preview-modal-body";
   els.previewDialogBody.innerHTML = `<div class="alert alert-error m-4 text-sm">${escapeHTML(error.message || String(error))}</div>`;
+}
+
+function renderFolderPreviewContent(
+  root: HTMLElement,
+  data: { type: string; path: string; title: string; entries: { name: string; path: string; isDir: boolean }[] },
+) {
+  root.className = "preview-modal-body";
+  const folders = data.entries.filter((e) => e.isDir).sort((a, b) => a.name.localeCompare(b.name));
+  const files = data.entries.filter((e) => !e.isDir).sort((a, b) => a.name.localeCompare(b.name));
+  root.innerHTML = `
+    <section class="markdown-wysiwyg-shell bg-base-100 mx-auto w-full">
+      <div class="mb-6 border-b border-base-300 pb-5">
+        <p class="text-sm font-medium text-base-content/60">${escapeHTML(data.path)}</p>
+        <h1 class="mt-1 text-3xl font-semibold tracking-normal">${escapeHTML(data.title)}</h1>
+      </div>
+      <div class="grid gap-3">
+        ${folders
+          .map(
+            (folder) => `
+          <button class="btn btn-ghost h-auto min-h-12 w-full justify-start gap-3 rounded border border-base-300 px-3 py-2 text-left" type="button" data-folder-preview-path="${escapeHTML(folder.path)}">
+            <i data-lucide="folder" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-medium">${escapeHTML(folder.name)}</span>
+            </span>
+          </button>
+        `,
+          )
+          .join("")}
+        ${files
+          .map(
+            (file) => `
+          <button class="btn btn-ghost h-auto min-h-12 w-full justify-start gap-3 rounded border border-base-300 px-3 py-2 text-left" type="button" data-file-preview-path="${escapeHTML(file.path)}">
+            <i data-lucide="file-text" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-medium">${escapeHTML(file.name)}</span>
+              <span class="block truncate text-xs text-base-content/55">${escapeHTML(file.path)}</span>
+            </span>
+          </button>
+        `,
+          )
+          .join("")}
+        ${!folders.length && !files.length ? `<div class="rounded border border-base-300 bg-base-200/50 p-4 text-sm text-base-content/65">Empty folder.</div>` : ""}
+      </div>
+    </section>
+  `;
+  root.querySelectorAll<HTMLElement>("[data-folder-preview-path]").forEach((button) => {
+    button.addEventListener("click", () => openFilePreview(button.dataset.folderPreviewPath || "", 0, { updateURL: true }));
+  });
+  root.querySelectorAll<HTMLElement>("[data-file-preview-path]").forEach((button) => {
+    button.addEventListener("click", () => openFilePreview(button.dataset.filePreviewPath || "", 0, { updateURL: true }));
+  });
+  refreshIcons();
 }
 
 async function renderPreviewSource() {
@@ -3227,6 +3368,7 @@ window.addEventListener("popstate", () => {
 els.search?.addEventListener("input", renderSpecList);
 els.graphSearch?.addEventListener("input", graphView.render);
 els.graphFit?.addEventListener("click", graphView.fit);
+document.querySelector("#graphFullscreen")?.addEventListener("click", toggleGraphFullscreen);
 els.globalSearch?.addEventListener("input", scheduleSearch);
 els.searchKeywordOperator?.addEventListener("change", scheduleSearch);
 els.codeGraphReload?.addEventListener("click", () => {

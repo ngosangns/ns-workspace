@@ -807,6 +807,9 @@ func parseDocumentContentEdges(doc specDocument, from string, docByPath map[stri
 	edges := edgesFromSemanticReferences(doc.Path, from, content, "inline", docByPath, diagramLabelSet)
 	edges = append(edges, edgesFromMarkdownLinks(doc.Path, from, content, defaultSpecRelation, "inline", docByPath, diagramLabelSet)...)
 	edges = append(edges, edgesFromPlainDocPaths(doc.Path, from, content, defaultSpecRelation, "inline", docByPath, diagramLabelSet)...)
+	if doc.Format == "html" {
+		edges = append(edges, edgesFromHTMLLinks(doc.Path, from, doc.Raw, defaultSpecRelation, "inline", docByPath, diagramLabelSet)...)
+	}
 	return dedupeEdges(edges)
 }
 
@@ -1185,6 +1188,30 @@ func edgesFromPlainDocPaths(sourcePath, from, text, relationType, origin string,
 			out = append(out, graphEdge{From: from, To: target, Label: relationType, Type: relationType, Origin: origin, Raw: token})
 		}
 	}
+	return out
+}
+
+func edgesFromHTMLLinks(sourcePath, from, raw, relationType, origin string, docByPath map[string]specDocument, diagramLabelSet map[string]bool) []graphEdge {
+	out := []graphEdge{}
+	root, err := html.Parse(strings.NewReader(raw))
+	if err != nil {
+		return out
+	}
+	walkHTML(root, func(node *html.Node) {
+		if node.Type != html.ElementNode || !strings.EqualFold(node.Data, "a") {
+			return
+		}
+		if insideHTMLTag(node, "doc-meta") {
+			return
+		}
+		href := htmlAttr(node, "href")
+		if href == "" {
+			return
+		}
+		if target, ok := resolveSpecReference(sourcePath, href, docByPath, diagramLabelSet); ok && from != target {
+			out = append(out, graphEdge{From: from, To: target, Label: relationType, Type: relationType, Origin: origin, Raw: href})
+		}
+	})
 	return out
 }
 

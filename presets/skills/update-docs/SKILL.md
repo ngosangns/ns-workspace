@@ -26,7 +26,7 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 - Ưu tiên câu ngắn, heading rõ, danh sách có ý nghĩa. Xóa mô tả lặp, wrapper văn bản rỗng, câu chung chung và mọi phần không giúp người đọc quyết định hoặc implement.
 - Khi behavior thay đổi, sửa statement cũ tại chỗ. Không thêm “Correction”, “Update”, “Note mới” bên cạnh nội dung stale.
 - Ghi rõ constraint, assumption, failure mode, security/compliance rule và business rule nếu chúng ảnh hưởng đến cách hệ thống vận hành.
-- Source references và docs references phải nằm trong metadata thay vì section body riêng. Với Markdown, dùng một field có nhiều values như frontmatter `source_paths`/`related` hoặc field `Nguồn code`/`Links` trong `## Meta`; với HTML, đặt link/reference trong `doc-meta` bằng `<a href="...">label</a>` hoặc `doc-relation`. Preview render frontmatter, `## Meta` và `doc-meta` docs refs thành badge links và gom các refs cùng key vào một row, nên label phải ngắn, target phải thật và ổn định. Chỉ liệt kê nguồn trực tiếp; không biến phần tham khảo thành dump mọi file từng đọc.
+- Source references và docs references phải nằm trong metadata thay vì section body riêng. Với Markdown, dùng một field có nhiều values như frontmatter `source_paths`/`related` hoặc field `Nguồn code`/`Links` trong `## Meta`; với HTML fragment, đặt link/reference trong semantic tags như `doc-meta` và `doc-relation`, dùng `<a href="...">label</a>` cho target mở được. Không dùng `<head>`, `<meta>` hoặc full document shell cho metadata HTML docs. Preview render frontmatter, `## Meta` và `doc-meta` docs refs thành badge links và gom các refs cùng key vào một row, nên label phải ngắn, target phải thật và ổn định. Chỉ liệt kê nguồn trực tiếp; không biến phần tham khảo thành dump mọi file từng đọc.
 
 ### Link Và Quan Hệ
 
@@ -46,11 +46,11 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 ### HTML Docs
 
 - Generated HTML nên là fragment nội dung, không phải full document shell: không `<!doctype>`, `<html>`, `<head>`, `<body>` nếu preview chỉ cần fragment.
-- Dùng custom metadata tags tối thiểu khi repo hỗ trợ HTML docs: `doc-meta`, `doc-title`, `doc-description`, và các custom semantic tags đã được repo preview support.
+- Dùng custom semantic metadata tags tối thiểu khi repo hỗ trợ HTML docs: `doc-meta`, `doc-title`, `doc-description`, và các custom semantic tags đã được repo preview support. Các tag này nằm trực tiếp trong fragment nội dung, không nằm trong `<head>` vì HTML docs không có `<html>`, `<head>`, hoặc `<body>`.
 - Internal navigation trong `doc-meta` hoặc body chỉ dùng `<a href="...">label</a>`. Không dùng custom tag riêng cho link; label nằm trong content của `<a>`, link nằm trong `href`.
 - Output phải ngắn gọn và ổn định: không inline `<script>`, `<style>`, event handler, framework attributes, id tự sinh, class rỗng, class trùng, wrapper chỉ để trang trí, hoặc attribute không phục vụ semantic/rendering thật.
 - Tailwind/class chỉ dùng khi tạo khác biệt layout hoặc meaning rõ ràng. Baseline custom tag styling của preview phải đủ đọc khi class bị bỏ.
-- Metadata không được lặp lại thành một phần body chỉ để parser đọc. Không tạo các section như `Source References`, `Docs Refs`, `Checked Sources` hoặc bảng tham khảo tương đương trong body nếu cùng dữ liệu đã nằm trong metadata. Nếu cần hiển thị metadata, preview nên render từ metadata source.
+- Metadata không được lặp lại thành một phần body chỉ để parser đọc. Không tạo các section như `Source References`, `Docs Refs`, `Checked Sources` hoặc bảng tham khảo tương đương trong body nếu cùng dữ liệu đã nằm trong semantic metadata tags. Nếu cần hiển thị metadata, preview nên render từ metadata source.
 - Diagram/code trong HTML dùng contract repo hỗ trợ, ví dụ `doc-diagram`, `doc-graph`, `doc-code`, hoặc `<pre><code class="language-*">`.
 
 ### Chất Lượng Diff
@@ -58,6 +58,7 @@ Luôn giữ đủ cả hai nhóm quy tắc `Markdown Docs` và `HTML Docs`. Khi 
 - Giữ diff nhỏ và có chủ đích. Không rewrite hàng loạt chỉ để đổi style nếu task không yêu cầu.
 - Không trộn normalize docs với thay đổi behavior lớn nếu có thể tách riêng.
 - Sau khi edit, đọc lại diff để bắt link sai cấp thư mục, stale statement, duplicate section, whitespace churn và metadata không khớp nội dung.
+- Sau khi sửa Markdown hoặc HTML docs, chạy formatter và lint bằng script của repo khi có: `npm run format:docs`, rồi `npm run lint:docs`. Nếu chỉ cần kiểm tra không ghi file, dùng `npm run format:docs:check` trước hoặc thay cho formatter write-mode khi scope đang bẩn ngoài task.
 
 ## Quy Ước Thư Mục
 
@@ -190,7 +191,9 @@ Không thêm field nếu không có giá trị thật. Không tạo bảng metad
 10. Cập nhật `docs/_index.md` khi thêm, move hoặc xóa docs có ý nghĩa.
 11. Cập nhật `docs/_sync.md` như snapshot sync cuối cùng sau khi docs đã phản ánh target commit.
 12. Nếu repo có `graphify-out/graph.json`, refresh graph sau khi cập nhật bằng `graphify auto-update .`. Nếu CLI không có sẵn hoặc command lỗi, báo rõ trong phản hồi cuối thay vì bỏ qua âm thầm. Khi chỉ muốn refresh các file cụ thể và đã biết danh sách file code bị chạm, có thể dùng `graphify update graphify-out/graph.json <file...>`.
-13. Chạy `git diff --check` cho docs đã sửa. Nếu repo có doc validation, chạy nó trừ khi user yêu cầu không chạy.
+13. Chạy formatter cho Markdown/HTML docs đã sửa khi repo có script, ưu tiên `npm run format:docs`. Nếu worktree có thay đổi ngoài scope và formatter toàn repo sẽ rewrite file không liên quan, không chạy write-mode toàn repo; dùng `npm run format:docs:check` để báo rõ file nào chưa format.
+14. Chạy lint docs khi repo có script, ưu tiên `npm run lint:docs` hoặc các script hẹp hơn như `npm run lint:docs:markdown` và `npm run lint:docs:html`.
+15. Chạy `git diff --check` cho docs đã sửa. Nếu repo có doc validation khác, chạy nó trừ khi user yêu cầu không chạy.
 
 ## Sync State
 
@@ -251,6 +254,7 @@ tags: [spec]
 ### REQ-1: [Yêu cầu]
 
 **Tiêu Chí Chấp Nhận:**
+
 - [ ] AC-1.1: [Tiêu chí]
 
 **Kịch Bản:**
