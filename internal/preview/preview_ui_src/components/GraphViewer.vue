@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from "vue";
+import Icon from "./Icon.vue";
 
 interface GraphNode {
   id: string;
@@ -219,7 +220,7 @@ function renderDetails(data: GraphData, nodeId: string) {
         <h3 class="mt-1 text-lg font-semibold">${escapeHTML(node.label || node.id)}</h3>
         <p class="break-words text-sm text-base-content/60">${escapeHTML(node.path || node.id)}</p>
       </div>
-      ${node.specId ? `<button class="btn btn-primary btn-sm" type="button" data-preview-spec="${escapeHTML(node.specId)}"><i data-lucide="file-text" class="h-4 w-4"></i>Preview doc</button>` : ""}
+      ${node.specId ? `<button class="btn btn-primary btn-sm" type="button" data-preview-spec="${escapeHTML(node.specId)}">Preview doc</button>` : ""}
       <div>
         <h4 class="mb-2 text-sm font-semibold">Outgoing refs (${outgoing.length})</h4>
         ${renderEdgeList(outgoing.slice(0, 12), "target")}
@@ -312,7 +313,7 @@ onUnmounted(() => {
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <label class="input input-bordered input-sm flex items-center gap-2">
-          <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
+          <Icon name="search" class="text-base-content/50 h-4 w-4" />
           <input id="graphSearch" v-model="graphSearch" class="w-40 sm:w-56" placeholder="Find node" />
         </label>
         <button
@@ -323,7 +324,7 @@ onUnmounted(() => {
           title="Fit graph"
           @click="graphRenderer?.fit()"
         >
-          <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+          <Icon name="refresh-cw" class="h-4 w-4" />
         </button>
       </div>
     </div>

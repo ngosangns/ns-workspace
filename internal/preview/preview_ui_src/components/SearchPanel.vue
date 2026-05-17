@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import Icon from "./Icon.vue";
 
 interface SearchResult {
   id?: string;
@@ -142,7 +143,7 @@ function escapeHTML(str: string): string {
   <div class="search-shell border-base-300 bg-base-100 border">
     <div class="search-toolbar border-base-300 border-b">
       <label class="input input-bordered flex min-h-11 flex-1 items-center gap-2">
-        <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
+        <Icon name="search" class="text-base-content/50 h-4 w-4" />
         <input v-model="searchQuery" class="grow" placeholder="Search docs, code, graph nodes; separate keywords with commas" />
       </label>
       <select
@@ -174,7 +175,7 @@ function escapeHTML(str: string): string {
             <p v-if="result.description || result.excerpt" class="search-excerpt">{{ result.description || result.excerpt }}</p>
             <div class="mt-2 flex flex-wrap gap-2">
               <button v-if="result.specId" class="btn btn-primary btn-xs" type="button" @click="emit('openSpecPreview', result.specId)">
-                <i data-lucide="file-text" class="h-3.5 w-3.5"></i>Preview doc
+                <Icon name="file-text" class="h-3.5 w-3.5" />Preview doc
               </button>
               <button
                 v-if="result.path && result.specId"
@@ -182,7 +183,7 @@ function escapeHTML(str: string): string {
                 type="button"
                 @click="emit('openFilePreview', result.path, result.line || 0)"
               >
-                <i data-lucide="file-code" class="h-3.5 w-3.5"></i>Preview file
+                <Icon name="file-code" class="h-3.5 w-3.5" />Preview file
               </button>
             </div>
           </article>
@@ -222,7 +223,7 @@ function escapeHTML(str: string): string {
                 type="button"
                 @click="emit('openFilePreview', result.path, result.line || 0)"
               >
-                <i data-lucide="file-code" class="h-3.5 w-3.5"></i>Preview file
+                <Icon name="file-code" class="h-3.5 w-3.5" />Preview file
               </button>
             </div>
           </article>

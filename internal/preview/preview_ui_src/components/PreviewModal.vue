@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, inject, nextTick, type Ref } from "vue";
 import { decorateInternalDocNavigation, type SpecDocument, type InternalSpecTarget } from "../js/internal-links.js";
+import Icon from "./Icon.vue";
 
 interface PreviewSource {
   type: "doc" | "file";
@@ -93,7 +94,7 @@ watch(
             title="View raw source"
             @click="emit('toggleRaw')"
           >
-            <i data-lucide="file-code" class="h-4 w-4"></i>
+            <Icon name="file-code" class="h-4 w-4" />
           </button>
           <button
             class="btn btn-ghost btn-sm"
@@ -103,7 +104,7 @@ watch(
             title="Close preview"
             @click="emit('close')"
           >
-            <i data-lucide="x" class="h-4 w-4"></i>
+            <Icon name="x" class="h-4 w-4" />
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import TreeNode from "./TreeNode.vue";
+import Icon from "./Icon.vue";
 
 interface ProjectSummary {
   name: string;
@@ -112,7 +113,7 @@ watch(
   >
     <div class="mb-4 flex items-center gap-3">
       <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content">
-        <i data-lucide="book-open-text" class="h-5 w-5"></i>
+        <Icon name="book-open-text" class="h-5 w-5" />
       </div>
       <div class="min-w-0">
         <div class="font-bold">Docs Preview</div>
@@ -126,7 +127,7 @@ watch(
     </div>
 
     <label class="input input-bordered mb-3 flex h-10 items-center gap-2">
-      <i data-lucide="search" class="text-base-content/50 h-4 w-4"></i>
+      <Icon name="search" class="text-base-content/50 h-4 w-4" />
       <input id="search" v-model="search" class="grow" placeholder="Doc name, path, status" />
     </label>
 

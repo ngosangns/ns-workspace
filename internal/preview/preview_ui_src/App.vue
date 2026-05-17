@@ -5,6 +5,7 @@ import DocViewer from "./components/DocViewer.vue";
 import GraphViewer from "./components/GraphViewer.vue";
 import SearchPanel from "./components/SearchPanel.vue";
 import PreviewModal from "./components/PreviewModal.vue";
+import Icon from "./components/Icon.vue";
 
 interface ProjectSummary {
   name: string;
@@ -89,12 +90,6 @@ async function fetchJSON(path: string) {
   return res.json();
 }
 
-function refreshIcons() {
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
-}
-
 function applyTheme(newTheme: "light" | "dark", options: { persist?: boolean; rerender?: boolean } = {}) {
   theme.value = newTheme;
   document.documentElement.dataset.theme = newTheme;
@@ -106,7 +101,6 @@ function applyTheme(newTheme: "light" | "dark", options: { persist?: boolean; re
 function toggleTheme() {
   const next = theme.value === "light" ? "dark" : "light";
   applyTheme(next, { persist: true, rerender: true });
-  refreshIcons();
 }
 
 function routeFromLocation(): { tab?: string; spec?: string; fragment?: string } {
@@ -311,8 +305,6 @@ async function selectSpecFolder(path: string, showSpecTab = true, options: { upd
   } else if (options.updateURL !== false && tab.value === "spec") {
     updateRouteURL("spec");
   }
-  await Promise.resolve();
-  refreshIcons();
 }
 
 async function selectSpecTreeItem(idOrPath: string) {
@@ -379,7 +371,6 @@ provide("selectSpec", selectSpec);
 provide("openSpecPreview", openSpecPreview);
 provide("openFilePreview", openFilePreview);
 provide("closePreview", closePreview);
-provide("refreshIcons", refreshIcons);
 provide("toggleTheme", toggleTheme);
 
 onMounted(async () => {
@@ -405,7 +396,6 @@ onMounted(async () => {
     updateRouteURL("spec");
   }
   switchTab(route.tab || "spec", { updateURL: false });
-  refreshIcons();
   window.addEventListener("popstate", handlePopState);
 });
 
@@ -447,7 +437,7 @@ onUnmounted(() => {
               title="Graph"
               @click="switchTab('graph')"
             >
-              <i data-lucide="git-fork" class="h-4 w-4"></i>
+              <Icon name="git-fork" class="h-4 w-4" />
             </button>
             <button
               class="tab"
@@ -458,10 +448,10 @@ onUnmounted(() => {
               title="Search"
               @click="switchTab('search')"
             >
-              <i data-lucide="search" class="h-4 w-4"></i>
+              <Icon name="search" class="h-4 w-4" />
             </button>
             <button id="themeToggle" class="tab" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" @click="toggleTheme">
-              <i :key="theme === 'dark' ? 'sun' : 'moon'" :data-lucide="theme === 'dark' ? 'sun' : 'moon'" class="h-4 w-4"></i>
+              <Icon :name="theme === 'dark' ? 'sun' : 'moon'" class="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -498,7 +488,7 @@ onUnmounted(() => {
               type="button"
               @click="selectSpecFolder(folder.path, true)"
             >
-              <i data-lucide="folder" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+              <Icon name="folder" class="h-4 w-4 shrink-0 text-base-content/60" />
               <span class="min-w-0">
                 <span class="block truncate font-medium">{{ folder.name }}</span>
                 <span class="text-base-content/55 block text-xs">{{ folder.count }} docs</span>
@@ -511,7 +501,7 @@ onUnmounted(() => {
               type="button"
               @click="selectSpec(doc.id, true)"
             >
-              <i data-lucide="file-text" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+              <Icon name="file-text" class="h-4 w-4 shrink-0 text-base-content/60" />
               <span class="min-w-0">
                 <span class="block truncate font-medium">{{ doc.title || doc.path }}</span>
                 <span class="text-base-content/55 block truncate text-xs">{{ doc.path }}</span>
