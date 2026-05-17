@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import Icon from "./Icon.vue";
 
 interface SpecDocument {
   id: string;
@@ -62,13 +63,13 @@ function isExpanded(path: string): boolean {
       :style="{ paddingLeft: paddingLeft }"
       @click="handleFolderClick(node.path)"
     >
-      <i
-        data-lucide="chevron-right"
+      <Icon
+        name="chevron-right"
         class="tree-chevron h-4 w-4 shrink-0 transition-transform"
         :class="{ 'rotate-90': isExpanded(node.path) }"
         @click="handleToggleFolder(node.path, $event)"
-      ></i>
-      <i data-lucide="folder" class="h-4 w-4 shrink-0 text-base-content/60"></i>
+      />
+      <Icon name="folder" class="h-4 w-4 shrink-0 text-base-content/60" />
       <span class="truncate">{{ node.name }}</span>
     </button>
     <button
@@ -78,11 +79,8 @@ function isExpanded(path: string): boolean {
       :style="{ paddingLeft: `${(depth || 0) * 16 + 24}px` }"
       @click="emit('selectSpec', node.spec.id)"
     >
-      <i data-lucide="file-text" class="h-4 w-4 shrink-0 text-base-content/55"></i>
+      <Icon name="file-text" class="h-4 w-4 shrink-0 text-base-content/55" />
       <span class="truncate">{{ displaySpecName(node.spec) }}</span>
-      <span v-if="node.spec.status" class="badge badge-ghost badge-sm max-w-24 truncate">
-        {{ node.spec.status }}
-      </span>
     </button>
 
     <!-- Render children recursively when folder is expanded -->

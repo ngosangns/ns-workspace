@@ -26,6 +26,7 @@ func previewUIText(t *testing.T) string {
 		"preview_ui_src/types.d.ts",
 		"preview_ui_src/components/DocViewer.vue",
 		"preview_ui_src/components/GraphViewer.vue",
+		"preview_ui_src/components/Icon.vue",
 		"preview_ui_src/components/PreviewModal.vue",
 		"preview_ui_src/components/SearchPanel.vue",
 		"preview_ui_src/components/Sidebar.vue",
@@ -793,9 +794,9 @@ func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
 	for _, want := range []string{
 		`aria-label="Preview sections"`,
 		`data-tab="graph"`,
-		`data-lucide="git-fork"`,
+		`name="git-fork"`,
 		`data-tab="search"`,
-		`data-lucide="search"`,
+		`name="search"`,
 		"project.projectRoot",
 	} {
 		if !strings.Contains(text, want) {
@@ -1132,7 +1133,7 @@ func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
 
 func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 	text := previewUIText(t)
-	for _, want := range []string{"lg:fixed", "buildSpecTree", "renderFolderNode", "folder-open", "data-lucide=\"file-text", "lucide.createIcons"} {
+	for _, want := range []string{"lg:fixed", "buildSpecTree", "renderFolderNode", "folder-open", `name="file-text"`, "Icon.vue"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview sidebar missing %s", want)
 		}
