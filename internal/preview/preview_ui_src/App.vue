@@ -59,6 +59,8 @@ interface FolderListing {
   docs: SpecDocument[];
 }
 
+type ThemePreference = "system" | "dark" | "light";
+
 const project = ref<ProjectSummary | null>(null);
 const specs = ref<SpecDocument[]>([]);
 const graph = ref<GraphData | null>(null);
@@ -69,19 +71,22 @@ const routeSpecId = ref("");
 const routeFolderPath = ref("");
 const tab = ref("spec");
 const theme = ref<"light" | "dark">("light");
+const themePreference = ref<ThemePreference>("system");
 const previewSource = ref<{ type: "doc" | "file"; raw: string; language: string; path: string; line: number; spec?: SpecDocument } | null>(
   null,
 );
 const previewShowRaw = ref(false);
+const graphQuery = ref("");
 const searchQuery = ref("");
 const searchKeywordOperator = ref("sum");
+const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)") || null;
 
 const selectedFolderListing = computed<FolderListing>(() => specFolderListing(selectedFolderPath.value));
 
-function getInitialTheme(): "light" | "dark" {
+function getInitialThemePreference(): ThemePreference {
   const stored = localStorage.getItem("spec-preview-theme");
   if (stored === "dark" || stored === "light") return stored;
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "system";
 }
 
 async function fetchJSON(path: string) {
@@ -90,38 +95,72 @@ async function fetchJSON(path: string) {
   return res.json();
 }
 
-function applyTheme(newTheme: "light" | "dark", options: { persist?: boolean; rerender?: boolean } = {}) {
-  theme.value = newTheme;
-  document.documentElement.dataset.theme = newTheme;
+function resolvedSystemTheme(): "light" | "dark" {
+  return systemThemeQuery?.matches ? "dark" : "light";
+}
+
+function resolveThemePreference(preference: ThemePreference): "light" | "dark" {
+  return preference === "system" ? resolvedSystemTheme() : preference;
+}
+
+function applyThemePreference(preference: ThemePreference, options: { persist?: boolean; rerender?: boolean } = {}) {
+  themePreference.value = preference;
+  const resolvedTheme = resolveThemePreference(preference);
+  theme.value = resolvedTheme;
+  document.documentElement.dataset.theme = resolvedTheme;
   if (options.persist) {
-    localStorage.setItem("spec-preview-theme", newTheme);
+    if (preference === "system") {
+      localStorage.removeItem("spec-preview-theme");
+    } else {
+      localStorage.setItem("spec-preview-theme", preference);
+    }
   }
 }
 
 function toggleTheme() {
-  const next = theme.value === "light" ? "dark" : "light";
-  applyTheme(next, { persist: true, rerender: true });
+  const next = themePreference.value === "system" ? "dark" : themePreference.value === "dark" ? "light" : "system";
+  applyThemePreference(next, { persist: true, rerender: true });
 }
 
-function routeFromLocation(): { tab?: string; spec?: string; fragment?: string } {
+function handleSystemThemeChange() {
+  if (themePreference.value === "system") {
+    applyThemePreference("system", { rerender: true });
+  }
+}
+
+function themeToggleIcon(): "monitor" | "moon" | "sun" {
+  if (themePreference.value === "system") return "monitor";
+  return themePreference.value === "dark" ? "moon" : "sun";
+}
+
+function themeToggleLabel(): string {
+  if (themePreference.value === "system") return "Theme: system";
+  return themePreference.value === "dark" ? "Theme: dark" : "Theme: light";
+}
+
+function routeFromLocation(): { tab?: string; spec?: string; fragment?: string; searchQuery: string; searchKeywordOperator: string } {
   const path = window.location.pathname;
   const search = window.location.search;
   const hash = window.location.hash;
+  const params = new URLSearchParams(search);
+  const routeQuery = {
+    searchQuery: params.get("q") || "",
+    searchKeywordOperator: params.get("keywordOp") === "difference" ? "difference" : "sum",
+  };
 
   if (path === "/graph") {
-    return { tab: "graph", spec: undefined, fragment: hash.slice(1) || undefined };
+    return { tab: "graph", spec: undefined, fragment: hash.slice(1) || undefined, ...routeQuery };
   }
   if (path === "/search") {
-    return { tab: "search", spec: undefined, fragment: hash.slice(1) || undefined };
+    return { tab: "search", spec: undefined, fragment: hash.slice(1) || undefined, ...routeQuery };
   }
 
-  const params = new URLSearchParams(search);
   const tab = params.get("tab") || undefined;
   const match = path.match(/^\/spec\/(.*)$/);
-  if (!match) return { tab, spec: undefined, fragment: hash.slice(1) || undefined };
+  if (!match) return { tab, spec: undefined, fragment: hash.slice(1) || undefined, ...routeQuery };
   const spec = decodeURIComponent(match[1]);
   const parts = spec.split("#");
-  return { tab, spec: parts[0], fragment: parts[1] || undefined };
+  return { tab, spec: parts[0], fragment: parts[1] || undefined, ...routeQuery };
 }
 
 function validSpecId(id: string): string {
@@ -204,12 +243,13 @@ function switchTab(tabName: string, options: { updateURL?: boolean } = {}) {
 }
 
 function updateRouteURL(tabName: string) {
+  const query = buildRouteQuery(tabName);
   if (tabName === "graph") {
-    window.history.pushState({}, "", "/graph");
+    window.history.pushState({}, "", `/graph${query}`);
     return;
   }
   if (tabName === "search") {
-    window.history.pushState({}, "", "/search");
+    window.history.pushState({}, "", `/search${query}`);
     return;
   }
 
@@ -222,6 +262,48 @@ function updateRouteURL(tabName: string) {
   const queryString = params.toString();
   const url = queryString ? `${path}?${queryString}` : path;
   window.history.pushState({}, "", url);
+}
+
+function buildRouteQuery(tabName: string): string {
+  const params = new URLSearchParams();
+  if (tabName === "graph") {
+    const query = graphQuery.value.trim();
+    if (query) params.set("q", query);
+  }
+  if (tabName === "search") {
+    const query = searchQuery.value.trim();
+    if (query) params.set("q", query);
+    if (searchKeywordOperator.value === "difference") {
+      params.set("keywordOp", "difference");
+    }
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function replaceFocusedRouteURL(tabName: string) {
+  if (tab.value !== tabName) return;
+  const path = tabName === "graph" || tabName === "search" ? `/${tabName}` : window.location.pathname;
+  const next = `${path}${buildRouteQuery(tabName)}`;
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (next !== current) {
+    window.history.replaceState({}, "", next);
+  }
+}
+
+function updateSearchQuery(query: string) {
+  searchQuery.value = query;
+  replaceFocusedRouteURL("search");
+}
+
+function updateGraphQuery(query: string) {
+  graphQuery.value = query;
+  replaceFocusedRouteURL("graph");
+}
+
+function updateSearchKeywordOperator(keywordOperator: string) {
+  searchKeywordOperator.value = keywordOperator === "difference" ? "difference" : "sum";
+  replaceFocusedRouteURL("search");
 }
 
 function setPageChromeForTab(tabName: string) {
@@ -247,6 +329,12 @@ function syncRouteSpecFromURL(route: { tab?: string; spec?: string; fragment?: s
 
 async function handlePopState() {
   const route = routeFromLocation();
+  if (route.tab === "graph") {
+    graphQuery.value = route.searchQuery;
+  } else {
+    searchQuery.value = route.searchQuery;
+  }
+  searchKeywordOperator.value = route.searchKeywordOperator;
   syncRouteSpecFromURL(route);
 
   if (route.tab === "graph") {
@@ -374,12 +462,18 @@ provide("closePreview", closePreview);
 provide("toggleTheme", toggleTheme);
 
 onMounted(async () => {
-  theme.value = getInitialTheme();
+  applyThemePreference(getInitialThemePreference());
   const [proj, specList, graphData] = await Promise.all([fetchJSON("/api/project"), fetchJSON("/api/docs"), fetchJSON("/api/graph")]);
   project.value = proj;
   specs.value = specList;
   graph.value = graphData;
   const route = routeFromLocation();
+  if (route.tab === "graph") {
+    graphQuery.value = route.searchQuery;
+  } else {
+    searchQuery.value = route.searchQuery;
+  }
+  searchKeywordOperator.value = route.searchKeywordOperator;
   syncRouteSpecFromURL(route);
 
   if (route.tab !== "graph") {
@@ -397,10 +491,12 @@ onMounted(async () => {
   }
   switchTab(route.tab || "spec", { updateURL: false });
   window.addEventListener("popstate", handlePopState);
+  systemThemeQuery?.addEventListener("change", handleSystemThemeChange);
 });
 
 onUnmounted(() => {
   window.removeEventListener("popstate", handlePopState);
+  systemThemeQuery?.removeEventListener("change", handleSystemThemeChange);
 });
 </script>
 
@@ -450,21 +546,38 @@ onUnmounted(() => {
             >
               <Icon name="search" class="h-4 w-4" />
             </button>
-            <button id="themeToggle" class="tab" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" @click="toggleTheme">
-              <Icon :name="theme === 'dark' ? 'sun' : 'moon'" class="h-4 w-4" />
+            <button
+              id="themeToggle"
+              class="tab"
+              :data-theme-option="themePreference"
+              type="button"
+              :aria-label="themeToggleLabel()"
+              :title="themeToggleLabel()"
+              @click="toggleTheme"
+            >
+              <Icon :name="themeToggleIcon()" class="h-4 w-4" />
             </button>
           </div>
         </div>
       </header>
 
       <section id="graphTab" class="panel p-5" :class="{ active: tab === 'graph' }">
-        <GraphViewer :graph="graph" :theme="theme" :active="tab === 'graph'" @open-spec-preview="openSpecPreview" />
+        <GraphViewer
+          :graph="graph"
+          :theme="theme"
+          :active="tab === 'graph'"
+          :query="graphQuery"
+          @update:query="updateGraphQuery"
+          @open-spec-preview="openSpecPreview"
+        />
       </section>
 
       <section id="searchTab" class="panel p-5" :class="{ active: tab === 'search' }">
         <SearchPanel
           :query="searchQuery"
           :keyword-operator="searchKeywordOperator"
+          @update:query="updateSearchQuery"
+          @update:keyword-operator="updateSearchKeywordOperator"
           @open-spec-preview="openSpecPreview"
           @open-file-preview="openFilePreview"
         />

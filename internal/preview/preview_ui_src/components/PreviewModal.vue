@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, computed, inject, nextTick, type Ref } from "vue";
+import { ref, watch, computed, inject, nextTick, onUnmounted, type Ref } from "vue";
 import { decorateInternalDocNavigation, type SpecDocument, type InternalSpecTarget } from "../js/internal-links.js";
 import Icon from "./Icon.vue";
+import { destroyDiagramsIn, renderDiagramsIn } from "../js/diagrams.js";
 
 interface PreviewSource {
   type: "doc" | "file";
@@ -25,7 +26,12 @@ const emit = defineEmits<{
 
 const specs = inject<Ref<SpecDocument[]>>("specs");
 const selectSpec = inject<(id: string, showSpecTab?: boolean) => Promise<void>>("selectSpec");
+const theme = inject<Ref<"light" | "dark">>("theme", ref("light"));
 const previewDialogBody = ref<HTMLElement | null>(null);
+const markdownViewerConstructor = ref<ToastMarkdownViewerConstructor | null>(null);
+const htmlMVPStylesheetURL = "https://cdn.jsdelivr.net/npm/mvp.css@1.17.2/mvp.css";
+let htmlMVPStylesheetPromise: Promise<void> | null = null;
+let renderToken = 0;
 
 const dialogTitle = computed(() => {
   if (!props.source) return "Preview";
@@ -38,14 +44,6 @@ const dialogTitle = computed(() => {
 const dialogPath = computed(() => {
   if (!props.source) return "";
   return props.source.path;
-});
-
-const previewBody = computed(() => {
-  if (!props.source) return "";
-  if (props.showRaw) {
-    return escapeCodePreview(props.source.raw, props.source.language);
-  }
-  return props.source.raw;
 });
 
 const isOpen = computed(() => props.source !== null);
@@ -61,20 +59,229 @@ function escapeHTML(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function escapeCodePreview(raw: string, language: string): string {
+function renderCodePreview(raw: string, language: string): string {
   return `<pre class="bg-base-300 rounded p-4 overflow-auto"><code>${escapeHTML(raw)}</code></pre>`;
 }
 
+function renderPreviewContentCard(content: string, extraClass = ""): string {
+  const className = ["preview-content-card", extraClass].filter(Boolean).join(" ");
+  return `<div class="${className}" data-preview-content>${content}</div>`;
+}
+
+function renderPreviewMetadata(source: PreviewSource): string {
+  const rows: Array<{ key: string; value: string }> = [];
+  const add = (key: string, value: unknown) => {
+    const text = String(value || "").trim();
+    if (text) rows.push({ key, value: text });
+  };
+
+  if (source.type === "doc" && source.spec) {
+    add("title", source.spec.title);
+    add("path", source.spec.path || source.path);
+    add("language", source.spec.language || source.language);
+    add("status", source.spec.status);
+    add("compliance", source.spec.compliance);
+    add("version", source.spec.version);
+    add("priority", source.spec.priority);
+    add("description", source.spec.description);
+  } else {
+    add("type", source.type);
+    add("path", source.path);
+    add("language", source.language);
+    add("line", source.line ? String(source.line) : "");
+  }
+
+  if (!rows.length) return "";
+  return `<table class="metadata-table preview-metadata"><thead><tr><th>Metadata</th><th>Value</th></tr></thead><tbody>${rows
+    .map((row) => `<tr><th>${escapeHTML(row.key)}</th><td>${escapeHTML(row.value)}</td></tr>`)
+    .join("")}</tbody></table>`;
+}
+
+async function renderPreviewSource() {
+  const root = previewDialogBody.value;
+  const source = props.source;
+  if (!root || !source) return;
+  const token = ++renderToken;
+  destroyDiagramsIn(root);
+  root.dataset.sourcePath = source.path;
+  const metadata = renderPreviewMetadata(source);
+
+  if (props.showRaw || source.type !== "doc" || !source.spec) {
+    root.className = "preview-modal-body";
+    root.innerHTML = renderPreviewContentCard(`${metadata}${renderCodePreview(source.raw || "", source.language || "text")}`);
+    return;
+  }
+
+  const spec = source.spec;
+  const language = spec.language || languageFromPath(spec.path || source.path);
+  if (language === "markdown") {
+    root.className = "preview-modal-body markdown";
+    root.innerHTML = renderPreviewContentCard("");
+    const contentCard = root.querySelector<HTMLElement>("[data-preview-content]");
+    if (!contentCard) return;
+    await renderMarkdownPreview(contentCard, spec.raw || source.raw || "", theme.value);
+    if (token !== renderToken) return;
+    await renderDiagramsIn(contentCard, theme.value, spec.id || source.path || "preview-markdown");
+    if (token !== renderToken) return;
+    contentCard.insertAdjacentHTML("afterbegin", metadata);
+    decorateInternalDocNavigation(root, spec, specs?.value || [], handleInternalLinkNavigation);
+    return;
+  }
+
+  if (language === "html") {
+    root.className = "preview-modal-body markdown";
+    root.innerHTML = renderPreviewContentCard("", "html-doc");
+    const contentCard = root.querySelector<HTMLElement>("[data-preview-content]");
+    if (!contentCard) return;
+    await renderHTMLPreview(contentCard, spec.raw || source.raw || "");
+    if (token !== renderToken) return;
+    await renderDiagramsIn(contentCard, theme.value, spec.id || source.path || "preview-html");
+    if (token !== renderToken) return;
+    contentCard.insertAdjacentHTML("afterbegin", metadata);
+    decorateInternalDocNavigation(root, spec, specs?.value || [], handleInternalLinkNavigation);
+    return;
+  }
+
+  root.className = "preview-modal-body";
+  root.innerHTML = renderPreviewContentCard(`${metadata}${renderCodePreview(spec.raw || source.raw || "", language)}`);
+}
+
+async function renderMarkdownPreview(root: HTMLElement, raw: string, currentTheme: "light" | "dark") {
+  root.innerHTML = '<div class="markdown-wysiwyg-host markdown-toast-viewer" data-markdown-viewer></div>';
+  const viewerHost = root.querySelector<HTMLElement>("[data-markdown-viewer]");
+  if (!viewerHost) return;
+
+  viewerHost.innerHTML = '<p class="text-base-content/60">Loading Markdown preview...</p>';
+  try {
+    const Viewer = await loadToastMarkdownViewer();
+    viewerHost.innerHTML = "";
+    new Viewer({
+      el: viewerHost,
+      height: "auto",
+      initialValue: raw || "No content.",
+      theme: currentTheme === "dark" ? "dark" : "default",
+      usageStatistics: false,
+    });
+    viewerHost.innerHTML = DOMPurify.sanitize(viewerHost.innerHTML);
+  } catch (error) {
+    console.error(error);
+    viewerHost.innerHTML = renderCodePreview(raw || "No content.", "markdown");
+  }
+}
+
+async function loadToastMarkdownViewer(): Promise<ToastMarkdownViewerConstructor> {
+  if (markdownViewerConstructor.value) return markdownViewerConstructor.value;
+  const moduleURL = "https://esm.sh/@toast-ui/editor@3.2.2/dist/toastui-editor-viewer?bundle&target=es2022";
+  const viewerModule = (await import(moduleURL)) as { default?: ToastMarkdownViewerConstructor; Viewer?: ToastMarkdownViewerConstructor };
+  const Viewer = viewerModule.default || viewerModule.Viewer;
+  if (!Viewer) throw new Error("TOAST UI Viewer failed to load.");
+  markdownViewerConstructor.value = Viewer;
+  return Viewer;
+}
+
+async function renderHTMLPreview(root: HTMLElement, raw: string) {
+  await ensureHTMLMVPStylesheet();
+  root.innerHTML = DOMPurify.sanitize(raw || "<p>No content.</p>", {
+    ADD_TAGS: ["doc-meta", "doc-title", "doc-description", "doc-relation", "doc-diagram", "doc-graph"],
+    ADD_ATTR: ["status", "compliance", "priority", "version", "tone", "type", "target", "href", "language"],
+    FORBID_TAGS: ["script", "style"],
+    FORBID_ATTR: ["style", "onclick", "onload", "onerror", "data-reactroot"],
+  });
+  normalizeHTMLDocTags(root);
+}
+
+async function ensureHTMLMVPStylesheet() {
+  if (document.querySelector("style[data-html-mvp-css]")) return;
+  if (!htmlMVPStylesheetPromise) {
+    htmlMVPStylesheetPromise = fetch(htmlMVPStylesheetURL)
+      .then((response) => {
+        if (!response.ok) throw new Error(`MVP.css request failed with ${response.status}`);
+        return response.text();
+      })
+      .then((css) => {
+        const style = document.createElement("style");
+        style.dataset.htmlMvpCss = "yes";
+        style.textContent = scopeMVPStylesheet(css);
+        const appStylesheet = document.querySelector<HTMLLinkElement>('link[href="/style.css"]');
+        document.head.insertBefore(style, appStylesheet || null);
+      })
+      .catch(() => {
+        htmlMVPStylesheetPromise = null;
+      });
+  }
+  await htmlMVPStylesheetPromise;
+}
+
+function scopeMVPStylesheet(css: string): string {
+  try {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    return [...sheet.cssRules].map(scopeMVPRule).join("\n");
+  } catch {
+    return "";
+  }
+}
+
+function scopeMVPRule(rule: CSSRule): string {
+  if (rule instanceof CSSStyleRule) {
+    const selectors = rule.selectorText
+      .split(",")
+      .map((selector) => scopeMVPSelector(selector.trim()))
+      .filter(Boolean)
+      .join(", ");
+    return selectors ? `${selectors}{${rule.style.cssText}}` : "";
+  }
+  if (rule instanceof CSSMediaRule) {
+    return `@media ${rule.conditionText}{${[...rule.cssRules].map(scopeMVPRule).join("\n")}}`;
+  }
+  if (rule instanceof CSSSupportsRule) {
+    return `@supports ${rule.conditionText}{${[...rule.cssRules].map(scopeMVPRule).join("\n")}}`;
+  }
+  return rule.cssText;
+}
+
+function scopeMVPSelector(selector: string): string {
+  if (!selector || selector.startsWith("@")) return selector;
+  if (selector === ":root" || selector === "html" || selector === "body") return ".html-doc";
+  if (selector.startsWith(":root ") || selector.startsWith("html ") || selector.startsWith("body ")) {
+    return selector.replace(/^(?::root|html|body)/, ".html-doc");
+  }
+  return `.html-doc ${selector}`;
+}
+
+function normalizeHTMLDocTags(root: HTMLElement) {
+  root.querySelectorAll("doc-title").forEach((node) => replaceDocElement(node, "h1", "doc-title"));
+  root.querySelectorAll("doc-description").forEach((node) => replaceDocElement(node, "p", "doc-description"));
+}
+
+function replaceDocElement(node: Element, tagName: string, className: string) {
+  const replacement = document.createElement(tagName);
+  replacement.className = className;
+  replacement.innerHTML = node.innerHTML;
+  node.replaceWith(replacement);
+}
+
+function languageFromPath(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  if (ext === "md" || ext === "markdown") return "markdown";
+  if (ext === "html" || ext === "htm") return "html";
+  return "text";
+}
+
 watch(
-  () => [props.source, props.showRaw] as const,
+  () => [props.source, props.showRaw, theme.value] as const,
   async () => {
     await nextTick();
-    if (previewDialogBody.value && props.source && !props.showRaw && props.source.spec) {
-      decorateInternalDocNavigation(previewDialogBody.value, props.source.spec, specs?.value || [], handleInternalLinkNavigation);
-    }
+    await renderPreviewSource();
   },
   { flush: "post" },
 );
+
+onUnmounted(() => {
+  if (previewDialogBody.value) {
+    destroyDiagramsIn(previewDialogBody.value);
+  }
+});
 </script>
 
 <template>
@@ -108,7 +315,7 @@ watch(
           </button>
         </div>
       </div>
-      <div id="previewDialogBody" ref="previewDialogBody" class="preview-modal-body" v-html="previewBody"></div>
+      <div id="previewDialogBody" ref="previewDialogBody" class="preview-modal-body"></div>
     </div>
     <button class="modal-backdrop" type="button" @click="emit('close')">close</button>
   </div>

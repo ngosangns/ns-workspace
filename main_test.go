@@ -13,6 +13,7 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	if err := run([]string{"init", "--no-registry"}); err != nil {
 		t.Fatalf("init failed: %v", err)
@@ -30,6 +31,7 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
 	mustExist(t, filepath.Join(home, ".kimi", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
 	mustExist(t, filepath.Join(home, ".gemini", "settings.json"))
@@ -81,6 +83,7 @@ func TestUpdateBacksUpAndOverridesSharedAgents(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	if err := run([]string{"init", "--no-registry"}); err != nil {
 		t.Fatalf("init failed: %v", err)
@@ -113,6 +116,7 @@ func TestDryRunDoesNotWrite(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	if err := run([]string{"init", "--dry-run", "--no-registry"}); err != nil {
 		t.Fatalf("dry-run init failed: %v", err)
@@ -129,6 +133,7 @@ func TestRegistryCommandBootstrapsCustomAgentsHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	if err := run([]string{"registry", "--agents-home", agentsHome}); err != nil {

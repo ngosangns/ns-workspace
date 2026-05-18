@@ -383,25 +383,24 @@ func TestPreviewSearchScansAllTextFilesUnderDocs(t *testing.T) {
 	}
 }
 
-func TestPreviewSearchExpandsDocsGraphFromSemanticResults(t *testing.T) {
+func TestPreviewSearchDirectlySearchesDocsGraph(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "docs/_index.md", `# Spec Index
 
 ## Dependency Graph
 
 `+"```"+`
-guide → policy
+policyEngine → accessRule
 `+"```"+`
 `)
 	writeTestFile(t, root, "docs/guide.md", "# Guide\n\nHandles session credential lookup.\n")
-	writeTestFile(t, root, "docs/policy.md", "# Policy\n\nAccess policy details.\n")
 
 	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
 	ts := httptest.NewServer(server.srv.Handler)
 	defer ts.Close()
 	defer func() { _ = server.shutdown(context.Background()) }()
 
-	res, err := http.Get(ts.URL + "/api/search?q=session%20credential")
+	res, err := http.Get(ts.URL + "/api/search?q=policyEngine")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,21 +409,24 @@ guide → policy
 	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
 		t.Fatal(err)
 	}
-	if len(search.Panels.DocsSemantic) == 0 || search.Panels.DocsSemantic[0].SpecID != "guide.md" {
-		t.Fatalf("expected semantic doc anchor for guide.md, got %+v", search.Panels.DocsSemantic)
+	if len(search.Panels.DocsSemantic) != 0 {
+		t.Fatalf("docs graph search should not require docs semantic results, got %+v", search.Panels.DocsSemantic)
 	}
 	if len(search.Panels.DocsGraph) == 0 {
-		t.Fatalf("expected docs graph expansion from semantic result: %+v", search.Panels)
+		t.Fatalf("expected docs graph direct query result: %+v", search.Panels)
 	}
-	if !containsString(search.Panels.DocsGraph[0].MatchedBy, "semantic-anchor") {
-		t.Fatalf("expected docs graph anchor to be marked semantic-anchor, got %+v", search.Panels.DocsGraph[0])
+	if containsString(search.Panels.DocsGraph[0].MatchedBy, "semantic-anchor") || !containsString(search.Panels.DocsGraph[0].MatchedBy, "graph") {
+		t.Fatalf("expected docs graph direct match, got %+v", search.Panels.DocsGraph[0])
 	}
-	if len(search.Panels.DocsGraph[0].Neighbors) == 0 || search.Panels.DocsGraph[0].Neighbors[0].ID != "policy" {
-		t.Fatalf("expected docs graph to expand to policy neighbor, got %+v", search.Panels.DocsGraph[0].Neighbors)
+	if search.Panels.DocsGraph[0].NodeID != "policyEngine" {
+		t.Fatalf("expected policyEngine graph node, got %+v", search.Panels.DocsGraph[0])
+	}
+	if len(search.Panels.DocsGraph[0].Neighbors) == 0 || search.Panels.DocsGraph[0].Neighbors[0].ID != "accessRule" {
+		t.Fatalf("expected docs graph direct result to expose neighbors, got %+v", search.Panels.DocsGraph[0].Neighbors)
 	}
 }
 
-func TestPreviewSearchExpandsCodeGraphFromSemanticResults(t *testing.T) {
+func TestPreviewSearchDirectlySearchesCodeGraph(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
 	writeTestFile(t, root, "auth.go", `package demo
@@ -441,7 +443,7 @@ func hydrateStore() {}
 	writeTestFile(t, root, "graphify-out/graph.json", `{
   "nodes": [
     {"id":"code_lookup","label":"parseToken()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "auth.go"))+`","source_location":"L3","community":1},
-    {"id":"code_store","label":"hydrateStore()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "store.go"))+`","source_location":"L3","community":1}
+	{"id":"code_store","label":"credentialVault()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "store.go"))+`","source_location":"L3","community":1}
   ],
   "links": [
     {"source":"code_lookup","target":"code_store","relation":"calls","confidence":"EXTRACTED"}
@@ -453,7 +455,7 @@ func hydrateStore() {}
 	defer ts.Close()
 	defer func() { _ = server.shutdown(context.Background()) }()
 
-	res, err := http.Get(ts.URL + "/api/search?q=secure%20secret")
+	res, err := http.Get(ts.URL + "/api/search?q=credentialVault")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,17 +464,20 @@ func hydrateStore() {}
 	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
 		t.Fatal(err)
 	}
-	if len(search.Panels.CodeSemantic) == 0 || search.Panels.CodeSemantic[0].Path != "auth.go" {
-		t.Fatalf("expected semantic code anchor for auth.go, got %+v", search.Panels.CodeSemantic)
+	if len(search.Panels.CodeSemantic) != 0 {
+		t.Fatalf("code graph search should not require code semantic results, got %+v", search.Panels.CodeSemantic)
 	}
 	if len(search.Panels.CodeGraph) == 0 {
-		t.Fatalf("expected code graph expansion from semantic result: %+v", search.Panels)
+		t.Fatalf("expected code graph direct query result: %+v", search.Panels)
 	}
-	if !containsString(search.Panels.CodeGraph[0].MatchedBy, "semantic-anchor") || search.Panels.CodeGraph[0].Path != "auth.go" {
-		t.Fatalf("expected code graph anchor to be marked semantic-anchor, got %+v", search.Panels.CodeGraph[0])
+	if containsString(search.Panels.CodeGraph[0].MatchedBy, "semantic-anchor") || !containsString(search.Panels.CodeGraph[0].MatchedBy, "graph") {
+		t.Fatalf("expected code graph direct match, got %+v", search.Panels.CodeGraph[0])
 	}
-	if len(search.Panels.CodeGraph[0].Neighbors) == 0 || search.Panels.CodeGraph[0].Neighbors[0].Path != "store.go" {
-		t.Fatalf("expected code graph to expand to store.go neighbor, got %+v", search.Panels.CodeGraph[0].Neighbors)
+	if search.Panels.CodeGraph[0].Path != "store.go" || search.Panels.CodeGraph[0].Line != 3 {
+		t.Fatalf("expected code graph to expose matched graph node source, got %+v", search.Panels.CodeGraph[0])
+	}
+	if len(search.Panels.CodeGraph[0].Neighbors) == 0 || search.Panels.CodeGraph[0].Neighbors[0].Path != "auth.go" {
+		t.Fatalf("expected code graph direct result to expose neighbors, got %+v", search.Panels.CodeGraph[0].Neighbors)
 	}
 }
 
@@ -764,7 +769,11 @@ func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"data-tab=\"graph\"", "/main.ts", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "clickStage", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "openFilePreview", "data-preview-spec", "data-preview-file", "openGraphNode", "clearGraphSelection", ".is-node-hover canvas"} {
+	graphViewer, err := os.ReadFile("preview_ui_src/components/GraphViewer.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"data-tab=\"graph\"", "/main.ts", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "clickStage", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "data-preview-spec", "openGraphNode", "clearGraphSelection", ".is-node-hover canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview docs graph UI missing %s", want)
 		}
@@ -787,6 +796,21 @@ func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 	if strings.Contains(string(networkGraphJS), "softenColor") || !strings.Contains(string(networkGraphJS), "return color;") {
 		t.Fatalf("focused preview graph should dim by opacity only, without changing original colors")
 	}
+	for _, want := range []string{"grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem)", "border-left: 1px solid hsl(var(--b3))", "max-height: 68vh"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview docs graph sidebar layout missing %s", want)
+		}
+	}
+	for _, want := range []string{"renderNetworkGraph", "normalizedGraphData", "selectGraphNode", "clearGraphSelection", "edgeColorForTheme(props.theme)", "darkEdgeColor", "graphFullscreen", "toggleGraphFullscreen", `id="graphFullscreen"`, "is-fullscreen", "maximize", "minimize"} {
+		if !strings.Contains(string(graphViewer), want) {
+			t.Fatalf("Vue docs graph viewer missing %s", want)
+		}
+	}
+	for _, forbidden := range []string{"x: 0,\n        y: 0", "await import(\"graphology\")", "await import(\"sigma\")", "data-preview-file", "openFilePreview"} {
+		if strings.Contains(string(graphViewer), forbidden) {
+			t.Fatalf("Vue docs graph viewer should use shared graph adapter instead of %s", forbidden)
+		}
+	}
 }
 
 func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
@@ -797,6 +821,15 @@ func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
 		`name="git-fork"`,
 		`data-tab="search"`,
 		`name="search"`,
+		`id="themeToggle"`,
+		`:data-theme-option="themePreference"`,
+		"themeToggleIcon",
+		"themeToggleLabel",
+		"toggleTheme",
+		`themePreference.value === "system" ? "dark" : themePreference.value === "dark" ? "light" : "system"`,
+		"themePreference",
+		"applyThemePreference",
+		`localStorage.removeItem("spec-preview-theme")`,
 		"project.projectRoot",
 	} {
 		if !strings.Contains(text, want) {
@@ -808,10 +841,30 @@ func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
 			t.Fatalf("preview topbar should not render text label %s", forbidden)
 		}
 	}
+	app, err := os.ReadFile("preview_ui_src/App.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	themeToggleStart := strings.Index(string(app), `id="themeToggle"`)
+	if themeToggleStart == -1 {
+		t.Fatalf("preview topbar missing theme toggle")
+	}
+	themeToggleEnd := strings.Index(string(app)[themeToggleStart:], `</button>`)
+	if themeToggleEnd == -1 {
+		t.Fatalf("preview topbar theme toggle button is malformed")
+	}
+	themeToggleBlock := string(app)[themeToggleStart : themeToggleStart+themeToggleEnd]
+	if strings.Contains(themeToggleBlock, "tab-active") {
+		t.Fatalf("theme toggle should not render an active tab state")
+	}
 }
 
 func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 	text := previewUIText(t)
+	searchPanel, err := os.ReadFile("preview_ui_src/components/SearchPanel.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		`data-tab="search"`,
 		`id="searchTab"`,
@@ -890,6 +943,98 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 	if strings.Contains(text, "state.searchGraphSelections.set(name, selectedNode.id)") {
 		t.Fatalf("preview search graph should not default-focus the first rendered node")
 	}
+	for _, want := range []string{
+		"renderSearchGraphPanel",
+		"searchResultsToGraph",
+		"renderNetworkGraph",
+		"renderSearchGraphDetails",
+		"selectSearchGraphNode",
+		"clearSearchGraphSelection",
+		`data-search-graph-shell="docsGraph"`,
+		`data-search-graph-shell="codeGraph"`,
+		`data-fullscreen-graph="docsGraph"`,
+		`data-fullscreen-graph="codeGraph"`,
+		"fullscreenSearchGraph",
+		"toggleSearchGraphFullscreen",
+		"is-fullscreen",
+		"maximize",
+		"minimize",
+		`ref="docsGraphCanvas"`,
+		`ref="codeGraphCanvas"`,
+		"codeGraphNodeLabel",
+		"neighborPath",
+		"neighborLine",
+	} {
+		if !strings.Contains(string(searchPanel), want) {
+			t.Fatalf("Vue preview search graph missing %s", want)
+		}
+	}
+	docsSemanticStart := strings.Index(string(searchPanel), `data-search-panel="docsSemantic"`)
+	docsGraphStart := strings.Index(string(searchPanel), `data-search-panel="docsGraph"`)
+	if docsSemanticStart == -1 || docsGraphStart == -1 {
+		t.Fatalf("Vue preview search panel missing docs semantic or docs graph section")
+	}
+	docsSemanticBlock := string(searchPanel)[docsSemanticStart:docsGraphStart]
+	if strings.Contains(docsSemanticBlock, "openFilePreview") || strings.Contains(docsSemanticBlock, "file-code") {
+		t.Fatalf("Docs Semantic results should only expose doc preview actions")
+	}
+	graphDetailsStart := strings.Index(string(searchPanel), "function renderSearchGraphDetails")
+	graphDetailsEnd := strings.Index(string(searchPanel), "function codeGraphNodeLabel")
+	if graphDetailsStart == -1 || graphDetailsEnd == -1 {
+		t.Fatalf("Vue preview search panel missing graph details renderer")
+	}
+	graphDetailsBlock := string(searchPanel)[graphDetailsStart:graphDetailsEnd]
+	if strings.Contains(graphDetailsBlock, "data-preview-file") || strings.Contains(graphDetailsBlock, "openFilePreview") {
+		t.Fatalf("Graph in/out panels should not expose file preview actions")
+	}
+	for _, want := range []string{"grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem)", "max-height: 22rem", ".graph-shell.is-fullscreen", ".search-graph-shell.is-fullscreen"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview search graph sidebar layout missing %s", want)
+		}
+	}
+}
+
+func TestPreviewVuePreviewModalRendersStyledDocs(t *testing.T) {
+	previewModal, err := os.ReadFile("preview_ui_src/components/PreviewModal.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(previewModal)
+	for _, want := range []string{
+		"renderPreviewSource",
+		"renderPreviewContentCard",
+		"renderPreviewMetadata",
+		"preview-content-card",
+		"data-preview-content",
+		"preview-metadata",
+		"renderMarkdownPreview",
+		"loadToastMarkdownViewer",
+		"renderHTMLPreview",
+		"ensureHTMLMVPStylesheet",
+		"scopeMVPStylesheet",
+		`renderPreviewContentCard("", "html-doc")`,
+		"markdown-wysiwyg-host markdown-toast-viewer",
+		"DOMPurify.sanitize(raw || \"<p>No content.</p>\"",
+		"decorateInternalDocNavigation(root, spec",
+		"source.spec.description",
+		"source.line ? String(source.line) : \"\"",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("Vue preview modal styled doc rendering missing %s", want)
+		}
+	}
+	if strings.Contains(text, `v-html="previewBody"`) || strings.Contains(text, "return props.source.raw") {
+		t.Fatalf("Vue preview modal should not inject raw doc content as rendered preview")
+	}
+	css, err := os.ReadFile("preview_ui_src/public/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{".preview-content-card", "background: hsl(var(--b1))", ".preview-modal-body", "background: hsl(var(--b2) / 0.56)"} {
+		if !strings.Contains(string(css), want) {
+			t.Fatalf("preview modal content card style missing %s", want)
+		}
+	}
 }
 
 func TestPreviewUIHasFaviconAndRouteTitles(t *testing.T) {
@@ -944,7 +1089,7 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(css) + "\n" + string(app) + "\n" + string(graphJS)
-	for _, want := range []string{"labelColor", "#f8fafc", "#0f172a", "edgeColorForTheme", "searchEdgeColorForTheme", "#334155", "#991b1b", ".graph-canvas canvas", ".search-graph-canvas canvas"} {
+	for _, want := range []string{"labelColor", "#f8fafc", "#0f172a", "edgeColorForTheme", "searchEdgeColorForTheme", "#94a3b8", "#f87171", ".graph-canvas canvas", ".search-graph-canvas canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview graph label dark mode contrast missing %s", want)
 		}
@@ -955,8 +1100,30 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 	if !strings.Contains(string(networkGraphJS), "defaultDrawNodeHover: drawNodeHoverLabelOnly") {
 		t.Fatalf("hovered preview graph node should not render Sigma label background")
 	}
-	if !strings.Contains(string(networkGraphJS), "color: selected && !related ? colorWithOpacity(data.color, 0.14) : data.color") {
+	if !strings.Contains(string(networkGraphJS), "const unfocusedColor = options.unfocusedEdgeColor || colorWithOpacity(data.color, 0.14)") ||
+		!strings.Contains(string(networkGraphJS), "color: selected && !related ? unfocusedColor : data.color") {
 		t.Fatalf("focused preview graph should dim unfocused edges without hiding them")
+	}
+	graphViewer, err := os.ReadFile("preview_ui_src/components/GraphViewer.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchPanel, err := os.ReadFile("preview_ui_src/components/SearchPanel.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, source := range map[string]string{
+		"legacy docs graph": string(graphJS),
+		"Vue docs graph":    string(graphViewer),
+		"legacy search":     string(app),
+		"Vue search":        string(searchPanel),
+	} {
+		if !strings.Contains(source, `=== "dark" ? dark`) {
+			t.Fatalf("%s should use dark edge palette when dark theme is enabled", name)
+		}
+		if !strings.Contains(source, `unfocusedEdgeColor: `) || !strings.Contains(source, `=== "dark" ? "#0f172a" : undefined`) {
+			t.Fatalf("%s should use a solid dark unfocused edge color when dark theme is enabled", name)
+		}
 	}
 	themeRerender := string(app)
 	rerenderIndex := strings.Index(themeRerender, "function rerenderForTheme()")
@@ -981,6 +1148,50 @@ func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
 	for _, want := range []string{"renderMarkdownPreview", "loadToastMarkdownViewer", "toastui-editor-viewer", "toastMarkdownCustomRenderer", "renderToastMarkdownLoading", "Loading Markdown preview...", "codeBlock", "data-source-language", "markdown-wysiwyg-host", "markdown-toast-viewer", ".markdown-toast-viewer .toastui-editor-contents", ".metadata-table", "padding: 18px 25px", "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI Markdown rendering missing %s", want)
+		}
+	}
+}
+
+func TestPreviewVueDocViewerRendersMetadataTables(t *testing.T) {
+	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(docViewer)
+	for _, want := range []string{
+		"renderableMarkdownMetadata",
+		"markdownBodyMetadata",
+		"htmlMetadataRows",
+		"renderMetadataTable",
+		"metadata-table",
+		"doc-meta",
+		"metadata-link-badges",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview Vue doc viewer metadata rendering missing %s", want)
+		}
+	}
+}
+
+func TestPreviewVueDocViewerRendersHTMLDocMetadata(t *testing.T) {
+	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(docViewer)
+	for _, want := range []string{
+		"DOMPurify.sanitize(raw || \"<p>No content.</p>\", htmlDocSanitizeConfig)",
+		"ADD_TAGS: [\"doc-meta\", \"doc-title\", \"doc-description\", \"doc-relation\", \"doc-diagram\", \"doc-graph\"]",
+		"ADD_ATTR: [\"status\", \"compliance\", \"priority\", \"version\", \"tone\", \"type\", \"target\", \"href\", \"language\"]",
+		"const meta = root.querySelector(\"doc-meta\")",
+		"meta.replaceWith(...metadata.childNodes)",
+		"meta.querySelectorAll(\"a[href]\")",
+		"meta.querySelectorAll(\"doc-relation[target]\")",
+		"key: \"link\"",
+		"key: `relation.${type}`",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview Vue doc viewer HTML metadata rendering missing %s", want)
 		}
 	}
 }
@@ -1291,12 +1502,12 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "Command-scroll to zoom", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: true", "beforeWheel", "event.ctrlKey || event.metaKey", "zoomScaleSensitivity: 0.4", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
+	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "Ctrl/Command-scroll to zoom", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: false", "!event.ctrlKey && !event.metaKey", "event.preventDefault()", "instance.zoomAtPointBy", "zoomScaleSensitivity: 0.4", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom API missing %s", want)
 		}
 	}
-	for _, forbidden := range []string{"zoomDiagramViewport", "fitDiagramViewport", "centerDiagramViewport", "pointerdown", "pointermove", "setPointerCapture", "view.stage.style.transform"} {
+	for _, forbidden := range []string{"beforeWheel", "zoomDiagramViewport", "fitDiagramViewport", "centerDiagramViewport", "pointerdown", "pointermove", "setPointerCapture", "view.stage.style.transform"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("preview Mermaid should delegate zoom/pan to svg-pan-zoom: %s", forbidden)
 		}

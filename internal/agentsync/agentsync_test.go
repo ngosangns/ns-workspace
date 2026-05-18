@@ -14,6 +14,7 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	manager := Manager{Presets: os.DirFS("../..")}
 	opt := Options{
@@ -36,6 +37,7 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
 	mustExist(t, filepath.Join(home, ".gemini", "settings.json"))
@@ -73,6 +75,7 @@ func TestInstalledHookCommandsRunInProject(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	manager := Manager{Presets: os.DirFS("../..")}
 	opt := Options{
@@ -122,6 +125,7 @@ func TestKiroCLISelectionUsesKiroAdapter(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	manager := Manager{Presets: os.DirFS("../..")}
 	opt := Options{
@@ -136,8 +140,35 @@ func TestKiroCLISelectionUsesKiroAdapter(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustNotExist(t, filepath.Join(home, ".qwen", "settings.json"))
+}
+
+func TestKiroHomeOverrideUsesKiroPresetPaths(t *testing.T) {
+	home := t.TempDir()
+	kiroHome := filepath.Join(home, "custom-kiro")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", kiroHome)
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("kiro"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	mustExist(t, filepath.Join(kiroHome, "steering", "AGENTS.md"))
+	mustExist(t, filepath.Join(kiroHome, "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(kiroHome, "settings", "mcp.json"))
+	mustNotExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
 }
 
 func TestStableToolSelectionSkipsManualAdapters(t *testing.T) {
@@ -145,6 +176,7 @@ func TestStableToolSelectionSkipsManualAdapters(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	manager := Manager{Presets: os.DirFS("../..")}
 	opt := Options{
@@ -167,6 +199,7 @@ func TestDryRunDoesNotWrite(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
 
 	manager := Manager{Presets: os.DirFS("../..")}
 	opt := Options{

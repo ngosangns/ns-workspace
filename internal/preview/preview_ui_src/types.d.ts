@@ -35,6 +35,7 @@ interface SvgPanZoomInstance {
   resetPan(): void;
   resetZoom(): void;
   resize(): void;
+  zoomAtPointBy(scale: number, point: SVGPoint): void;
   zoomIn(): void;
   zoomOut(): void;
 }

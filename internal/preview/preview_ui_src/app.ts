@@ -738,6 +738,7 @@ function renderSearchResultGraph(name, graph, canvas, details) {
     nodeColor: searchNodeColor,
     edgeColor: searchEdgeColorForTheme(state.theme),
     labelColor: state.theme === "dark" ? "#f8fafc" : "#0f172a",
+    unfocusedEdgeColor: state.theme === "dark" ? "#0f172a" : undefined,
     onSelectNode: (item) => {
       selectSearchGraphNode(name, graph, details, item.id);
     },
@@ -863,7 +864,7 @@ function searchNodeColor(node) {
 }
 
 function searchEdgeColorForTheme(theme) {
-  return theme === "dark" ? searchEdgeColor : darkSearchEdgeColor;
+  return theme === "dark" ? darkSearchEdgeColor : searchEdgeColor;
 }
 
 function searchEdgeColor(type) {
@@ -888,17 +889,17 @@ function darkSearchEdgeColor(type) {
   switch (type) {
     case "defines":
     case "documents":
-      return "#334155";
+      return "#94a3b8";
     case "depends":
     case "blocked-by":
-      return "#991b1b";
+      return "#f87171";
     case "implements":
     case "calls":
-      return "#3730a3";
+      return "#818cf8";
     case "references":
-      return "#115e59";
+      return "#2dd4bf";
     default:
-      return "#334155";
+      return "#94a3b8";
   }
 }
 
@@ -2861,7 +2862,7 @@ function decorateDiagram(host, id, title) {
   const viewport = document.createElement("div");
   viewport.className = "diagram-viewport";
   viewport.tabIndex = 0;
-  viewport.setAttribute("aria-label", `${title}. Command-scroll to zoom, drag to pan.`);
+  viewport.setAttribute("aria-label", `${title}. Ctrl/Command-scroll to zoom, drag to pan.`);
   viewport.append(svg);
   host.innerHTML = "";
   host.append(toolbar, viewport);
@@ -2901,8 +2902,7 @@ function initDiagramPanZoom(id) {
         zoomEnabled: true,
         controlIconsEnabled: false,
         dblClickZoomEnabled: true,
-        mouseWheelZoomEnabled: true,
-        beforeWheel: (event: WheelEvent) => !(event.ctrlKey || event.metaKey),
+        mouseWheelZoomEnabled: false,
         preventMouseEventsDefault: true,
         zoomScaleSensitivity: 0.4,
         minZoom: 0.2,
@@ -2923,6 +2923,22 @@ function initDiagramPanZoom(id) {
       destroyDiagramPanZoom(id);
       return;
     }
+    svg.closest(".diagram-viewport")?.addEventListener(
+      "wheel",
+      (event: WheelEvent) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        const rootSvg = svg instanceof SVGSVGElement ? svg : svg.ownerSVGElement;
+        if (!rootSvg) return;
+        const point = rootSvg.createSVGPoint();
+        point.x = event.clientX;
+        point.y = event.clientY;
+        const screenCTM = rootSvg.getScreenCTM();
+        const zoomPoint = screenCTM ? point.matrixTransform(screenCTM.inverse()) : point;
+        runDiagramPanZoomAction(instance, zoomLevel, () => instance.zoomAtPointBy(event.deltaY < 0 ? 1.25 : 0.8, zoomPoint));
+      },
+      { passive: false },
+    );
     toolbar.querySelector('[data-diagram-action="zoom-in"]').addEventListener("click", () => {
       runDiagramPanZoomAction(instance, zoomLevel, () => instance.zoomIn());
     });
@@ -3085,6 +3101,17 @@ function updateSearchRouteURL(options: SearchRouteOptions = {}) {
   renderSpecList();
 }
 
+function updateGraphRouteURL(options: SearchRouteOptions = {}) {
+  if (state.applyingRoute || state.tab !== "graph") return;
+  const route = `/graph${buildRouteQuery("graph")}`;
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (route === current) return;
+  const method = options.replace ? "replaceState" : "pushState";
+  window.history[method]({ tab: "graph", spec: state.selectedId }, "", route);
+  syncRouteSpecFromURL();
+  renderSpecList();
+}
+
 function pushSpecRoute(specId: string, fragment = "") {
   const next = specRoutePath(specId, fragment);
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -3121,6 +3148,12 @@ function activeSpecRoutePath() {
 
 function buildRouteQuery(tab) {
   const params = new URLSearchParams();
+  if (tab === "graph") {
+    const query = els.graphSearch?.value.trim() || "";
+    if (query) {
+      params.set("q", query);
+    }
+  }
   if (tab === "search") {
     const query = els.globalSearch?.value.trim() || "";
     if (query) {
@@ -3145,6 +3178,9 @@ function buildRouteQuery(tab) {
 function applySearchRoute(route) {
   if (typeof route.searchQuery === "string" && els.globalSearch) {
     els.globalSearch.value = route.searchQuery;
+  }
+  if (typeof route.searchQuery === "string" && els.graphSearch) {
+    els.graphSearch.value = route.searchQuery;
   }
   if (els.searchKeywordOperator) {
     els.searchKeywordOperator.value = route.searchKeywordOperator === "difference" ? "difference" : "sum";
@@ -3366,7 +3402,10 @@ window.addEventListener("popstate", () => {
   applyRouteFromLocation().catch(() => {});
 });
 els.search?.addEventListener("input", renderSpecList);
-els.graphSearch?.addEventListener("input", graphView.render);
+els.graphSearch?.addEventListener("input", () => {
+  graphView.render();
+  updateGraphRouteURL({ replace: true });
+});
 els.graphFit?.addEventListener("click", graphView.fit);
 document.querySelector("#graphFullscreen")?.addEventListener("click", toggleGraphFullscreen);
 els.globalSearch?.addEventListener("input", scheduleSearch);
