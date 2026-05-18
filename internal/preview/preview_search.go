@@ -287,8 +287,8 @@ func buildPreviewSearchResponse(project specProject, graphify graphifyGraph, pro
 		}
 	}
 	if mode != "keyword" && mode != "semantic" {
-		response.Panels.DocsGraph = searchDocsGraph(project.Graph, graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, response.Panels.DocsSemantic, limit)
-		response.Panels.CodeGraph = searchCodeGraph(graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, response.Panels.CodeSemantic, limit)
+		response.Panels.DocsGraph = searchDocsGraph(project.Graph, graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, limit)
+		response.Panels.CodeGraph = searchCodeGraph(graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, limit)
 		boostSemanticWithGraph(response.Panels.DocsSemantic, response.Panels.DocsGraph)
 		boostSemanticWithGraph(response.Panels.CodeSemantic, response.Panels.CodeGraph)
 	}
@@ -773,18 +773,8 @@ func combineSearchScores(keyword, semantic float64, mode string) (float64, []str
 	}
 }
 
-func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
-	results := searchDocsGraphFromSemantic(graph, semantic, graphExpansionLimit(limit))
-	for _, result := range searchGraphifyFromSemantic(graphify, projectRoot, semantic, graphExpansionLimit(limit), true) {
-		result.ID = "docs-graphify:" + result.NodeID
-		results = append(results, result)
-	}
-	results = dedupeSearchResults(results)
-	if len(results) == 0 {
-		return searchDocsGraphByQuery(graph, graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
-	}
-	sortSearchResults(results)
-	return limitResults(results, graphExpansionLimit(limit))
+func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
+	return searchDocsGraphByQuery(graph, graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
 }
 
 func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
@@ -819,17 +809,8 @@ func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot
 	return limitResults(dedupeSearchResults(results), limit)
 }
 
-func searchCodeGraph(graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, semantic []previewSearchResult, limit int) []previewSearchResult {
-	results := searchGraphifyFromSemantic(graphify, projectRoot, semantic, graphExpansionLimit(limit), false)
-	for i := range results {
-		results[i].ID = "code-graphify:" + results[i].NodeID
-	}
-	results = dedupeSearchResults(results)
-	if len(results) == 0 {
-		return searchCodeGraphByQuery(graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
-	}
-	sortSearchResults(results)
-	return limitResults(results, graphExpansionLimit(limit))
+func searchCodeGraph(graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
+	return searchCodeGraphByQuery(graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
 }
 
 func searchCodeGraphByQuery(graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {

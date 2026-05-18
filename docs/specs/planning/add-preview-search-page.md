@@ -38,13 +38,13 @@ Preview web có Search tab riêng để tìm trên docs, source code và graph c
 **Tiêu Chí Chấp Nhận:**
 
 - [x] Header có Search tab icon-only.
-- [x] `/search` route giữ query trong URL.
+- [x] `/search` route giữ query trong `q` và chế độ kết hợp keyword trong `keywordOp=sum|difference`.
 - [x] Bốn panel có count, loading state và empty state riêng.
 - [x] Kết quả spec/file mở được preview modal hoặc Doc tab đúng target.
 
 ## Ghi Chú Triển Khai
 
-Search dùng local scoring và fallback an toàn thay vì bắt buộc embedding runtime. Hybrid mode merge nhiều tín hiệu, gồm keyword, semantic fallback và graph context. Docs Graph và Code Graph dùng semantic results làm anchor để mở rộng qua docs graph hoặc graphify graph theo nhiều tầng, rồi fallback sang query graph search nếu không map được anchor. Code scanner bỏ qua binary, cache, docs root và generated folder lớn để preview vẫn nhẹ. File preview cho docs root cho phép mở file UTF-8 không có extension source-code quen thuộc, còn file ngoài docs vẫn dùng allowlist previewable.
+Search dùng local scoring và fallback an toàn thay vì bắt buộc embedding runtime. Hybrid mode merge nhiều tín hiệu, gồm keyword, semantic fallback và graph context. Docs Graph và Code Graph search trực tiếp trên docs graph hoặc graphify graph bằng query hiện tại, độc lập với semantic panels, rồi trả neighbors quanh node match để UI hiển thị context. Code scanner bỏ qua binary, cache, docs root và generated folder lớn để preview vẫn nhẹ. File preview cho docs root cho phép mở file UTF-8 không có extension source-code quen thuộc, còn file ngoài docs vẫn dùng allowlist previewable.
 
 ## Quan Hệ
 

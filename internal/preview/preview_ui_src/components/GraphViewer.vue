@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import Icon from "./Icon.vue";
+import { renderNetworkGraph, type NetworkGraphData, type NetworkGraphLink, type NetworkGraphNode } from "../js/network_graph.js";
 
 interface GraphNode {
   id: string;
@@ -30,11 +31,13 @@ interface Props {
   graph: GraphData | null;
   theme: "light" | "dark";
   active: boolean;
+  query: string;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: "openSpecPreview", id: string): void;
+  (e: "update:query", query: string): void;
 }>();
 
 const graphCanvas = ref<HTMLElement | null>(null);
@@ -42,8 +45,9 @@ const graphDetails = ref<HTMLElement | null>(null);
 const graphSearch = ref("");
 const graphStats = ref("Loading graph");
 const selectedNodeId = ref("");
-const graphRenderer = ref<any>(null);
-const graphSearchFiltered = ref<GraphData | null>(null);
+const graphRenderer = ref<ReturnType<typeof renderNetworkGraph> | null>(null);
+const graphFullscreen = ref(false);
+let renderedGraph: NetworkGraphData | null = null;
 
 function nodeColor(node: GraphNode): string {
   if (node.type === "external") return "#94a3b8";
@@ -82,136 +86,86 @@ function edgeColor(type: string): string {
   }
 }
 
+function darkEdgeColor(type: string): string {
+  switch (type) {
+    case "depends":
+      return "#f87171";
+    case "implements":
+      return "#818cf8";
+    case "blocked-by":
+      return "#fb923c";
+    case "verifies":
+      return "#2dd4bf";
+    case "provides":
+      return "#4ade80";
+    case "consumes":
+      return "#facc15";
+    default:
+      return "#94a3b8";
+  }
+}
+
+function edgeColorForTheme(currentTheme: "light" | "dark"): (type: string) => string {
+  return currentTheme === "dark" ? darkEdgeColor : edgeColor;
+}
+
 async function initGraph() {
   if (!graphCanvas.value || !props.graph) return;
-  const Graph = (await import("graphology")).default;
-  const forceAtlas2 = (await import("graphology-layout-forceatlas2")).default;
-  const Sigma = (await import("sigma")).default;
+  destroyGraph();
+  const graph = normalizedGraphData(props.graph, graphSearch.value.trim().toLowerCase());
+  renderedGraph = graph;
+  graphStats.value = `${graph.nodes.length} nodes, ${graph.links.length} edges`;
+  renderDetails(graph, selectedNodeId.value);
+  graphCanvas.value.innerHTML = "";
+  graphRenderer.value = renderNetworkGraph({
+    container: graphCanvas.value,
+    graph,
+    selectedId: selectedNodeId.value,
+    nodeColor,
+    edgeColor: edgeColorForTheme(props.theme),
+    labelColor: props.theme === "dark" ? "#f8fafc" : "#0f172a",
+    unfocusedEdgeColor: props.theme === "dark" ? "#0f172a" : undefined,
+    onSelectNode: selectGraphNode,
+    onClearSelection: clearGraphSelection,
+  });
+}
 
-  const data = graphSearchFiltered.value || props.graph;
-  const graph = new Graph({ multi: true, type: "directed" });
-
+function normalizedGraphData(raw: GraphData, query: string): NetworkGraphData {
   const visible = new Set<string>();
-  const allNodes = (data.nodes || []).map((node) => ({
+  const allNodes: NetworkGraphNode[] = (raw.nodes || []).map((node) => ({
     ...node,
     type: node.type || (node.specId ? "doc" : "external"),
     label: node.label || node.id,
   }));
-
-  const query = graphSearch.value.trim().toLowerCase();
   for (const node of allNodes) {
-    if (!query) {
-      visible.add(node.id);
-    } else {
-      const haystack = `${node.id} ${node.label} ${node.path || ""} ${node.category || ""} ${node.status || ""}`.toLowerCase();
-      if (haystack.includes(query)) visible.add(node.id);
-    }
+    const haystack = `${node.id} ${node.label || ""} ${node.path || ""} ${node.category || ""} ${node.status || ""}`.toLowerCase();
+    if (!query || haystack.includes(query)) visible.add(node.id);
   }
 
-  allNodes.forEach((node) => {
-    if (visible.has(node.id)) {
-      graph.addNode(node.id, {
-        color: nodeColor(node),
-        label: node.label || node.id,
-        x: 0,
-        y: 0,
-        size: 8,
-      });
-    }
-  });
-
-  const links = (data.edges || [])
+  const links: NetworkGraphLink[] = (raw.edges || [])
     .map((edge) => ({ ...edge, source: edge.from, target: edge.to, type: edge.type || edge.label || "references" }))
-    .filter((edge) => visible.has(edge.source) && visible.has(edge.target));
+    .filter((edge) => !query || visible.has(endpointID(edge.source)) || visible.has(endpointID(edge.target)));
 
-  let serial = 0;
-  for (const link of links) {
-    if (!graph.hasNode(link.source) || !graph.hasNode(link.target)) continue;
-    const key = `edge:${link.source}:${link.target}:${link.type}:${serial++}`;
-    graph.addDirectedEdgeWithKey(key, link.source, link.target, {
-      color: edgeColor(link.type || "references"),
-      label: link.type || "references",
-      size: 1.5,
-    });
-  }
-
-  if (graph.order > 1) {
-    const iterations = graph.order > 500 ? 80 : graph.order > 180 ? 110 : 160;
-    const settings = forceAtlas2.inferSettings(graph);
-    forceAtlas2.assign(graph, {
-      iterations,
-      settings: {
-        ...settings,
-        barnesHutOptimize: graph.order > 120,
-        edgeWeightInfluence: 0.35,
-        gravity: graph.order > 160 ? 1.2 : 0.8,
-        scalingRatio: graph.order > 160 ? 12 : 8,
-        slowDown: 8,
-      },
-    });
-  }
-
-  graphStats.value = `${graph.order} nodes, ${graph.size} edges`;
-
-  const renderer = new Sigma(graph, graphCanvas.value, {
-    allowInvalidContainer: true,
-    autoCenter: true,
-    autoRescale: true,
-    defaultEdgeType: "arrow",
-    defaultNodeColor: "#94a3b8",
-    labelColor: { attribute: "labelColor", color: props.theme === "dark" ? "#f8fafc" : "#0f172a" },
-    labelSize: 12,
-    maxCameraRatio: 10,
-    minCameraRatio: 0.05,
+  links.forEach((edge) => {
+    visible.add(endpointID(edge.source));
+    visible.add(endpointID(edge.target));
   });
 
-  let currentSelected = selectedNodeId.value && graph.hasNode(selectedNodeId.value) ? selectedNodeId.value : "";
-
-  renderer.on("clickNode", ({ node }: { node: string }) => {
-    currentSelected = node;
-    selectedNodeId.value = node;
-    renderDetails(data, node);
-    renderer.refresh();
-  });
-
-  renderer.on("clickStage", () => {
-    if (!currentSelected) return;
-    currentSelected = "";
-    selectedNodeId.value = "";
-    renderDetails(data, "");
-    renderer.refresh();
-  });
-
-  graphRenderer.value = {
-    fit: () => {
-      renderer.getCamera().animatedReset({ duration: 260 });
-    },
-    kill: () => renderer.kill(),
-    setSelected: (id: string) => {
-      currentSelected = graph.hasNode(id) ? id : "";
-      renderer.refresh();
-    },
+  return {
+    nodes: allNodes.filter((node) => visible.has(node.id)),
+    links,
   };
-
-  if (currentSelected) {
-    renderDetails(data, currentSelected);
-  } else if (graph.order > 0) {
-    const firstNode = graph.nodes()[0];
-    if (firstNode) {
-      renderDetails(data, firstNode);
-    }
-  }
 }
 
-function renderDetails(data: GraphData, nodeId: string) {
+function renderDetails(data: NetworkGraphData, nodeId: string) {
   if (!graphDetails.value) return;
-  const node = data.nodes.find((n) => n.id === nodeId);
+  const node = data.nodes.find((n) => n.id === nodeId) || data.nodes[0];
   if (!node) {
     graphDetails.value.innerHTML = '<div class="p-4 text-sm text-base-content/60">No graph nodes.</div>';
     return;
   }
-  const incoming = data.edges.filter((e) => e.to === nodeId);
-  const outgoing = data.edges.filter((e) => e.from === nodeId);
+  const incoming = data.links.filter((edge) => endpointID(edge.target) === node.id);
+  const outgoing = data.links.filter((edge) => endpointID(edge.source) === node.id);
 
   graphDetails.value.innerHTML = `
     <div class="grid gap-4 p-4">
@@ -236,15 +190,21 @@ function renderDetails(data: GraphData, nodeId: string) {
     const el = e.currentTarget as HTMLElement;
     emit("openSpecPreview", el.dataset.previewSpec || "");
   });
+  graphDetails.value.querySelectorAll<HTMLElement>("[data-select-node]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = data.nodes.find((item) => item.id === button.dataset.selectNode);
+      if (target) selectGraphNode(target);
+    });
+  });
 }
 
-function renderEdgeList(edges: GraphEdge[], side: "source" | "target"): string {
+function renderEdgeList(edges: NetworkGraphLink[], side: "source" | "target"): string {
   if (!edges.length) return '<div class="text-sm text-base-content/50">None</div>';
   return `
     <div class="grid gap-1">
       ${edges
         .map((edge) => {
-          const related = edge[side] === "string" ? edge[side] : (edge[side] as any)?.id || "";
+          const related = endpointID(edge[side]);
           return `<button class="graph-ref-row" type="button" data-select-node="${escapeHTML(related)}">
           <span class="badge badge-ghost badge-sm">${escapeHTML(edge.type || "references")}</span>
           <span class="min-w-0 truncate">${escapeHTML(related)}</span>
@@ -259,12 +219,41 @@ function escapeHTML(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
+function endpointID(endpoint: string | NetworkGraphNode): string {
+  return typeof endpoint === "string" ? endpoint : endpoint?.id || "";
+}
+
+function selectGraphNode(node: NetworkGraphNode) {
+  selectedNodeId.value = node.id;
+  graphRenderer.value?.setSelected(node.id);
+  if (renderedGraph) renderDetails(renderedGraph, node.id);
+}
+
+function clearGraphSelection() {
+  selectedNodeId.value = "";
+  graphRenderer.value?.setSelected("");
+  if (renderedGraph) renderDetails(renderedGraph, "");
+}
+
+function refitGraphSoon() {
+  window.setTimeout(() => graphRenderer.value?.fit(), 60);
+}
+
+function toggleGraphFullscreen() {
+  graphFullscreen.value = !graphFullscreen.value;
+  refitGraphSoon();
+}
+
+function destroyGraph() {
+  graphRenderer.value?.kill();
+  graphRenderer.value = null;
+  renderedGraph = null;
+}
+
 watch(
   () => props.graph,
   () => {
     if (!props.active) return;
-    graphRenderer.value?.kill();
-    graphRenderer.value = null;
     initGraph();
   },
   { immediate: true },
@@ -274,12 +263,9 @@ watch(
   () => props.active,
   (isActive) => {
     if (isActive) {
-      graphRenderer.value?.kill();
-      graphRenderer.value = null;
       initGraph();
     } else {
-      graphRenderer.value?.kill();
-      graphRenderer.value = null;
+      destroyGraph();
     }
   },
 );
@@ -287,10 +273,24 @@ watch(
 watch(
   () => props.theme,
   () => {
-    if (graphRenderer.value && props.active) {
+    if (props.active) {
       initGraph();
     }
   },
+);
+
+watch(graphSearch, () => {
+  emit("update:query", graphSearch.value);
+  if (props.active) initGraph();
+});
+
+watch(
+  () => props.query,
+  (query) => {
+    if (query === graphSearch.value) return;
+    graphSearch.value = query || "";
+  },
+  { immediate: true },
 );
 
 onMounted(() => {
@@ -300,12 +300,12 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  graphRenderer.value?.kill();
+  destroyGraph();
 });
 </script>
 
 <template>
-  <div class="graph-shell border-base-300 bg-base-100 border">
+  <div class="graph-shell border-base-300 bg-base-100 border" :class="{ 'is-fullscreen': graphFullscreen }">
     <div class="graph-toolbar border-base-300 border-b">
       <div class="min-w-0">
         <h2 class="text-base font-semibold">Docs Graph</h2>
@@ -325,6 +325,16 @@ onUnmounted(() => {
           @click="graphRenderer?.fit()"
         >
           <Icon name="refresh-cw" class="h-4 w-4" />
+        </button>
+        <button
+          id="graphFullscreen"
+          class="btn btn-ghost btn-sm"
+          type="button"
+          :aria-label="graphFullscreen ? 'Exit full screen graph' : 'Full screen graph'"
+          :title="graphFullscreen ? 'Exit full screen' : 'Full screen'"
+          @click="toggleGraphFullscreen"
+        >
+          <Icon :name="graphFullscreen ? 'minimize' : 'maximize'" class="h-4 w-4" />
         </button>
       </div>
     </div>

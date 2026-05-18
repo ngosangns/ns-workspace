@@ -5,7 +5,7 @@
 - **Status**: implemented
 - **Description**: Spec da trien khai renderer graph Sigma/Graphology cho preview de xem duoc nhieu file/flow, chon node va mo preview qua details panel.
 - **Compliance**: planning
-- **Links**: [Preview web](../../features/preview-web.md), [Module preview](../../modules/preview.md), [Quy uoc frontend preview](../../development/conventions/preview-frontend.md), [Trang Search cho Preview](./add-preview-search-page.md), [Search graphs from semantic results](./search-graphs-from-semantic-results.md)
+- **Links**: [Preview web](../../features/preview-web.md), [Module preview](../../modules/preview.md), [Quy uoc frontend preview](../../development/conventions/preview-frontend.md), [Trang Search cho Preview](./add-preview-search-page.md), [Search graphs directly from query](./search-graphs-from-semantic-results.md)
 
 ## Boi Canh
 

@@ -11,14 +11,16 @@
 
 `ns-workspace` đồng bộ cấu hình agent cá nhân từ `~/.agents` sang các adapter user-level trong `internal/agentsync`. Adapter Kiro được đăng ký với tên chính `kiro` và alias `kiro-cli`, nên `--tools kiro` và `--tools kiro-cli` cùng chọn một adapter.
 
-Kiro CLI docs hiện mô tả global configuration dưới `<user-home>/.kiro/`: MCP ở `~/.kiro/settings/mcp.json`, custom agents ở `~/.kiro/agents`, steering ở `~/.kiro/steering`, settings ở `~/.kiro/settings/cli.json`. Kiro IDE docs cũng dùng user-level MCP path `~/.kiro/settings/mcp.json`, nên MCP có thể dùng chung cho Kiro IDE và Kiro CLI. CLI executable chính là `kiro-cli`; wrapper `kiro` cũng cần được doctor kiểm tra nếu có trên máy.
+Kiro CLI docs hiện mô tả global configuration dưới `<user-home>/.kiro/`: MCP ở `~/.kiro/settings/mcp.json`, custom agents ở `~/.kiro/agents`, skills ở `~/.kiro/skills`, steering ở `~/.kiro/steering`, settings ở `~/.kiro/settings/cli.json`. Kiro IDE docs cũng dùng user-level MCP path `~/.kiro/settings/mcp.json` và global skills path `~/.kiro/skills`, nên MCP và skills có thể dùng chung cho Kiro IDE và Kiro CLI. CLI executable chính là `kiro-cli`; wrapper `kiro` cũng cần được doctor kiểm tra nếu có trên máy.
 
 ## Hành Vi Hiện Tại
 
 - Adapter `kiro` thuộc tier stable.
 - `--tools kiro` và `--tools kiro-cli` đều chọn adapter Kiro.
 - Shared instructions được link/copy vào `~/.kiro/steering/AGENTS.md`.
+- Shared skills được link/copy vào `~/.kiro/skills`.
 - MCP presets được merge vào `~/.kiro/settings/mcp.json` dưới key `mcpServers`.
+- Nếu `KIRO_HOME` được set, adapter dùng thư mục đó thay cho `~/.kiro`.
 - Doctor report kiểm tra cả `kiro` và `kiro-cli` executable.
 - Catalog hiển thị note rằng `kiro-cli` là alias của `kiro`.
 
@@ -40,6 +42,7 @@ Kiro CLI docs hiện mô tả global configuration dưới `<user-home>/.kiro/`:
    - Aliases: `kiro-cli`.
    - Executables: `kiro`, `kiro-cli`.
    - Instruction path: `~/.kiro/steering/AGENTS.md`.
+   - Skills path: `~/.kiro/skills`.
    - MCP path: `~/.kiro/settings/mcp.json`, key path `mcpServers`.
    - Docs URL: Kiro CLI configuration, Kiro CLI MCP, Kiro IDE MCP configuration.
 
@@ -48,8 +51,9 @@ Kiro CLI docs hiện mô tả global configuration dưới `<user-home>/.kiro/`:
    - Thêm Kiro vào Adapter Support table, nêu rõ shared MCP path và alias CLI.
 
 4. Cập nhật tests.
-   - `main_test.go` và `internal/agentsync/agentsync_test.go` assert có `~/.kiro/settings/mcp.json`.
+   - `main_test.go` và `internal/agentsync/agentsync_test.go` assert có `~/.kiro/settings/mcp.json` và `~/.kiro/skills/<skill>/SKILL.md`.
    - Test selection riêng cho `ParseTools("kiro-cli")` để đảm bảo alias chọn adapter.
+   - Test riêng cho `KIRO_HOME` để đảm bảo adapter dùng đúng Kiro global root khi user override.
    - Test stable/all vẫn tạo Kiro artifacts đúng phạm vi.
 
 ## Công Việc Cần Làm
@@ -71,6 +75,7 @@ Kiro CLI docs hiện mô tả global configuration dưới `<user-home>/.kiro/`:
 
 - Kiro custom agents có format riêng; không nên ghi bừa shared `AGENTS.md` vào `~/.kiro/agents` nếu file đó không phải agent configuration hợp lệ.
 - MCP path `~/.kiro/settings/mcp.json` được cả Kiro CLI và IDE docs mô tả, nên đây là phần ít rủi ro nhất để auto-sync.
+- Skills path `~/.kiro/skills` được Kiro CLI và IDE docs mô tả là global skills location, nên có thể sync shared skill presets trực tiếp.
 - Alias support thay đổi selection chung, cần test để không làm hỏng `all`, `stable`, `manual`, `experimental`.
 - Nếu `kiro` wrapper không tồn tại trên mọi install, doctor nên report từng executable độc lập thay vì coi thiếu một executable là fatal.
 
@@ -79,4 +84,4 @@ Kiro CLI docs hiện mô tả global configuration dưới `<user-home>/.kiro/`:
 - `go test ./...` pass.
 - `go run . agents --tools kiro` hiển thị Kiro adapter.
 - `go run . agents --tools kiro-cli` cũng hiển thị Kiro adapter.
-- `go run . init --tools kiro --no-registry --dry-run` mô tả write/merge vào đúng `~/.kiro/...` paths.
+- `go run . init --tools kiro --no-registry --dry-run` mô tả write/merge vào đúng `~/.kiro/...` paths, gồm `steering`, `skills` và `settings/mcp.json`.

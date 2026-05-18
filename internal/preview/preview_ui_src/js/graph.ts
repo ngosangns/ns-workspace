@@ -27,6 +27,7 @@ export function createDocsGraph({ state, els, escapeHTML, refreshIcons, openSpec
       nodeColor,
       edgeColor: edgeColorForTheme(state.theme),
       labelColor: state.theme === "dark" ? "#f8fafc" : "#0f172a",
+      unfocusedEdgeColor: state.theme === "dark" ? "#0f172a" : undefined,
       onSelectNode: openGraphNode,
       onClearSelection: clearGraphSelection,
     });
@@ -172,7 +173,7 @@ function nodeColor(node) {
 }
 
 function edgeColorForTheme(theme) {
-  return theme === "dark" ? edgeColor : darkEdgeColor;
+  return theme === "dark" ? darkEdgeColor : edgeColor;
 }
 
 function edgeColor(type) {
@@ -197,18 +198,18 @@ function edgeColor(type) {
 function darkEdgeColor(type) {
   switch (type) {
     case "depends":
-      return "#991b1b";
+      return "#f87171";
     case "implements":
-      return "#3730a3";
+      return "#818cf8";
     case "blocked-by":
-      return "#9a3412";
+      return "#fb923c";
     case "verifies":
-      return "#115e59";
+      return "#2dd4bf";
     case "provides":
-      return "#166534";
+      return "#4ade80";
     case "consumes":
-      return "#854d0e";
+      return "#facc15";
     default:
-      return "#334155";
+      return "#94a3b8";
   }
 }

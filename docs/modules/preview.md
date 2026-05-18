@@ -23,7 +23,7 @@
 - Code semantic search scan project root nhưng bỏ qua docs root, cache, dependency folders, generated folders lớn và binary file.
 - `specDocument.description` được parse từ metadata `Description`; docs semantic results truyền field này sang `previewSearchResult.description` để UI search hiển thị mô tả metadata trước excerpt nội dung.
 - Keyword operator mặc định là `sum`, giữ hành vi cộng dồn match từ mọi keyword. Khi operator là `difference`, backend dùng keyword/nhóm đầu làm truy vấn chính và loại docs, code files hoặc graph nodes match các keyword/nhóm còn lại trước khi score.
-- Docs Graph và Code Graph nhận semantic results làm anchors, match anchors vào docs graph hoặc graphify graph, rồi breadth-first expand qua neighbor relationships với depth và result cap.
+- Docs Graph và Code Graph search trực tiếp trên docs graph hoặc graphify graph bằng query hiện tại, độc lập với semantic results, rồi trả neighbors quanh node match để UI hiển thị context.
 - `/api/files` đọc file UTF-8 trong project root; file trong docs root được preview dù extension không nằm trong allowlist code.
 
 ## Quy Tắc Nghiệp Vụ
@@ -42,7 +42,7 @@ Trang tổng quan không còn là route hoặc tab riêng. Nếu URL cũ `/overv
 
 ## Ràng Buộc Và Giả Định
 
-Server preview chạy local, mặc định bind `127.0.0.1:0` để hệ điều hành tự chọn port rảnh, và frontend runtime dùng CDN giống các thư viện UI hiện có. Khi chạy hot reload trong checkout của module, supervisor chọn một port rảnh một lần rồi truyền xuống child process để URL preview ổn định qua các lần restart. Semantic search hiện có fallback local khi embedding runtime không khả dụng. Graphify data là optional và không được coi là nguồn bắt buộc; khi không có graphify hoặc không map được semantic anchor, graph panels degrade bằng warning hoặc fallback query graph search. Graph UI dùng Sigma/Graphology WebGL renderer với layout ForceAtlas2 để xem graph nhiều nodes/edges nhẹ hơn D3 SVG force-layout cũ. Click node chỉ chọn node và cập nhật details panel; click nền graph bỏ chọn node; incoming/outgoing edge rows trong details panel chọn node liên quan trong graph hiện tại. Người dùng mở preview doc/file bằng nút trong details panel. Wheel zoom trên graph chỉ chạy khi người dùng giữ `Ctrl` hoặc `Meta`, để scroll trang không bị graph bắt ngoài ý muốn.
+Server preview chạy local, mặc định bind `127.0.0.1:0` để hệ điều hành tự chọn port rảnh, và frontend runtime dùng CDN giống các thư viện UI hiện có. Khi chạy hot reload trong checkout của module, supervisor chọn một port rảnh một lần rồi truyền xuống child process để URL preview ổn định qua các lần restart. Semantic search hiện có fallback local khi embedding runtime không khả dụng. Graphify data là optional và không được coi là nguồn bắt buộc; khi không có graphify, Code Graph có thể rỗng còn Docs Graph vẫn dùng typed docs graph nếu có node match query. Graph UI dùng Sigma/Graphology WebGL renderer với layout ForceAtlas2 để xem graph nhiều nodes/edges nhẹ hơn D3 SVG force-layout cũ. Click node chỉ chọn node và cập nhật details panel; click nền graph bỏ chọn node; incoming/outgoing edge rows trong details panel chọn node liên quan trong graph hiện tại. Người dùng mở preview doc/file bằng nút trong details panel. Wheel zoom trên graph chỉ chạy khi người dùng giữ `Ctrl` hoặc `Meta`, để scroll trang không bị graph bắt ngoài ý muốn.
 
 ## Quan Hệ
 

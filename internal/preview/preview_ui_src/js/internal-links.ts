@@ -5,7 +5,10 @@ export interface SpecDocument {
   raw?: string;
   language?: string;
   status?: string;
+  version?: string;
   compliance?: string;
+  priority?: string;
+  description?: string;
 }
 
 export interface InternalSpecTarget {

@@ -42,6 +42,7 @@ interface RenderNetworkGraphOptions {
   onSelectNode: (node: NetworkGraphNode) => void;
   onClearSelection?: () => void;
   labelColor?: string;
+  unfocusedEdgeColor?: string;
 }
 
 interface SigmaNodeAttributes extends NetworkGraphNode {
@@ -121,9 +122,11 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
       const [source, target] = graph.extremities(edge);
       const selected = Boolean(selectedId);
       const related = selected && (source === selectedId || target === selectedId);
+      // Dark canvases need a solid muted edge color; alpha-blended relation colors can look brighter than focused paths.
+      const unfocusedColor = options.unfocusedEdgeColor || colorWithOpacity(data.color, 0.14);
       return {
         ...data,
-        color: selected && !related ? colorWithOpacity(data.color, 0.14) : data.color,
+        color: selected && !related ? unfocusedColor : data.color,
         hidden: false,
       };
     },
