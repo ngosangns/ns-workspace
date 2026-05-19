@@ -17,9 +17,9 @@ Docs Graph match trên node metadata của `project.Graph.Nodes` và doc-like no
 
 - Docs Graph search trực tiếp theo `node.ID`, `label`, `path`, `category` và `status` trong docs graph.
 - Docs Graph cũng search doc nodes từ graphify khi graphify data có sẵn.
-- Code Graph search trực tiếp theo `id`, `label`, normalized label, file type, source file, source location và community trong graphify.
+- Code Graph search trực tiếp theo `id`, `label`, normalized label, owner label, file type, normalized source file, source location và community trong graphify, nhưng chỉ trả callable code nodes có source file nằm trong `git ls-files`. File-only nodes, doc nodes, class/container nodes, untracked code nodes và mọi code node khi không đọc được Git tracked files đều bị loại khỏi result và neighbor.
 - Graph panels không phụ thuộc `DocsSemantic` hoặc `CodeSemantic`; nếu semantic panels rỗng nhưng graph node match query, graph panels vẫn có kết quả.
-- Kết quả graph trả `nodeId`, `path`, `line`, `matchedBy: ["graph"]`, confidence/community khi có và danh sách neighbors đã cap để UI render ổn định.
+- Kết quả graph trả `nodeId`, `path`, `line`, `matchedBy`, confidence/community khi có và danh sách neighbors đã cap để UI render ổn định. Code Graph dùng `matchedBy: ["graph"]` cho node match trực tiếp, `matchedBy: ["graph-caller", "graph-flow"]` cho direct incoming `calls`, `matchedBy: ["graph-root-caller", "graph-caller", "graph-flow"]` cho root caller của directed flow và `matchedBy: ["graph-callee", "graph-flow"]` cho outgoing `calls`. UI tự suy ra caller node ở đầu nguồn từ graph đang render để vẽ border đen trong light theme và trắng trong dark theme.
 - Keyword difference vẫn loại graph nodes match các keyword loại trừ.
 
 ## Ngoài Phạm Vi
@@ -38,11 +38,11 @@ Docs Graph match trên node metadata của `project.Graph.Nodes` và doc-like no
 - `searchDocsGraph` gọi `searchDocsGraphByQuery`.
 - `searchCodeGraph` gọi `searchCodeGraphByQuery`.
 - `searchDocsGraphByQuery` match typed docs graph trước, sau đó merge thêm doc nodes từ graphify.
-- `searchCodeGraphByQuery` match code nodes từ graphify.
+- `searchCodeGraphByQuery` match callable code symbol nodes từ graphify, gồm cả owner label được suy ra từ `method` hoặc symbol-level `contains`, sort direct matches theo score/evidence/title/path, rồi mở rộng từng anchor qua directed `calls` để trả caller/callee liên quan mà không cần file-only hoặc class/container node làm trung gian.
 
 ### 2. Result và neighbors
 
-Docs graph result dùng `docGraphNeighbors` để lấy incoming/outgoing edge quanh node match. Graphify result dùng adjacency đã load từ graphify links và giữ `Path`, `Line`, `Community`, `Confidence` để preview file đúng vị trí.
+Docs graph result dùng `docGraphNeighbors` để lấy incoming/outgoing edge quanh node match. Graphify result dùng adjacency đã load từ graphify links và giữ `Path`, `Line`, `Community`, `Confidence` để preview file đúng vị trí. Code Graph dùng `calls` làm cạnh render chính; `method` hoặc `contains` chỉ enrich title/search key cho callable node để method hiển thị kèm owner class mà class không thành node riêng.
 
 Neighbors chỉ bị cap khi đưa vào từng result. Search result list vẫn sort và dedupe deterministic trước khi apply limit.
 

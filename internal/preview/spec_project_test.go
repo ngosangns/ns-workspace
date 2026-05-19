@@ -2,6 +2,7 @@ package preview
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -441,6 +442,21 @@ func writeTestFile(t *testing.T, root, rel, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func initGitRepo(t *testing.T, root string, tracked ...string) {
+	t.Helper()
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, string(out))
+		}
+	}
+	runGit("init")
+	if len(tracked) > 0 {
+		runGit(append([]string{"add", "--"}, tracked...)...)
 	}
 }
 

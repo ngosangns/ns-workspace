@@ -187,6 +187,8 @@ function decorateDiagram(host: HTMLElement, id: string, title: string): void {
   const svg = host.querySelector<SVGElement>("svg");
   if (!svg) return;
   svg.classList.add("diagram-svg");
+  // Mermaid can emit an inline max-width that overrides the preview stylesheet.
+  svg.style.maxWidth = "none";
   const toolbar = document.createElement("div");
   toolbar.className = "diagram-toolbar";
   toolbar.innerHTML = `

@@ -8,6 +8,7 @@ export interface NetworkGraphNode {
   type?: string;
   path?: string;
   specId?: string;
+  isRootCaller?: boolean;
   line?: number;
   [key: string]: any;
 }
@@ -42,6 +43,7 @@ interface RenderNetworkGraphOptions {
   onSelectNode: (node: NetworkGraphNode) => void;
   onClearSelection?: () => void;
   labelColor?: string;
+  rootCallerBorderColor?: string;
   unfocusedEdgeColor?: string;
 }
 
@@ -88,6 +90,7 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
     autoRescale: true,
     defaultEdgeType: "arrow",
     defaultNodeColor: "#94a3b8",
+    defaultDrawNodeLabel: drawNodeLabel,
     defaultDrawNodeHover: drawNodeHoverLabelOnly,
     hideEdgesOnMove: false,
     hideLabelsOnMove: false,
@@ -132,6 +135,12 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
     },
   });
   const disposeWheelGuard = installModifierWheelZoomGuard(options.container);
+  const disposeRootCallerBorder = installRootCallerBorderOverlay(
+    renderer,
+    options.container,
+    nodes.filter((node) => node.isRootCaller).map((node) => node.id),
+    options.rootCallerBorderColor || "#000000",
+  );
 
   renderer.on("clickNode", ({ node }) => {
     const attrs = graph.getNodeAttributes(node);
@@ -158,12 +167,88 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
     fit: () => fitRenderer(renderer),
     kill: () => {
       disposeWheelGuard();
+      disposeRootCallerBorder();
       renderer.kill();
     },
     setSelected: (id: string) => {
       selectedId = graph.hasNode(id) ? id : "";
       renderer.refresh();
     },
+  };
+}
+
+function installRootCallerBorderOverlay(
+  renderer: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>,
+  container: HTMLElement,
+  nodeIds: string[],
+  borderColor: string,
+): () => void {
+  const rootNodeIds = [...new Set(nodeIds.filter(Boolean))];
+  if (rootNodeIds.length === 0) return () => {};
+
+  const overlay = document.createElement("canvas");
+  overlay.className = "network-graph-root-caller-border";
+  overlay.style.position = "absolute";
+  overlay.style.inset = "0";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "3";
+  if (getComputedStyle(container).position === "static") {
+    container.style.position = "relative";
+  }
+  container.appendChild(overlay);
+
+  let frame = 0;
+  const draw = () => {
+    frame = 0;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const ratio = window.devicePixelRatio || 1;
+    const canvasWidth = Math.max(1, Math.round(width * ratio));
+    const canvasHeight = Math.max(1, Math.round(height * ratio));
+    if (overlay.width !== canvasWidth || overlay.height !== canvasHeight) {
+      overlay.width = canvasWidth;
+      overlay.height = canvasHeight;
+      overlay.style.width = `${width}px`;
+      overlay.style.height = `${height}px`;
+    }
+
+    const context = overlay.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, overlay.width, overlay.height);
+    context.save();
+    context.scale(ratio, ratio);
+    context.strokeStyle = borderColor;
+    context.lineWidth = 2;
+    for (const nodeId of rootNodeIds) {
+      const displayData = renderer.getNodeDisplayData(nodeId);
+      if (!displayData || !Number.isFinite(displayData.x) || !Number.isFinite(displayData.y)) continue;
+      const position = renderer.framedGraphToViewport(displayData);
+      const radius = Math.max(8, renderer.scaleSize(Number(displayData.size || 8)) + 2);
+      context.beginPath();
+      context.arc(position.x, position.y, radius, 0, Math.PI * 2);
+      context.stroke();
+    }
+    context.restore();
+  };
+  const scheduleDraw = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(draw);
+  };
+  const camera = renderer.getCamera();
+  camera.on("updated", scheduleDraw);
+  window.addEventListener("resize", scheduleDraw);
+  renderer.on("afterRender", scheduleDraw);
+  requestAnimationFrame(() => {
+    scheduleDraw();
+    requestAnimationFrame(scheduleDraw);
+  });
+
+  return () => {
+    if (frame) cancelAnimationFrame(frame);
+    camera.removeListener("updated", scheduleDraw);
+    window.removeEventListener("resize", scheduleDraw);
+    renderer.removeListener("afterRender", scheduleDraw);
+    overlay.remove();
   };
 }
 
@@ -179,6 +264,10 @@ function installModifierWheelZoomGuard(container: HTMLElement): () => void {
 }
 
 function drawNodeHoverLabelOnly(context: CanvasRenderingContext2D, data: any, settings: any) {
+  drawNodeLabel(context, data, settings);
+}
+
+function drawNodeLabel(context: CanvasRenderingContext2D, data: any, settings: any) {
   if (!data.label) return;
   const size = settings.labelSize;
   const font = settings.labelFont;
@@ -188,7 +277,19 @@ function drawNodeHoverLabelOnly(context: CanvasRenderingContext2D, data: any, se
     : settings.labelColor.color;
   context.fillStyle = color;
   context.font = `${weight} ${size}px ${font}`;
-  context.fillText(data.label, data.x + data.size + 3, data.y + size / 3);
+  const lines = multilineLabel(data.label);
+  const lineHeight = Math.round(size * 1.18);
+  const startY = data.y - ((lines.length - 1) * lineHeight) / 2 + size / 3;
+  lines.forEach((line, index) => {
+    context.fillText(line, data.x + data.size + 3, startY + index * lineHeight);
+  });
+}
+
+function multilineLabel(label: string): string[] {
+  return String(label || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function normalizeNodes(nodes: NetworkGraphNode[]): SigmaNodeAttributes[] {
@@ -235,7 +336,7 @@ function addEdges(graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>, links:
       confidence: link.confidence || link.origin || "",
       label: relation,
       relation,
-      size: relation === "defines" || relation === "documents" ? 1.2 : 1.5,
+      size: relation === "calls" || relation === "call" ? 2.1 : relation === "defines" || relation === "documents" ? 1.2 : 1.5,
       type: "arrow",
     });
   }
