@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, nextTick, onUnmounted, ref, watch, type Ref } from "vue";
+import { computed, inject, nextTick, onUnmounted, ref, watch, type Ref } from "vue";
 import Icon from "./Icon.vue";
 import { renderNetworkGraph, type NetworkGraphData, type NetworkGraphLink, type NetworkGraphNode } from "../js/network_graph.js";
 
@@ -20,6 +20,9 @@ interface SearchResult {
   anchor?: boolean;
   anchorId?: string;
   depth?: number;
+  flowRole?: string;
+  flowAnchorId?: string;
+  flowDepth?: number;
   matchedBy?: string[];
   neighbors?: SearchNeighbor[];
 }
@@ -31,6 +34,9 @@ interface SearchNeighbor {
   line?: number;
   relation?: string;
   confidence?: string;
+  direction?: "incoming" | "outgoing";
+  sourceId?: string;
+  targetId?: string;
 }
 
 interface SearchResponse {
@@ -47,6 +53,8 @@ interface Props {
   keywordOperator: string;
 }
 
+type SearchDomain = "docs" | "code";
+
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: "openSpecPreview", id: string): void;
@@ -57,6 +65,7 @@ const emit = defineEmits<{
 
 const searchQuery = ref("");
 const keywordOperator = ref("sum");
+const activeSearchDomain = ref<SearchDomain>("docs");
 const searchLoading = ref(false);
 const searchData = ref<SearchResponse | null>(null);
 const searchTimer = ref<ReturnType<typeof setTimeout> | null>(null);
@@ -70,39 +79,48 @@ const searchGraphRenderers = new Map<string, ReturnType<typeof renderNetworkGrap
 const searchGraphSelections = new Map<string, string>();
 const renderedSearchGraphs = new Map<string, NetworkGraphData>();
 const fullscreenSearchGraph = ref("");
+const docsResultCount = computed(() => panelResults("docsSemantic").length + panelResults("docsGraph").length);
+const codeResultCount = computed(() => panelResults("codeSemantic").length + panelResults("codeGraph").length);
 
-async function fetchJSON(path: string) {
-  const res = await fetch(path);
+async function fetchJSON(path: string, signal?: AbortSignal) {
+  const res = await fetch(path, { signal });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 async function runSearch() {
   const query = searchQuery.value.trim();
+  if (searchController.value) {
+    searchController.value.abort();
+    searchController.value = null;
+  }
   if (!query) {
     searchData.value = null;
     searchLoading.value = false;
     stopAllSearchGraphs();
     return;
   }
-  if (searchController.value) {
-    searchController.value.abort();
-  }
   searchLoading.value = true;
-  searchController.value = new AbortController();
+  const controller = new AbortController();
+  searchController.value = controller;
   const params = new URLSearchParams({ q: query, limit: "8" });
   if (keywordOperator.value !== "sum") {
     params.set("keywordOp", keywordOperator.value);
   }
   try {
-    const data = await fetchJSON(`/api/search?${params.toString()}`);
+    const data = await fetchJSON(`/api/search?${params.toString()}`, controller.signal);
+    if (searchController.value !== controller) return;
     searchData.value = data;
-    searchLoading.value = false;
     await renderAllSearchGraphs();
   } catch (error) {
-    if (error instanceof Error && error.name !== "AbortError") {
-      searchLoading.value = false;
+    if (searchController.value !== controller) return;
+    if (!(error instanceof Error) || error.name !== "AbortError") {
       console.error(error);
+    }
+  } finally {
+    if (searchController.value === controller) {
+      searchController.value = null;
+      searchLoading.value = false;
     }
   }
 }
@@ -145,6 +163,14 @@ watch(theme, () => {
   void renderAllSearchGraphs();
 });
 
+watch(activeSearchDomain, () => {
+  const activeGraph = activeSearchDomain.value === "docs" ? "docsGraph" : "codeGraph";
+  if (fullscreenSearchGraph.value && fullscreenSearchGraph.value !== activeGraph) {
+    fullscreenSearchGraph.value = "";
+  }
+  void renderAllSearchGraphs();
+});
+
 function renderSearchSummary(): string {
   if (searchLoading.value) {
     return `
@@ -179,7 +205,12 @@ function panelResults(panelName: string): SearchResult[] {
 
 async function renderAllSearchGraphs() {
   await nextTick();
-  renderSearchGraphPanel("docsGraph", panelResults("docsGraph"), docsGraphCanvas.value, docsGraphDetails.value);
+  if (activeSearchDomain.value === "docs") {
+    stopSearchGraph("codeGraph");
+    renderSearchGraphPanel("docsGraph", panelResults("docsGraph"), docsGraphCanvas.value, docsGraphDetails.value);
+    return;
+  }
+  stopSearchGraph("docsGraph");
   renderSearchGraphPanel("codeGraph", panelResults("codeGraph"), codeGraphCanvas.value, codeGraphDetails.value);
 }
 
@@ -202,6 +233,7 @@ function renderSearchGraphPanel(name: string, results: SearchResult[], canvas: H
     nodeColor: searchNodeColor,
     edgeColor: searchEdgeColorForTheme(theme.value),
     labelColor: theme.value === "dark" ? "#f8fafc" : "#0f172a",
+    rootCallerBorderColor: theme.value === "dark" ? "#ffffff" : "#000000",
     unfocusedEdgeColor: theme.value === "dark" ? "#0f172a" : undefined,
     onSelectNode: (item) => selectSearchGraphNode(name, item.id),
     onClearSelection: () => clearSearchGraphSelection(name),
@@ -231,6 +263,7 @@ function searchResultsToGraph(results: SearchResult[], panelName: string): Netwo
       id: resultID,
       label: panelName === "codeGraph" ? codeGraphNodeLabel(result, fileName) : result.title || result.nodeId || result.path || result.id,
       type: panelName === "codeGraph" ? "code" : "doc",
+      flowRole: panelName === "codeGraph" ? result.flowRole || "" : "",
       path: result.path || "",
       line: result.line || 0,
       previewPath: result.path || "",
@@ -240,7 +273,7 @@ function searchResultsToGraph(results: SearchResult[], panelName: string): Netwo
       score: result.score || 0,
       result,
     });
-    if (result.path) {
+    if (result.path && panelName !== "codeGraph") {
       const fileID = `file:${result.path}`;
       ensureNode({
         id: fileID,
@@ -258,9 +291,14 @@ function searchResultsToGraph(results: SearchResult[], panelName: string): Netwo
       const neighborID = neighbor.id || neighbor.label || "";
       const neighborPath = neighbor.path || (panelName === "codeGraph" ? result.path || "" : "");
       const neighborLine = Number(neighbor.line || (panelName === "codeGraph" ? result.line || 0 : 0));
+      const edgeSource = neighbor.sourceId || (neighbor.direction === "incoming" ? neighborID : resultID);
+      const edgeTarget = neighbor.targetId || (neighbor.direction === "incoming" ? resultID : neighborID);
       ensureNode({
         id: neighborID,
-        label: neighbor.label || neighbor.id || neighborID,
+        label:
+          panelName === "codeGraph"
+            ? codeGraphNodeLabelText(neighbor.label || neighbor.id || neighborID, "")
+            : neighbor.label || neighbor.id || neighborID,
         type: "flow",
         path: neighborPath,
         previewPath: neighborPath,
@@ -268,11 +306,28 @@ function searchResultsToGraph(results: SearchResult[], panelName: string): Netwo
         line: neighborLine,
         confidence: neighbor.confidence || "",
       });
-      addLink(resultID, neighborID, neighbor.relation, neighbor.confidence);
+      addLink(edgeSource, edgeTarget, neighbor.relation, neighbor.confidence);
     });
   });
 
-  return { nodes: [...nodes.values()], links: dedupeGraphLinks(links) };
+  const graph = { nodes: [...nodes.values()], links: dedupeGraphLinks(links) };
+  if (panelName === "codeGraph") markSourceCallerNodes(graph);
+  return graph;
+}
+
+function markSourceCallerNodes(graph: NetworkGraphData) {
+  const incoming = new Set<string>();
+  const outgoing = new Set<string>();
+  graph.links.forEach((link) => {
+    if ((link.type || "").toLowerCase() !== "calls") return;
+    const source = endpointID(link.source);
+    const target = endpointID(link.target);
+    if (source) outgoing.add(source);
+    if (target) incoming.add(target);
+  });
+  graph.nodes.forEach((node) => {
+    node.isRootCaller = outgoing.has(node.id) && !incoming.has(node.id);
+  });
 }
 
 function dedupeGraphLinks(links: NetworkGraphLink[]): NetworkGraphLink[] {
@@ -314,6 +369,8 @@ function renderSearchGraphDetails(name: string, graph: NetworkGraphData, details
 
   const incoming = graph.links.filter((edge) => endpointID(edge.target) === node.id);
   const outgoing = graph.links.filter((edge) => endpointID(edge.source) === node.id);
+  const previewPath = node.previewPath || node.path || "";
+  const previewLine = Number(node.previewLine || node.line || 0);
   details.innerHTML = `
     <div class="grid gap-3 p-3">
       <div>
@@ -323,6 +380,7 @@ function renderSearchGraphDetails(name: string, graph: NetworkGraphData, details
       </div>
       <div class="flex flex-wrap gap-2">
         ${node.specId ? `<button class="btn btn-primary btn-xs" type="button" data-preview-spec="${escapeHTML(node.specId)}">Preview doc</button>` : ""}
+        ${previewPath ? `<button class="btn btn-outline btn-xs" type="button" data-preview-file="${escapeHTML(previewPath)}" data-preview-line="${previewLine}">Open file</button>` : ""}
       </div>
       <div>
         <h4 class="mb-1 text-xs font-semibold">Outgoing flows (${outgoing.length})</h4>
@@ -338,6 +396,10 @@ function renderSearchGraphDetails(name: string, graph: NetworkGraphData, details
     const button = event.currentTarget as HTMLElement;
     emit("openSpecPreview", button.dataset.previewSpec || "");
   });
+  details.querySelector("[data-preview-file]")?.addEventListener("click", (event) => {
+    const button = event.currentTarget as HTMLElement;
+    emit("openFilePreview", button.dataset.previewFile || "", Number(button.dataset.previewLine || 0));
+  });
   details.querySelectorAll<HTMLElement>("[data-select-search-node]").forEach((button) => {
     button.addEventListener("click", () => selectSearchGraphNode(name, button.dataset.selectSearchNode || ""));
   });
@@ -345,7 +407,26 @@ function renderSearchGraphDetails(name: string, graph: NetworkGraphData, details
 
 function codeGraphNodeLabel(result: SearchResult, fileName: string): string {
   const title = result.title || result.nodeId || result.id || fileName || "code";
+  return codeGraphNodeLabelText(title, fileName);
+}
+
+function codeGraphNodeLabelText(title: string, fileName: string): string {
+  const memberLabel = codeGraphMemberLabel(title);
+  if (memberLabel) return memberLabel;
   return !fileName || title.includes(fileName) ? title : `${title} · ${fileName}`;
+}
+
+function codeGraphMemberLabel(title: string): string {
+  const cleaned = title.trim();
+  for (const separator of ["::", "#", "."]) {
+    const index = cleaned.lastIndexOf(separator);
+    if (index <= 0) continue;
+    const owner = cleaned.slice(0, index).trim();
+    const member = cleaned.slice(index + separator.length).trim();
+    if (!owner || !member || owner.includes("/") || owner.endsWith(".go") || owner.endsWith(".ts") || owner.endsWith(".vue")) continue;
+    return `${owner}\n${member}`;
+  }
+  return "";
 }
 
 function renderSearchGraphEdgeList(edges: NetworkGraphLink[], side: "source" | "target"): string {
@@ -480,157 +561,189 @@ onUnmounted(() => {
       </select>
     </div>
     <div id="searchSummary" class="search-summary border-base-300 border-b" v-html="renderSearchSummary()"></div>
+    <div class="search-domain-tabs border-base-300 border-b" role="tablist" aria-label="Search result type">
+      <button
+        class="search-domain-tab"
+        :class="{ 'is-active': activeSearchDomain === 'docs' }"
+        type="button"
+        role="tab"
+        data-search-domain-tab="docs"
+        :aria-selected="activeSearchDomain === 'docs'"
+        @click="activeSearchDomain = 'docs'"
+      >
+        <Icon name="file-text" class="h-4 w-4" />
+        <span>Docs</span>
+        <span class="badge badge-ghost badge-sm">{{ docsResultCount }}</span>
+      </button>
+      <button
+        class="search-domain-tab"
+        :class="{ 'is-active': activeSearchDomain === 'code' }"
+        type="button"
+        role="tab"
+        data-search-domain-tab="code"
+        :aria-selected="activeSearchDomain === 'code'"
+        @click="activeSearchDomain = 'code'"
+      >
+        <Icon name="file-code" class="h-4 w-4" />
+        <span>Code</span>
+        <span class="badge badge-ghost badge-sm">{{ codeResultCount }}</span>
+      </button>
+    </div>
     <div class="search-grid">
-      <section class="search-panel" data-search-panel="docsSemantic">
-        <div class="search-panel-heading">
-          <h2>Docs Semantic</h2>
-          <span class="badge badge-ghost badge-sm">{{ panelResults("docsSemantic").length }}</span>
-        </div>
-        <div class="search-results">
-          <article v-for="result in panelResults('docsSemantic')" :key="result.id || result.nodeId" class="search-result">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <h3>{{ result.title || result.id || "Untitled" }}</h3>
-                <p v-if="result.path" class="search-path">{{ result.path }}</p>
-              </div>
-              <span class="badge badge-outline badge-sm shrink-0">{{ Math.round((result.score || 0) * 100) }}%</span>
-            </div>
-            <p v-if="result.description || result.excerpt" class="search-excerpt">{{ result.description || result.excerpt }}</p>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <button v-if="result.specId" class="btn btn-primary btn-xs" type="button" @click="emit('openSpecPreview', result.specId)">
-                <Icon name="file-text" class="h-3.5 w-3.5" />Preview doc
-              </button>
-            </div>
-          </article>
-          <div v-if="panelResults('docsSemantic').length === 0 && !searchLoading" class="search-empty">No document semantic matches.</div>
-        </div>
-      </section>
-
-      <section class="search-panel" data-search-panel="docsGraph">
-        <div class="search-panel-heading">
-          <h2>Docs Graph</h2>
-          <span class="badge badge-ghost badge-sm">{{ panelResults("docsGraph").length }}</span>
-        </div>
-        <div class="search-results">
-          <div
-            v-if="panelResults('docsGraph').length > 0"
-            class="search-graph-shell"
-            :class="{ 'is-fullscreen': fullscreenSearchGraph === 'docsGraph' }"
-            data-search-graph-shell="docsGraph"
-          >
-            <div class="search-graph-toolbar border-base-300 border-b">
-              <div class="min-w-0">
-                <h3>Docs Graph</h3>
-                <p>{{ panelResults("docsGraph").length }} results</p>
-              </div>
-              <div class="flex items-center gap-2">
-                <button
-                  class="btn btn-ghost btn-sm"
-                  type="button"
-                  aria-label="Fit docs graph to center"
-                  title="Fit to center"
-                  @click="fitSearchGraph('docsGraph')"
-                >
-                  <Icon name="refresh-cw" class="h-4 w-4" />
-                </button>
-                <button
-                  class="btn btn-ghost btn-sm"
-                  type="button"
-                  data-fullscreen-graph="docsGraph"
-                  :aria-label="fullscreenSearchGraph === 'docsGraph' ? 'Exit full screen docs graph' : 'Full screen docs graph'"
-                  :title="fullscreenSearchGraph === 'docsGraph' ? 'Exit full screen' : 'Full screen'"
-                  @click="toggleSearchGraphFullscreen('docsGraph')"
-                >
-                  <Icon :name="fullscreenSearchGraph === 'docsGraph' ? 'minimize' : 'maximize'" class="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div class="search-graph-layout">
-              <div ref="docsGraphCanvas" class="search-graph-canvas" role="img" aria-label="Docs graph search graph"></div>
-              <aside ref="docsGraphDetails" class="search-graph-details"></aside>
-            </div>
+      <div v-show="activeSearchDomain === 'docs'" class="search-domain-panel" data-search-domain-panel="docs">
+        <section class="search-panel" data-search-panel="docsSemantic">
+          <div class="search-panel-heading">
+            <h2>Docs Semantic</h2>
+            <span class="badge badge-ghost badge-sm">{{ panelResults("docsSemantic").length }}</span>
           </div>
-          <div v-if="panelResults('docsGraph').length === 0 && !searchLoading" class="search-empty">No document graph matches.</div>
-        </div>
-      </section>
-
-      <section class="search-panel" data-search-panel="codeSemantic">
-        <div class="search-panel-heading">
-          <h2>Code Semantic</h2>
-          <span class="badge badge-ghost badge-sm">{{ panelResults("codeSemantic").length }}</span>
-        </div>
-        <div class="search-results">
-          <article v-for="result in panelResults('codeSemantic')" :key="result.id || result.nodeId" class="search-result">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <h3>{{ result.title || result.id || "Untitled" }}</h3>
-                <p v-if="result.path" class="search-path">{{ result.path }}</p>
+          <div class="search-results">
+            <article v-for="result in panelResults('docsSemantic')" :key="result.id || result.nodeId" class="search-result">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3>{{ result.title || result.id || "Untitled" }}</h3>
+                  <p v-if="result.path" class="search-path">{{ result.path }}</p>
+                </div>
+                <span class="badge badge-outline badge-sm shrink-0">{{ Math.round((result.score || 0) * 100) }}%</span>
               </div>
-              <span class="badge badge-outline badge-sm shrink-0">{{ Math.round((result.score || 0) * 100) }}%</span>
-            </div>
-            <p v-if="result.description || result.excerpt" class="search-excerpt">{{ result.description || result.excerpt }}</p>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <button
-                v-if="result.path"
-                class="btn btn-outline btn-xs"
-                type="button"
-                @click="emit('openFilePreview', result.path, result.line || 0)"
-              >
-                <Icon name="file-code" class="h-3.5 w-3.5" />Preview file
-              </button>
-            </div>
-          </article>
-          <div v-if="panelResults('codeSemantic').length === 0 && !searchLoading" class="search-empty">No code semantic matches.</div>
-        </div>
-      </section>
-
-      <section class="search-panel" data-search-panel="codeGraph">
-        <div class="search-panel-heading">
-          <h2>Code Graph</h2>
-          <span class="badge badge-ghost badge-sm">{{ panelResults("codeGraph").length }}</span>
-        </div>
-        <div class="search-results">
-          <div
-            v-if="panelResults('codeGraph').length > 0"
-            class="search-graph-shell"
-            :class="{ 'is-fullscreen': fullscreenSearchGraph === 'codeGraph' }"
-            data-search-graph-shell="codeGraph"
-          >
-            <div class="search-graph-toolbar border-base-300 border-b">
-              <div class="min-w-0">
-                <h3>Code Graph</h3>
-                <p>{{ panelResults("codeGraph").length }} results</p>
-              </div>
-              <div class="flex items-center gap-2">
-                <button
-                  class="btn btn-ghost btn-sm"
-                  type="button"
-                  aria-label="Fit code graph to center"
-                  title="Fit to center"
-                  @click="fitSearchGraph('codeGraph')"
-                >
-                  <Icon name="refresh-cw" class="h-4 w-4" />
-                </button>
-                <button
-                  class="btn btn-ghost btn-sm"
-                  type="button"
-                  data-fullscreen-graph="codeGraph"
-                  :aria-label="fullscreenSearchGraph === 'codeGraph' ? 'Exit full screen code graph' : 'Full screen code graph'"
-                  :title="fullscreenSearchGraph === 'codeGraph' ? 'Exit full screen' : 'Full screen'"
-                  @click="toggleSearchGraphFullscreen('codeGraph')"
-                >
-                  <Icon :name="fullscreenSearchGraph === 'codeGraph' ? 'minimize' : 'maximize'" class="h-4 w-4" />
+              <p v-if="result.description || result.excerpt" class="search-excerpt">{{ result.description || result.excerpt }}</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button v-if="result.specId" class="btn btn-primary btn-xs" type="button" @click="emit('openSpecPreview', result.specId)">
+                  <Icon name="file-text" class="h-3.5 w-3.5" />Preview doc
                 </button>
               </div>
-            </div>
-            <div class="search-graph-layout">
-              <div ref="codeGraphCanvas" class="search-graph-canvas" role="img" aria-label="Code graph search graph"></div>
-              <aside ref="codeGraphDetails" class="search-graph-details"></aside>
-            </div>
+            </article>
+            <div v-if="panelResults('docsSemantic').length === 0 && !searchLoading" class="search-empty">No document semantic matches.</div>
           </div>
-          <div v-if="panelResults('codeGraph').length === 0 && !searchLoading" class="search-empty">No code graph matches.</div>
-        </div>
-      </section>
+        </section>
+
+        <section class="search-panel" data-search-panel="docsGraph">
+          <div class="search-panel-heading">
+            <h2>Docs Graph</h2>
+            <span class="badge badge-ghost badge-sm">{{ panelResults("docsGraph").length }}</span>
+          </div>
+          <div class="search-results">
+            <div
+              v-if="panelResults('docsGraph').length > 0"
+              class="search-graph-shell"
+              :class="{ 'is-fullscreen': fullscreenSearchGraph === 'docsGraph' }"
+              data-search-graph-shell="docsGraph"
+            >
+              <div class="search-graph-toolbar border-base-300 border-b">
+                <div class="min-w-0">
+                  <h3>Docs Graph</h3>
+                  <p>{{ panelResults("docsGraph").length }} results</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    type="button"
+                    aria-label="Fit docs graph to center"
+                    title="Fit to center"
+                    @click="fitSearchGraph('docsGraph')"
+                  >
+                    <Icon name="refresh-cw" class="h-4 w-4" />
+                  </button>
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    type="button"
+                    data-fullscreen-graph="docsGraph"
+                    :aria-label="fullscreenSearchGraph === 'docsGraph' ? 'Exit full screen docs graph' : 'Full screen docs graph'"
+                    :title="fullscreenSearchGraph === 'docsGraph' ? 'Exit full screen' : 'Full screen'"
+                    @click="toggleSearchGraphFullscreen('docsGraph')"
+                  >
+                    <Icon :name="fullscreenSearchGraph === 'docsGraph' ? 'minimize' : 'maximize'" class="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div class="search-graph-layout">
+                <div ref="docsGraphCanvas" class="search-graph-canvas" role="img" aria-label="Docs graph search graph"></div>
+                <aside ref="docsGraphDetails" class="search-graph-details"></aside>
+              </div>
+            </div>
+            <div v-if="panelResults('docsGraph').length === 0 && !searchLoading" class="search-empty">No document graph matches.</div>
+          </div>
+        </section>
+      </div>
+
+      <div v-show="activeSearchDomain === 'code'" class="search-domain-panel" data-search-domain-panel="code">
+        <section class="search-panel" data-search-panel="codeSemantic">
+          <div class="search-panel-heading">
+            <h2>Code Semantic</h2>
+            <span class="badge badge-ghost badge-sm">{{ panelResults("codeSemantic").length }}</span>
+          </div>
+          <div class="search-results">
+            <article v-for="result in panelResults('codeSemantic')" :key="result.id || result.nodeId" class="search-result">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3>{{ result.title || result.id || "Untitled" }}</h3>
+                  <p v-if="result.path" class="search-path">{{ result.path }}</p>
+                </div>
+                <span class="badge badge-outline badge-sm shrink-0">{{ Math.round((result.score || 0) * 100) }}%</span>
+              </div>
+              <p v-if="result.description || result.excerpt" class="search-excerpt">{{ result.description || result.excerpt }}</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  v-if="result.path"
+                  class="btn btn-outline btn-xs"
+                  type="button"
+                  @click="emit('openFilePreview', result.path, result.line || 0)"
+                >
+                  <Icon name="file-code" class="h-3.5 w-3.5" />Preview file
+                </button>
+              </div>
+            </article>
+            <div v-if="panelResults('codeSemantic').length === 0 && !searchLoading" class="search-empty">No code semantic matches.</div>
+          </div>
+        </section>
+
+        <section class="search-panel" data-search-panel="codeGraph">
+          <div class="search-panel-heading">
+            <h2>Code Graph</h2>
+            <span class="badge badge-ghost badge-sm">{{ panelResults("codeGraph").length }}</span>
+          </div>
+          <div class="search-results">
+            <div
+              v-if="panelResults('codeGraph').length > 0"
+              class="search-graph-shell"
+              :class="{ 'is-fullscreen': fullscreenSearchGraph === 'codeGraph' }"
+              data-search-graph-shell="codeGraph"
+            >
+              <div class="search-graph-toolbar border-base-300 border-b">
+                <div class="min-w-0">
+                  <h3>Code Graph</h3>
+                  <p>{{ panelResults("codeGraph").length }} results</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    type="button"
+                    aria-label="Fit code graph to center"
+                    title="Fit to center"
+                    @click="fitSearchGraph('codeGraph')"
+                  >
+                    <Icon name="refresh-cw" class="h-4 w-4" />
+                  </button>
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    type="button"
+                    data-fullscreen-graph="codeGraph"
+                    :aria-label="fullscreenSearchGraph === 'codeGraph' ? 'Exit full screen code graph' : 'Full screen code graph'"
+                    :title="fullscreenSearchGraph === 'codeGraph' ? 'Exit full screen' : 'Full screen'"
+                    @click="toggleSearchGraphFullscreen('codeGraph')"
+                  >
+                    <Icon :name="fullscreenSearchGraph === 'codeGraph' ? 'minimize' : 'maximize'" class="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div class="search-graph-layout">
+                <div ref="codeGraphCanvas" class="search-graph-canvas" role="img" aria-label="Code graph search graph"></div>
+                <aside ref="codeGraphDetails" class="search-graph-details"></aside>
+              </div>
+            </div>
+            <div v-if="panelResults('codeGraph').length === 0 && !searchLoading" class="search-empty">No code graph matches.</div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </template>

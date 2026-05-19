@@ -31,6 +31,8 @@
 | --------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | [Edit Markdown trong preview](./specs/planning/add-markdown-editing-preview.md)               | implemented | [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md)                                                      |
 | [Trang search preview](./specs/planning/add-preview-search-page.md)                           | implemented | [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md)                                                      |
+| [Directed Code Graph Search](./specs/planning/improve-code-graph-call-flow-readability.md)    | implemented | [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md)                                                      |
+| [Search backend ranking](./specs/planning/improve-preview-search-backend-ranking.md)          | implemented | [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md)                                                      |
 | [Internal links và mentions](./specs/planning/resolve-preview-internal-links-and-mentions.md) | implemented | [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md)                                                      |
 | [Renderer graph preview](./specs/planning/use-specialized-graph-renderer.md)                  | implemented | [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md)                                                      |
 | [Adapter agent user-level](./specs/planning/user-level-agent-adapter-framework.md)            | draft       | [Kiến trúc tổng quan](./architecture/overview.md), [Thuật ngữ](./shared/glossary.md)                                                  |
@@ -47,9 +49,13 @@ flowchart LR
   "modules/preview.md" --> "features/preview-web.md"
   "features/preview-web.md" --> "specs/planning/add-markdown-editing-preview.md"
   "features/preview-web.md" --> "specs/planning/add-preview-search-page.md"
+  "features/preview-web.md" --> "specs/planning/improve-code-graph-call-flow-readability.md"
+  "features/preview-web.md" --> "specs/planning/improve-preview-search-backend-ranking.md"
   "features/preview-web.md" --> "specs/planning/resolve-preview-internal-links-and-mentions.md"
   "features/preview-web.md" --> "specs/planning/use-specialized-graph-renderer.md"
   "modules/preview.md" --> "specs/planning/add-markdown-editing-preview.md"
+  "modules/preview.md" --> "specs/planning/improve-code-graph-call-flow-readability.md"
+  "modules/preview.md" --> "specs/planning/improve-preview-search-backend-ranking.md"
   "modules/preview.md" --> "specs/planning/use-specialized-graph-renderer.md"
   "modules/preview.md" --> "development/conventions/preview-frontend.md"
   "architecture/overview.md" --> "specs/planning/user-level-agent-adapter-framework.md"

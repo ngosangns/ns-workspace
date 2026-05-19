@@ -243,16 +243,23 @@ Authentication validates session tokens.
 func parseAuthToken(raw string) string {
 	return raw
 }
+
+func validateAuthSession(raw string) bool {
+	return parseAuthToken(raw) != ""
+}
 `)
 	writeTestFile(t, root, "graphify-out/graph.json", `{
   "nodes": [
     {"id":"code_parse_auth_token","label":"parseAuthToken()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "auth.go"))+`","source_location":"L3","community":1},
+    {"id":"code_validate_auth_session","label":"validateAuthSession()","file_type":"code","source_file":"`+filepath.ToSlash(filepath.Join(root, "auth.go"))+`","source_location":"L7","community":1},
     {"id":"doc_auth","label":"Auth","file_type":"doc","source_file":"`+filepath.ToSlash(filepath.Join(root, "docs/auth.md"))+`","source_location":"L1","community":2}
   ],
   "links": [
+    {"source":"code_parse_auth_token","target":"code_validate_auth_session","relation":"calls","confidence":"EXTRACTED"},
     {"source":"code_parse_auth_token","target":"doc_auth","relation":"references","confidence":"EXTRACTED"}
   ]
 }`)
+	initGitRepo(t, root, "docs/_index.md", "docs/auth.md", "docs/session.md", "auth.go")
 
 	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
 	ts := httptest.NewServer(server.srv.Handler)
@@ -283,7 +290,7 @@ func parseAuthToken(raw string) string {
 	if search.Panels.CodeGraph[0].Line != 3 || len(search.Panels.CodeGraph[0].Neighbors) == 0 {
 		t.Fatalf("code graph should expose source line and neighbors: %+v", search.Panels.CodeGraph[0])
 	}
-	if search.Panels.CodeGraph[0].Neighbors[0].Path != "docs/auth.md" || search.Panels.CodeGraph[0].Neighbors[0].Line != 1 {
+	if search.Panels.CodeGraph[0].Neighbors[0].Path != "auth.go" || search.Panels.CodeGraph[0].Neighbors[0].Line != 7 {
 		t.Fatalf("code graph neighbors should expose their own preview targets: %+v", search.Panels.CodeGraph[0].Neighbors[0])
 	}
 
@@ -449,6 +456,7 @@ func hydrateStore() {}
     {"source":"code_lookup","target":"code_store","relation":"calls","confidence":"EXTRACTED"}
   ]
 }`)
+	initGitRepo(t, root, "docs/_index.md", "auth.go", "store.go")
 
 	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
 	ts := httptest.NewServer(server.srv.Handler)
@@ -478,6 +486,396 @@ func hydrateStore() {}
 	}
 	if len(search.Panels.CodeGraph[0].Neighbors) == 0 || search.Panels.CodeGraph[0].Neighbors[0].Path != "auth.go" {
 		t.Fatalf("expected code graph direct result to expose neighbors, got %+v", search.Panels.CodeGraph[0].Neighbors)
+	}
+}
+
+func TestPreviewSearchUsesOnlyGitFilesForCodeResults(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "tracked.go", `package demo
+
+func allowedTrackedSymbol() {}
+`)
+	writeTestFile(t, root, "tracked_helper.go", `package demo
+
+func allowedTrackedHelper() {}
+`)
+	writeTestFile(t, root, "untracked.go", `package demo
+
+func ghostOnlyNeedle() {}
+`)
+	writeTestFile(t, root, "graphify-out/graph.json", `{
+  "nodes": [
+    {"id":"tracked_symbol","label":"allowedTrackedSymbol()","file_type":"code","source_file":"tracked.go","source_location":"L3","community":1},
+    {"id":"tracked_helper","label":"allowedTrackedHelper()","file_type":"code","source_file":"tracked_helper.go","source_location":"L3","community":1},
+    {"id":"untracked_symbol","label":"ghostOnlyNeedle()","file_type":"code","source_file":"untracked.go","source_location":"L3","community":1},
+    {"id":"doc_node","label":"Tracked docs node","file_type":"doc","source_file":"docs/_index.md","source_location":"L1","community":1}
+  ],
+  "links": [
+    {"source":"tracked_symbol","target":"tracked_helper","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"tracked_symbol","target":"untracked_symbol","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"tracked_symbol","target":"doc_node","relation":"documents","confidence":"EXTRACTED"}
+  ]
+}`)
+	initGitRepo(t, root, "docs/_index.md", "tracked.go", "tracked_helper.go")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=ghostOnlyNeedle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.CodeSemantic) != 0 || len(search.Panels.CodeGraph) != 0 {
+		t.Fatalf("untracked files should not appear in code search results: %+v", search.Panels)
+	}
+
+	res, err = http.Get(ts.URL + "/api/search?q=allowedTrackedSymbol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	search = previewSearchResponse{}
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.CodeGraph) == 0 {
+		t.Fatalf("expected tracked code graph result: %+v", search.Panels)
+	}
+	for _, result := range search.Panels.CodeGraph {
+		if result.Path == "untracked.go" || result.NodeID == "untracked_symbol" || result.NodeID == "doc_node" {
+			t.Fatalf("code graph should only return tracked code files, got %+v", search.Panels.CodeGraph)
+		}
+		for _, neighbor := range result.Neighbors {
+			if neighbor.ID == "untracked_symbol" || neighbor.ID == "doc_node" || neighbor.Path == "untracked.go" || neighbor.Path == "docs/_index.md" {
+				t.Fatalf("code graph neighbors should only include tracked code files, got %+v", result.Neighbors)
+			}
+		}
+	}
+}
+
+func TestPreviewCodeGraphRequiresGitTrackedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "loose.go", `package demo
+
+func looseGraphSymbol() {}
+`)
+	writeTestFile(t, root, "graphify-out/graph.json", `{
+  "nodes": [
+    {"id":"loose_symbol","label":"looseGraphSymbol()","file_type":"code","source_file":"loose.go","source_location":"L3","community":1}
+  ],
+  "links": []
+}`)
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=looseGraphSymbol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.CodeGraph) != 0 {
+		t.Fatalf("code graph should require git tracked files, got %+v", search.Panels.CodeGraph)
+	}
+}
+
+func TestPreviewCodeGraphExpandsCallFlowAndSkipsFileOnlyNodes(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "app.go", `package demo
+
+type CredentialVault struct{}
+
+func (CredentialVault) LoadSecret() {}
+
+func HandleLogin() {}
+
+func RootRequest() {}
+
+func FormatSecret() {}
+
+func PersistSecret() {}
+`)
+	writeTestFile(t, root, "graphify-out/graph.json", `{
+  "nodes": [
+    {"id":"app_go","label":"app.go","file_type":"code","source_file":"app.go","source_location":"L1","community":1},
+    {"id":"credential_vault","label":"CredentialVault","file_type":"code","source_file":"app.go","source_location":"L3","community":1},
+    {"id":"load_secret","label":"LoadSecret()","file_type":"code","source_file":"app.go","source_location":"L5","community":1},
+    {"id":"abstract_vault","label":"abstract class AbstractVault","file_type":"code","source_file":"app.go","source_location":"L15","community":1},
+    {"id":"authorize_secret","label":"AuthorizeSecret()","file_type":"code","source_file":"app.go","source_location":"L17","community":1},
+    {"id":"handle_login","label":"HandleLogin()","file_type":"code","source_file":"app.go","source_location":"L7","community":1},
+    {"id":"root_request","label":"RootRequest()","file_type":"code","source_file":"app.go","source_location":"L9","community":1},
+    {"id":"format_secret","label":"FormatSecret()","file_type":"code","source_file":"app.go","source_location":"L11","community":1},
+    {"id":"persist_secret","label":"PersistSecret()","file_type":"code","source_file":"app.go","source_location":"L13","community":1}
+  ],
+  "links": [
+    {"source":"app_go","target":"credential_vault","relation":"contains","confidence":"EXTRACTED"},
+    {"source":"credential_vault","target":"load_secret","relation":"method","confidence":"EXTRACTED"},
+    {"source":"app_go","target":"abstract_vault","relation":"contains","confidence":"EXTRACTED"},
+    {"source":"root_request","target":"handle_login","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"handle_login","target":"load_secret","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"load_secret","target":"format_secret","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"format_secret","target":"persist_secret","relation":"calls","confidence":"EXTRACTED"}
+  ]
+}`)
+	initGitRepo(t, root, "docs/_index.md", "app.go")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=CredentialVault")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]previewSearchResult{}
+	for _, result := range search.Panels.CodeGraph {
+		got[result.NodeID] = result
+	}
+	if _, ok := got["app_go"]; ok {
+		t.Fatalf("code graph should skip file-only nodes: %+v", search.Panels.CodeGraph)
+	}
+	if _, ok := got["credential_vault"]; ok {
+		t.Fatalf("code graph should not return class/container nodes: %+v", search.Panels.CodeGraph)
+	}
+	for _, result := range search.Panels.CodeGraph {
+		for _, neighbor := range result.Neighbors {
+			if neighbor.ID == "app_go" {
+				t.Fatalf("code graph neighbors should also skip file-only nodes: %+v", result.Neighbors)
+			}
+			if neighbor.ID == "credential_vault" {
+				t.Fatalf("code graph neighbors should also skip class/container nodes: %+v", result.Neighbors)
+			}
+		}
+	}
+	for _, nodeID := range []string{"load_secret", "handle_login", "root_request", "format_secret", "persist_secret"} {
+		if _, ok := got[nodeID]; !ok {
+			t.Fatalf("code graph should include call-flow node %s, got %+v", nodeID, search.Panels.CodeGraph)
+		}
+	}
+	if got["load_secret"].Title != "CredentialVault.LoadSecret()" {
+		t.Fatalf("method node title should include class owner, got %+v", got["load_secret"])
+	}
+	if !containsString(got["handle_login"].MatchedBy, "graph-flow") || !containsString(got["format_secret"].MatchedBy, "graph-flow") {
+		t.Fatalf("expanded code graph nodes should be marked as graph-flow: %+v", search.Panels.CodeGraph)
+	}
+
+	res, err = http.Get(ts.URL + "/api/search?q=AbstractVault")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var abstractSearch previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&abstractSearch); err != nil {
+		t.Fatal(err)
+	}
+	abstractResults := map[string]previewSearchResult{}
+	for _, result := range abstractSearch.Panels.CodeGraph {
+		abstractResults[result.NodeID] = result
+	}
+	if _, ok := abstractResults["abstract_vault"]; ok {
+		t.Fatalf("code graph should not include abstract class owner node: %+v", abstractSearch.Panels.CodeGraph)
+	}
+	if abstractResults["authorize_secret"].Title != "AbstractVault.AuthorizeSecret()" {
+		t.Fatalf("abstract class method title should use class owner without modifiers, got %+v", abstractResults["authorize_secret"])
+	}
+
+	res, err = http.Get(ts.URL + "/api/search?q=LoadSecret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var methodSearch previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&methodSearch); err != nil {
+		t.Fatal(err)
+	}
+	methodResults := map[string]previewSearchResult{}
+	for _, result := range methodSearch.Panels.CodeGraph {
+		methodResults[result.NodeID] = result
+	}
+	if _, ok := methodResults["handle_login"]; !ok {
+		t.Fatalf("code graph should include direct callers of matched methods: %+v", methodSearch.Panels.CodeGraph)
+	}
+	if _, ok := methodResults["root_request"]; !ok {
+		t.Fatalf("code graph should include root callers of matched methods: %+v", methodSearch.Panels.CodeGraph)
+	}
+	if _, ok := methodResults["persist_secret"]; !ok {
+		t.Fatalf("code graph should include childest callees of matched methods: %+v", methodSearch.Panels.CodeGraph)
+	}
+	if _, ok := methodResults["credential_vault"]; ok {
+		t.Fatalf("code graph should not include method owner class node: %+v", methodSearch.Panels.CodeGraph)
+	}
+	if methodResults["load_secret"].Title != "CredentialVault.LoadSecret()" {
+		t.Fatalf("matched method title should include class owner, got %+v", methodResults["load_secret"])
+	}
+	if !containsString(methodResults["handle_login"].MatchedBy, "graph-caller") {
+		t.Fatalf("direct caller should be marked as graph-caller: %+v", methodResults["handle_login"])
+	}
+	if methodResults["handle_login"].FlowRole != "caller" {
+		t.Fatalf("direct caller should expose caller flow role: %+v", methodResults["handle_login"])
+	}
+	if !containsString(methodResults["root_request"].MatchedBy, "graph-root-caller") {
+		t.Fatalf("root caller should be marked as graph-root-caller: %+v", methodResults["root_request"])
+	}
+	if methodResults["root_request"].FlowRole != "root-caller" {
+		t.Fatalf("root caller should expose root-caller flow role: %+v", methodResults["root_request"])
+	}
+	if !containsString(methodResults["persist_secret"].MatchedBy, "graph-callee") {
+		t.Fatalf("leaf callee should be marked as graph-callee: %+v", methodResults["persist_secret"])
+	}
+	if methodResults["persist_secret"].FlowRole != "callee" {
+		t.Fatalf("leaf callee should expose callee flow role: %+v", methodResults["persist_secret"])
+	}
+	var hasIncomingCaller, hasOutgoingCallee bool
+	for _, neighbor := range methodResults["load_secret"].Neighbors {
+		if neighbor.ID == "credential_vault" {
+			t.Fatalf("method neighbors should not include class owner nodes: %+v", methodResults["load_secret"].Neighbors)
+		}
+		if neighbor.ID == "handle_login" && neighbor.Relation == "calls" {
+			hasIncomingCaller = neighbor.Direction == "incoming" && neighbor.SourceID == "handle_login" && neighbor.TargetID == "load_secret"
+		}
+		if neighbor.ID == "format_secret" && neighbor.Relation == "calls" {
+			hasOutgoingCallee = neighbor.Direction == "outgoing" && neighbor.SourceID == "load_secret" && neighbor.TargetID == "format_secret"
+		}
+	}
+	if !hasIncomingCaller || !hasOutgoingCallee {
+		t.Fatalf("code graph neighbors should expose directed call endpoints: %+v", methodResults["load_secret"].Neighbors)
+	}
+}
+
+func TestPreviewCodeGraphSortsDirectMatchesDeterministically(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "alpha.go", "package demo\n\nfunc ANeedle() {}\n")
+	writeTestFile(t, root, "zeta.go", "package demo\n\nfunc ZNeedle() {}\n")
+	writeTestFile(t, root, "graphify-out/graph.json", `{
+  "nodes": [
+    {"id":"z_needle","label":"ZNeedle()","file_type":"code","source_file":"zeta.go","source_location":"L3","community":1},
+    {"id":"a_needle","label":"ANeedle()","file_type":"code","source_file":"alpha.go","source_location":"L3","community":1}
+  ],
+  "links": []
+}`)
+	initGitRepo(t, root, "docs/_index.md", "alpha.go", "zeta.go")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	for i := 0; i < 10; i++ {
+		res, err := http.Get(ts.URL + "/api/search?q=Needle")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var search previewSearchResponse
+		if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+			t.Fatal(err)
+		}
+		if len(search.Panels.CodeGraph) < 2 {
+			t.Fatalf("expected both direct code graph matches, got %+v", search.Panels.CodeGraph)
+		}
+		if search.Panels.CodeGraph[0].NodeID != "a_needle" || search.Panels.CodeGraph[1].NodeID != "z_needle" {
+			t.Fatalf("code graph direct matches should sort deterministically, got %+v", search.Panels.CodeGraph[:2])
+		}
+	}
+}
+
+func TestPreviewCodeGraphNormalizesRelativeGraphifySourcePaths(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "tracked.go", "package demo\n\nfunc RelativeGraphSymbol() {}\n")
+	writeTestFile(t, root, "graphify-out/graph.json", `{
+  "nodes": [
+    {"id":"relative_symbol","label":"RelativeGraphSymbol()","file_type":"code","source_file":"./tracked.go","source_location":"L3","community":1}
+  ],
+  "links": []
+}`)
+	initGitRepo(t, root, "docs/_index.md", "tracked.go")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=RelativeGraphSymbol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.CodeGraph) == 0 || search.Panels.CodeGraph[0].Path != "tracked.go" {
+		t.Fatalf("code graph should normalize relative graphify source paths, got %+v", search.Panels.CodeGraph)
+	}
+}
+
+func TestPreviewCodeGraphPrecomputesOwnerLabelsForLargeGraphs(t *testing.T) {
+	graph := graphifyGraph{
+		Nodes:         map[string]graphifyNode{},
+		Neighbors:     map[string][]previewSearchNeighbor{},
+		GitFiles:      map[string]bool{"big.go": true},
+		GitFilesKnown: true,
+	}
+	const symbols = 1500
+	for i := 0; i < symbols; i++ {
+		ownerID := fmt.Sprintf("big_owner_%04d", i)
+		methodID := fmt.Sprintf("%s_method", ownerID)
+		graph.Nodes[ownerID] = graphifyNode{
+			ID:             ownerID,
+			Label:          fmt.Sprintf("Owner%04d", i),
+			FileType:       "code",
+			SourceFile:     "big.go",
+			SourceLocation: fmt.Sprintf("L%d", i*2+1),
+		}
+		graph.Nodes[methodID] = graphifyNode{
+			ID:             methodID,
+			Label:          "AlignmentNeedle()",
+			FileType:       "code",
+			SourceFile:     "big.go",
+			SourceLocation: fmt.Sprintf("L%d", i*2+2),
+		}
+		graph.Links = append(graph.Links, graphifyLink{Source: ownerID, Target: methodID, Relation: "method", Confidence: "EXTRACTED"})
+	}
+	graph.OwnerLabels = buildGraphifyOwnerLabels(graph, "")
+
+	done := make(chan []previewSearchResult, 1)
+	go func() {
+		done <- searchCodeGraph(graph, "", "alignment", searchTokens("alignment"), "", nil, 8)
+	}()
+	select {
+	case results := <-done:
+		if len(results) == 0 {
+			t.Fatalf("expected large code graph search results")
+		}
+		if !strings.Contains(results[0].Title, "Owner") {
+			t.Fatalf("expected precomputed owner label in result title, got %+v", results[0])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("large code graph search should use precomputed owner labels instead of scanning the full graph per node")
 	}
 }
 
@@ -624,6 +1022,127 @@ func parseAuthToken(raw string) string {
 	for _, warning := range search.Warnings {
 		if strings.Contains(warning, "lexical fallback") {
 			t.Fatalf("embedding-configured search should not use lexical fallback warning: %+v", search.Warnings)
+		}
+	}
+}
+
+func TestPreviewCodeSemanticEmbeddingRequiresKeywordEvidence(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "docs/search.md", "# Search\n\nSearch docs.\n")
+	writeTestFile(t, root, "onboarding.go", `package demo
+
+func StartOnboarding() {}
+`)
+	writeTestFile(t, root, "conference.go", `package demo
+
+func ScheduleConference() {}
+`)
+	embedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Input []string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		type datum struct {
+			Index     int       `json:"index"`
+			Embedding []float32 `json:"embedding"`
+		}
+		res := struct {
+			Data []datum `json:"data"`
+		}{}
+		for i := range req.Input {
+			res.Data = append(res.Data, datum{Index: i, Embedding: []float32{1, 0, 0}})
+		}
+		_ = json.NewEncoder(w).Encode(res)
+	}))
+	defer embedServer.Close()
+	writeTestFile(t, home, ".knowns/settings.json", fmt.Sprintf(`{
+  "embeddingProviders": {
+    "preview-test": {
+      "apiBase": %q,
+      "batchSize": 2,
+      "timeout": 5
+    }
+  },
+  "embeddingModels": {
+    "noisy-code-test": {
+      "provider": "preview-test",
+      "model": "noisy-code-test",
+      "dimensions": 3
+    }
+  },
+  "defaultEmbeddingModel": "noisy-code-test"
+}`, embedServer.URL+"/v1"))
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=onboarding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var search previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Panels.CodeSemantic) == 0 {
+		t.Fatalf("expected code semantic keyword-backed result, got %+v", search.Panels.CodeSemantic)
+	}
+	for _, result := range search.Panels.CodeSemantic {
+		if result.Path == "conference.go" {
+			t.Fatalf("code semantic embedding result should require keyword evidence, got %+v", search.Panels.CodeSemantic)
+		}
+	}
+}
+
+func TestPreviewCodeSemanticFallbackRequiresKeywordEvidence(t *testing.T) {
+	codeDocs := []codeSearchDoc{
+		{
+			ID:      "settings.go",
+			Title:   "settings.go",
+			Path:    "settings.go",
+			Content: "package demo\n\nfunc ApplySettings() {}\n",
+		},
+		{
+			ID:      "short.go",
+			Title:   "short.go",
+			Path:    "short.go",
+			Content: "package demo\n\nfunc Set() {}\n",
+		},
+	}
+
+	results := searchCodeSemantic(codeDocs, "settings", searchTokens("settings"), "hybrid", 8)
+	if len(results) == 0 {
+		t.Fatalf("expected keyword-backed code semantic result")
+	}
+	for _, result := range results {
+		if result.Path == "short.go" {
+			t.Fatalf("semantic fallback should not include fuzzy-only code results: %+v", results)
+		}
+	}
+}
+
+func TestPreviewCodeSymbolsCoverCommonLanguages(t *testing.T) {
+	content := `
+export const createSession = () => {}
+class ProfileStore {
+  refreshToken() {}
+}
+fun scheduleOnboarding() {}
+public String loadCredential() { return ""; }
+`
+	symbols := codeSymbols(content)
+	for _, want := range []string{"createSession", "ProfileStore", "refreshToken", "scheduleOnboarding", "loadCredential"} {
+		if !containsString(symbols, want) {
+			t.Fatalf("expected codeSymbols to include %s, got %+v", want, symbols)
 		}
 	}
 }
@@ -865,6 +1384,10 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		`data-tab="search"`,
 		`id="searchTab"`,
@@ -872,6 +1395,13 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		`data-search-panel="docsGraph"`,
 		`data-search-panel="codeSemantic"`,
 		`data-search-panel="codeGraph"`,
+		`data-search-domain-tab="docs"`,
+		`data-search-domain-tab="code"`,
+		`data-search-domain-panel="docs"`,
+		`data-search-domain-panel="code"`,
+		"activeSearchDomain",
+		"docsResultCount",
+		"codeResultCount",
 		`aria-label="Keyword result operator"`,
 		`keywordOp`,
 		`currentSearchKeywordOperator`,
@@ -901,6 +1431,10 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"searchLoading",
 		"renderSearchLoading",
 		"Searching docs, code, and graphs",
+		"fetch(path, { signal })",
+		"const controller = new AbortController()",
+		"searchController.value !== controller",
+		"finally",
 		`id="previewDialog"`,
 		"openSpecPreview",
 		"openFilePreview",
@@ -952,6 +1486,13 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"clearSearchGraphSelection",
 		`data-search-graph-shell="docsGraph"`,
 		`data-search-graph-shell="codeGraph"`,
+		`data-search-domain-tab="docs"`,
+		`data-search-domain-tab="code"`,
+		`data-search-domain-panel="docs"`,
+		`data-search-domain-panel="code"`,
+		"activeSearchDomain",
+		"docsResultCount",
+		"codeResultCount",
 		`data-fullscreen-graph="docsGraph"`,
 		`data-fullscreen-graph="codeGraph"`,
 		"fullscreenSearchGraph",
@@ -964,9 +1505,31 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"codeGraphNodeLabel",
 		"neighborPath",
 		"neighborLine",
+		`result.path && panelName !== "codeGraph"`,
+		`rootCallerBorderColor: theme.value === "dark" ? "#ffffff" : "#000000"`,
+		"isRootCaller",
+		"markSourceCallerNodes",
+		"outgoing.has(node.id) && !incoming.has(node.id)",
+		"codeGraphMemberLabel",
+		"codeGraphNodeLabelText",
+		"neighbor.label || neighbor.id || neighborID",
+		"cleaned.lastIndexOf(separator)",
+		"return `${owner}\\n${member}`",
+		"data-preview-file",
+		"data-preview-line",
 	} {
 		if !strings.Contains(string(searchPanel), want) {
 			t.Fatalf("Vue preview search graph missing %s", want)
+		}
+	}
+	for _, stale := range []string{"data-code-graph-view", "data-code-graph-flow", "codeGraphViewMode", "code-flow-shell"} {
+		if strings.Contains(string(searchPanel), stale) {
+			t.Fatalf("Vue Code Graph should render a single directed graph, found stale flow UI marker %s", stale)
+		}
+	}
+	for _, want := range []string{"installRootCallerBorderOverlay", "network-graph-root-caller-border", "getNodeDisplayData", "framedGraphToViewport", "scaleSize", "context.strokeStyle = borderColor", "defaultDrawNodeLabel: drawNodeLabel", "multilineLabel(data.label)", ".split(/\\r?\\n/)"} {
+		if !strings.Contains(string(networkGraphJS), want) {
+			t.Fatalf("preview network graph missing expected rendering support %s", want)
 		}
 	}
 	docsSemanticStart := strings.Index(string(searchPanel), `data-search-panel="docsSemantic"`)
@@ -978,14 +1541,32 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 	if strings.Contains(docsSemanticBlock, "openFilePreview") || strings.Contains(docsSemanticBlock, "file-code") {
 		t.Fatalf("Docs Semantic results should only expose doc preview actions")
 	}
+	docsDomainStart := strings.Index(string(searchPanel), `data-search-domain-panel="docs"`)
+	codeDomainStart := strings.Index(string(searchPanel), `data-search-domain-panel="code"`)
+	if docsDomainStart == -1 || codeDomainStart == -1 || docsDomainStart > codeDomainStart {
+		t.Fatalf("Vue preview search panel should render docs and code as separate ordered tabs")
+	}
+	docsDomainBlock := string(searchPanel)[docsDomainStart:codeDomainStart]
+	if !strings.Contains(docsDomainBlock, `data-search-panel="docsSemantic"`) || !strings.Contains(docsDomainBlock, `data-search-panel="docsGraph"`) {
+		t.Fatalf("Docs search tab should contain semantic and graph doc panels")
+	}
+	if strings.Contains(docsDomainBlock, `data-search-panel="codeSemantic"`) || strings.Contains(docsDomainBlock, `data-search-panel="codeGraph"`) {
+		t.Fatalf("Docs search tab should not contain code panels")
+	}
+	codeDomainBlock := string(searchPanel)[codeDomainStart:]
+	if !strings.Contains(codeDomainBlock, `data-search-panel="codeSemantic"`) || !strings.Contains(codeDomainBlock, `data-search-panel="codeGraph"`) {
+		t.Fatalf("Code search tab should contain semantic and graph code panels")
+	}
 	graphDetailsStart := strings.Index(string(searchPanel), "function renderSearchGraphDetails")
 	graphDetailsEnd := strings.Index(string(searchPanel), "function codeGraphNodeLabel")
 	if graphDetailsStart == -1 || graphDetailsEnd == -1 {
 		t.Fatalf("Vue preview search panel missing graph details renderer")
 	}
 	graphDetailsBlock := string(searchPanel)[graphDetailsStart:graphDetailsEnd]
-	if strings.Contains(graphDetailsBlock, "data-preview-file") || strings.Contains(graphDetailsBlock, "openFilePreview") {
-		t.Fatalf("Graph in/out panels should not expose file preview actions")
+	for _, want := range []string{"data-preview-file", "data-preview-line", "openFilePreview"} {
+		if !strings.Contains(graphDetailsBlock, want) {
+			t.Fatalf("Graph details should expose focused node file preview action %s", want)
+		}
 	}
 	for _, want := range []string{"grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem)", "max-height: 22rem", ".graph-shell.is-fullscreen", ".search-graph-shell.is-fullscreen"} {
 		if !strings.Contains(text, want) {
@@ -1018,6 +1599,11 @@ func TestPreviewVuePreviewModalRendersStyledDocs(t *testing.T) {
 		"decorateInternalDocNavigation(root, spec",
 		"source.spec.description",
 		"source.line ? String(source.line) : \"\"",
+		"decorateCodePreviewLines(root)",
+		"scrollPreviewToLine(root, source.line)",
+		"data-line",
+		"code-line-target",
+		"scrollIntoView({ block: \"center\" })",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("Vue preview modal styled doc rendering missing %s", want)
@@ -1537,11 +2123,18 @@ func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
 	text := string(app)
 	for _, want := range []string{"svgDiagramSize", "svg.setAttribute(\"width\", String(size.width))", "svg.setAttribute(\"height\", String(size.height))", "svg.style.width = \"100%\"", "svg.style.height = \"100%\"", "svg.style.maxWidth = \"none\"", "svg.setAttribute(\"preserveAspectRatio\"", "svg.classList.add(\"diagram-svg\")", "prepareSvgPanZoomViewport", "svg-pan-zoom_viewport"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid SVG library preparation missing %s", want)
 		}
+	}
+	if !strings.Contains(string(diagrams), `svg.style.maxWidth = "none"`) {
+		t.Fatalf("Vue preview diagram source should clear Mermaid inline max-width")
 	}
 	if strings.Contains(text, "svg.removeAttribute(\"width\")") || strings.Contains(text, "svg.removeAttribute(\"height\")") {
 		t.Fatalf("preview Mermaid should let svg-pan-zoom manage rendered SVG sizing")

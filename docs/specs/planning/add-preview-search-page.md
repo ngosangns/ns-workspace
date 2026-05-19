@@ -21,15 +21,15 @@ Preview web có Search tab riêng để tìm trên docs, source code và graph c
 - [x] Query rỗng không làm UI crash.
 - [x] Kết quả docs có `specId` để mở bằng preview router.
 - [x] Kết quả code có path, line và excerpt khi có thể.
-- [x] Docs semantic scan cả file text trong docs root; code semantic bỏ qua docs root để kết quả không bị trùng.
+- [x] Docs semantic scan file text tracked bởi Git trong docs root khi có Git metadata; code semantic dùng file tracked bởi Git và bỏ qua docs root để kết quả không bị trùng.
 
 ### REQ-2: Search graph
 
 **Tiêu Chí Chấp Nhận:**
 
 - [x] Docs Graph dùng typed docs graph hiện có.
-- [x] Code Graph đọc `graphify-out/graph.json` khi file tồn tại.
-- [x] Graph panels ưu tiên mở rộng từ Docs Semantic và Code Semantic results trước khi fallback sang query graph search.
+- [x] Code Graph đọc `graphify-out/graph.json` khi file tồn tại, bỏ file-only nodes và chỉ giữ code nodes từ source file tracked bởi Git khi có Git metadata.
+- [x] Graph panels search trực tiếp theo query hiện tại trên docs graph và graphify graph, không cần semantic results làm anchor.
 - [x] Graphify thiếu hoặc invalid chỉ tạo warning, không làm API lỗi.
 - [x] Neighbor relationships được trả về để UI hiển thị context.
 
@@ -40,11 +40,11 @@ Preview web có Search tab riêng để tìm trên docs, source code và graph c
 - [x] Header có Search tab icon-only.
 - [x] `/search` route giữ query trong `q` và chế độ kết hợp keyword trong `keywordOp=sum|difference`.
 - [x] Bốn panel có count, loading state và empty state riêng.
-- [x] Kết quả spec/file mở được preview modal hoặc Doc tab đúng target.
+- [x] Kết quả spec/file mở được preview modal hoặc Doc tab đúng target; graph details panel mở được file của focused node khi có path.
 
 ## Ghi Chú Triển Khai
 
-Search dùng local scoring và fallback an toàn thay vì bắt buộc embedding runtime. Hybrid mode merge nhiều tín hiệu, gồm keyword, semantic fallback và graph context. Docs Graph và Code Graph search trực tiếp trên docs graph hoặc graphify graph bằng query hiện tại, độc lập với semantic panels, rồi trả neighbors quanh node match để UI hiển thị context. Code scanner bỏ qua binary, cache, docs root và generated folder lớn để preview vẫn nhẹ. File preview cho docs root cho phép mở file UTF-8 không có extension source-code quen thuộc, còn file ngoài docs vẫn dùng allowlist previewable.
+Search dùng local scoring và fallback an toàn thay vì bắt buộc embedding runtime. Hybrid mode merge nhiều tín hiệu, gồm keyword, semantic fallback và graph context. Code Semantic hybrid chỉ giữ kết quả có keyword evidence trong title, path, symbol hoặc nội dung file; embedding hits và fallback local đều dùng cùng evidence gate để tránh trả source files không match truy vấn. Docs Graph và Code Graph search trực tiếp trên docs graph hoặc graphify graph bằng query hiện tại, độc lập với semantic panels, rồi trả neighbors quanh node match để UI hiển thị context. Code Graph render một directed graph duy nhất, chỉ hiển thị callable graphify code nodes, bỏ file-only/class/container nodes, normalize graphify source path trước khi kiểm tra Git tracked files, sort direct symbol matches theo score/evidence/title/path trước khi mở rộng từng anchor qua directed `calls`, và dùng quan hệ `method`/`contains` chỉ để prefix label method bằng owner class. Code scanner dùng `git ls-files` khi có Git metadata, bỏ qua binary, cache, docs root và generated folder lớn để preview vẫn nhẹ. File preview cho docs root cho phép mở file UTF-8 không có extension source-code quen thuộc, còn file ngoài docs vẫn dùng allowlist previewable.
 
 ## Quan Hệ
 
