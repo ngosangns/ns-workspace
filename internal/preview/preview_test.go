@@ -18,8 +18,11 @@ func previewUIText(t *testing.T) string {
 	t.Helper()
 	paths := []string{
 		"preview_ui_src/index.html",
+		"preview_ui_src/search.html",
 		"preview_ui_src/main.ts",
+		"preview_ui_src/search-main.ts",
 		"preview_ui_src/App.vue",
+		"preview_ui_src/SearchStandaloneApp.vue",
 		"preview_ui_src/app.ts",
 		"preview_ui_src/js/graph.ts",
 		"preview_ui_src/js/network_graph.ts",
@@ -210,6 +213,15 @@ Hello **docs**.
 		t.Fatalf("preview app fallback should return HTML, got %s", got)
 	}
 
+	res, err = http.Get(ts.URL + "/search.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("standalone search app was not served: %s", res.Status)
+	}
+
 	res, err = http.Get(ts.URL + "/favicon.svg")
 	if err != nil {
 		t.Fatal(err)
@@ -235,6 +247,28 @@ Hello **docs**.
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("preview JS bundle was not served: %s", res.Status)
+	}
+}
+
+func TestGraphLauncherWritesRedirectHTML(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "graph.html")
+	if err := writeGraphLauncher(out, "http://localhost:12345/search.html", root, filepath.Join(root, "docs")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "http://localhost:12345/search.html") || !strings.Contains(text, root) {
+		t.Fatalf("graph launcher did not include app URL and project metadata: %s", string(data))
+	}
+	if strings.Contains(text, `\"http://localhost:12345/search.html\"`) {
+		t.Fatalf("graph launcher should not add literal quotes to the redirect URL: %s", text)
+	}
+	if !strings.Contains(text, `window.location.replace("http:\/\/localhost:12345\/search.html")`) {
+		t.Fatalf("graph launcher should emit a valid JavaScript redirect string: %s", text)
 	}
 }
 
@@ -360,7 +394,7 @@ func TestPreviewSearchKeywordDifferenceExcludesLaterKeywords(t *testing.T) {
 	}
 }
 
-func TestPreviewSearchScansAllTextFilesUnderDocs(t *testing.T) {
+func TestPreviewSearchScansMarkdownDocsUnderDocs(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
 	writeTestFile(t, root, "docs/specs/auth.md", "# Auth\n\nAuthentication validates session tokens.\n")
@@ -372,7 +406,7 @@ func TestPreviewSearchScansAllTextFilesUnderDocs(t *testing.T) {
 	defer ts.Close()
 	defer func() { _ = server.shutdown(context.Background()) }()
 
-	res, err := http.Get(ts.URL + "/api/search?q=preview_index_all_docs_files")
+	res, err := http.Get(ts.URL + "/api/search?q=Authentication")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,14 +416,14 @@ func TestPreviewSearchScansAllTextFilesUnderDocs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(search.Panels.DocsSemantic) == 0 {
-		t.Fatalf("expected docs semantic search to include non-Markdown docs files: %+v", search.Panels)
+		t.Fatalf("expected docs semantic search to include docs Markdown files: %+v", search.Panels)
 	}
 	got := search.Panels.DocsSemantic[0]
-	if got.Path != "reference/settings.custom" || got.SpecID != "reference/settings.custom" || got.Kind != "doc" {
-		t.Fatalf("expected docs-relative document result, got %+v", got)
+	if got.Path != "specs/auth.md" || got.SpecID != "specs/auth.md" || got.Kind != "doc" {
+		t.Fatalf("expected docs-relative Markdown document result, got %+v", got)
 	}
 	if len(search.Panels.CodeSemantic) != 0 {
-		t.Fatalf("docs files should not be duplicated in code semantic results: %+v", search.Panels.CodeSemantic)
+		t.Fatalf("Markdown docs should not be duplicated in code semantic results: %+v", search.Panels.CodeSemantic)
 	}
 
 	res, err = http.Get(ts.URL + "/api/files?path=docs/reference/settings.custom")
@@ -406,6 +440,55 @@ func TestPreviewSearchScansAllTextFilesUnderDocs(t *testing.T) {
 	}
 	if !strings.Contains(file.Raw, "preview_index_all_docs_files") {
 		t.Fatalf("docs text file preview returned wrong content: %+v", file)
+	}
+}
+
+func TestPreviewSearchScansMarkdownAndHTMLAcrossRepo(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "README.md", "# Readme\n\nRoot repo markdown covers repo_wide_markdown_search.\n")
+	writeTestFile(t, root, "guides/setup.html", "<h1>Setup</h1><p>repo_wide_html_search marker.</p>\n")
+	writeTestFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	initGitRepo(t, root, "docs/_index.md", "README.md", "guides/setup.html", "main.go")
+
+	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
+	ts := httptest.NewServer(server.srv.Handler)
+	defer ts.Close()
+	defer func() { _ = server.shutdown(context.Background()) }()
+
+	res, err := http.Get(ts.URL + "/api/search?q=repo_wide_markdown_search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var markdownSearch previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&markdownSearch); err != nil {
+		t.Fatal(err)
+	}
+	if len(markdownSearch.Panels.DocsSemantic) == 0 || markdownSearch.Panels.DocsSemantic[0].Path != "README.md" {
+		t.Fatalf("expected repo root Markdown in docs semantic results: %+v", markdownSearch.Panels)
+	}
+	if markdownSearch.Panels.DocsSemantic[0].SpecID != "" {
+		t.Fatalf("repo Markdown outside docs root should open as file, got spec id: %+v", markdownSearch.Panels.DocsSemantic[0])
+	}
+	if len(markdownSearch.Panels.CodeSemantic) != 0 {
+		t.Fatalf("repo Markdown should not be duplicated in code semantic results: %+v", markdownSearch.Panels.CodeSemantic)
+	}
+
+	res, err = http.Get(ts.URL + "/api/search?q=repo_wide_html_search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var htmlSearch previewSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&htmlSearch); err != nil {
+		t.Fatal(err)
+	}
+	if len(htmlSearch.Panels.DocsSemantic) == 0 || htmlSearch.Panels.DocsSemantic[0].Path != "guides/setup.html" {
+		t.Fatalf("expected repo HTML in docs semantic results: %+v", htmlSearch.Panels)
+	}
+	if len(htmlSearch.Panels.CodeSemantic) != 0 {
+		t.Fatalf("repo HTML should not be duplicated in code semantic results: %+v", htmlSearch.Panels.CodeSemantic)
 	}
 }
 
@@ -1173,9 +1256,13 @@ func TestPreviewHelpIsAccepted(t *testing.T) {
 }
 
 func TestPreviewChildArgsPickAutoPortOnce(t *testing.T) {
-	args, err := previewChildArgs([]string{"--project", "."})
+	projectRoot := t.TempDir()
+	args, err := previewChildArgs([]string{}, projectRoot)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := strings.Join(args[:2], " "); got != "--project "+projectRoot {
+		t.Fatalf("preview child args should inject the caller project root, got %+v", args)
 	}
 	if !containsString(args, "--addr") {
 		t.Fatalf("preview child args should include an auto-picked address: %+v", args)
@@ -1190,12 +1277,27 @@ func TestPreviewChildArgsPickAutoPortOnce(t *testing.T) {
 }
 
 func TestPreviewChildArgsPreserveExplicitAddr(t *testing.T) {
-	args, err := previewChildArgs([]string{"--project", ".", "--addr", "127.0.0.1:9999"})
+	projectRoot := t.TempDir()
+	args, err := previewChildArgs([]string{"--project", ".", "--addr", "127.0.0.1:9999"}, projectRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(args, " "); got != "--project . --addr 127.0.0.1:9999" {
+	if got := strings.Join(args, " "); got != "--addr 127.0.0.1:9999 --project "+projectRoot {
 		t.Fatalf("preview child args should preserve explicit addr, got %q", got)
+	}
+}
+
+func TestPreviewChildArgsNormalizesExplicitProjectForSupervisor(t *testing.T) {
+	projectRoot := t.TempDir()
+	args, err := previewChildArgs([]string{"--project=.", "--open"}, projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(args, "--project") || !containsString(args, projectRoot) {
+		t.Fatalf("preview child args should replace relative project with normalized caller project root: %+v", args)
+	}
+	if strings.Contains(strings.Join(args, " "), "--project=.") {
+		t.Fatalf("preview child args should not preserve relative project for child running from module root: %+v", args)
 	}
 }
 
@@ -1557,8 +1659,8 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		t.Fatalf("Vue preview search panel missing docs semantic or docs graph section")
 	}
 	docsSemanticBlock := string(searchPanel)[docsSemanticStart:docsGraphStart]
-	if strings.Contains(docsSemanticBlock, "openFilePreview") || strings.Contains(docsSemanticBlock, "file-code") {
-		t.Fatalf("Docs Semantic results should only expose doc preview actions")
+	if !strings.Contains(docsSemanticBlock, "openSpecPreview") || !strings.Contains(docsSemanticBlock, "openFilePreview") {
+		t.Fatalf("Docs Semantic results should expose doc and repo Markdown/HTML file preview actions")
 	}
 	docsDomainStart := strings.Index(string(searchPanel), `data-search-domain-panel="docs"`)
 	codeDomainStart := strings.Index(string(searchPanel), `data-search-domain-panel="code"`)
@@ -1753,6 +1855,11 @@ func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
 	for _, want := range []string{"renderMarkdownPreview", "loadToastMarkdownViewer", "toastui-editor-viewer", "toastMarkdownCustomRenderer", "renderToastMarkdownLoading", "Loading Markdown preview...", "codeBlock", "data-source-language", "markdown-wysiwyg-host", "markdown-toast-viewer", ".markdown-toast-viewer .toastui-editor-contents", ".metadata-table", "padding: 18px 25px", "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI Markdown rendering missing %s", want)
+		}
+	}
+	for _, want := range []string{".markdown-wysiwyg-host .toastui-editor-contents", "TOAST UI ships fixed viewer colors", "color: hsl(var(--bc))", "blockquote p"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview UI Markdown theme contrast CSS missing %s", want)
 		}
 	}
 }

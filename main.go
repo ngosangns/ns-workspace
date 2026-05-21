@@ -32,13 +32,16 @@ func run(args []string) error {
 		return nil
 	}
 	switch cmd {
-	case "init", "update", "status", "doctor", "registry", "agents", "catalog", "preview":
+	case "init", "update", "status", "doctor", "registry", "agents", "catalog", "preview", "graph":
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 	if cmd == "preview" {
 		return preview.Run(args[1:])
+	}
+	if cmd == "graph" {
+		return preview.RunGraph(args[1:])
 	}
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
@@ -89,6 +92,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest registry [flags]
   go run github.com/ngosangns/ns-workspace@latest agents [flags]
   go run github.com/ngosangns/ns-workspace@latest preview [flags]
+  go run github.com/ngosangns/ns-workspace@latest graph [flags]
 
 Local checkout usage:
   cd /path/to/ns-workspace
@@ -107,5 +111,12 @@ Preview flags:
   --project PATH      project root to inspect, default current directory
   --docs-dir PATH     docs directory, default docs
   --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
-  --open              open browser after the server starts`)
+  --open              open browser after the server starts
+
+Graph flags:
+  --project PATH      project root to inspect, default current directory
+  --docs-dir PATH     docs directory, default docs
+  --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
+  --out PATH          generated launcher HTML path, default ./ns-workspace-graph.html
+  --no-open           write the launcher without opening the browser`)
 }

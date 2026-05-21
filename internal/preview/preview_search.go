@@ -1937,7 +1937,11 @@ func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]d
 	docs := make([]docsSearchDoc, 0, len(specs))
 	seen := map[string]bool{}
 	for _, doc := range specs {
-		docProjectRel := relPath(projectRoot, filepath.Join(docsRoot, filepath.FromSlash(doc.Path)))
+		docPath := filepath.Join(docsRoot, filepath.FromSlash(doc.Path))
+		if !isSearchableDocsPath(docPath) {
+			continue
+		}
+		docProjectRel := relPath(projectRoot, docPath)
 		if gitFilesKnown && !gitFiles[docProjectRel] {
 			continue
 		}
@@ -1950,53 +1954,80 @@ func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]d
 			SpecID:      doc.ID,
 			Kind:        "doc",
 		})
-		seen[doc.ID] = true
+		seen[docProjectRel] = true
 	}
 	warnings := []string{}
-	err := filepath.WalkDir(docsRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	if gitFilesKnown {
+		rels := make([]string, 0, len(gitFiles))
+		for rel := range gitFiles {
+			rels = append(rels, rel)
 		}
-		if d.IsDir() {
-			return nil
+		sort.Strings(rels)
+		for _, rel := range rels {
+			if shouldSkipGitSearchPath(rel) || seen[rel] {
+				continue
+			}
+			path := filepath.Join(projectRoot, filepath.FromSlash(rel))
+			if !isSearchableDocsPath(path) {
+				continue
+			}
+			doc, ok := readDocsSearchFile(projectRoot, path, rel)
+			if !ok {
+				continue
+			}
+			docs = append(docs, doc)
+			seen[rel] = true
 		}
-		docRel, err := filepath.Rel(docsRoot, path)
-		if err != nil {
+	} else {
+		err := filepath.WalkDir(projectRoot, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			name := d.Name()
+			if d.IsDir() {
+				if shouldSkipSearchDir(name) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			projectRel := relPath(projectRoot, path)
+			if seen[projectRel] || !isSearchableDocsPath(path) {
+				return nil
+			}
+			doc, ok := readDocsSearchFile(projectRoot, path, projectRel)
+			if !ok {
+				return nil
+			}
+			docs = append(docs, doc)
+			seen[projectRel] = true
 			return nil
-		}
-		docRel = filepath.ToSlash(docRel)
-		if seen[docRel] {
-			return nil
-		}
-		projectRel := relPath(projectRoot, path)
-		if gitFilesKnown && !gitFiles[projectRel] {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil || info.Size() > maxSearchFileBytes {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil || !utf8.Valid(data) {
-			return nil
-		}
-		docs = append(docs, docsSearchDoc{
-			ID:      projectRel,
-			Title:   filepath.Base(path),
-			Path:    projectRel,
-			Content: string(data),
-			Kind:    "file",
 		})
-		seen[docRel] = true
-		return nil
-	})
-	if err != nil {
-		warnings = append(warnings, "Docs search scan failed: "+err.Error())
+		if err != nil {
+			warnings = append(warnings, "Docs search scan failed: "+err.Error())
+		}
 	}
 	sort.Slice(docs, func(i, j int) bool {
 		return docs[i].Path < docs[j].Path
 	})
 	return docs, warnings
+}
+
+func readDocsSearchFile(projectRoot, path, projectRel string) (docsSearchDoc, bool) {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Size() > maxSearchFileBytes {
+		return docsSearchDoc{}, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !utf8.Valid(data) {
+		return docsSearchDoc{}, false
+	}
+	return docsSearchDoc{
+		ID:      projectRel,
+		Title:   filepath.Base(path),
+		Path:    projectRel,
+		Content: string(data),
+		Kind:    "file",
+	}, true
 }
 
 func scanCodeSearchDocs(projectRoot, docsRoot string) ([]codeSearchDoc, []string) {
@@ -2135,7 +2166,16 @@ func shouldSkipSearchDir(name string) bool {
 }
 
 func isSearchableCodePath(path string) bool {
-	return isPreviewableFilePath(path) && filepath.Ext(path) != ".md"
+	return isPreviewableFilePath(path) && !isSearchableDocsPath(path)
+}
+
+func isSearchableDocsPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".md", ".html", ".htm":
+		return true
+	default:
+		return false
+	}
 }
 
 func isPreviewableFilePath(path string) bool {

@@ -18,8 +18,8 @@ Knowledge base trong thư mục `docs/` mô tả trạng thái hiện tại củ
 - Bắt đầu với [Chỉ mục](./_index.md) để xem toàn bộ tài liệu đã được nối graph.
 - Đọc [Kiến trúc tổng quan](./architecture/overview.md) để hiểu CLI, adapter sync và preview web.
 - Đọc [Preview web](./features/preview-web.md) và [Module preview](./modules/preview.md) khi làm việc với `go run . preview`.
-- Đọc các plan trong [specs/planning](./specs/planning/) trước khi triển khai những thay đổi lớn.
+- Khi cần triển khai thay đổi lớn, tạo plan mới trong `docs/specs/planning/` trước rồi link plan đó vào chỉ mục sau khi file tồn tại.
 
 ## Quy Ước
 
-Tài liệu shipped hoặc mô tả hành vi hiện tại nằm trong `docs/features/`, `docs/modules/`, `docs/architecture/` và `docs/shared/`. Plan chưa hoặc vừa triển khai theo từng yêu cầu nằm trong `docs/specs/planning/`. Mọi file quan trọng phải có `## Meta` với các field `**Status**`, `**Compliance**` và `**Links**`, dùng link tương đối thật tới tài liệu liên quan để preview graph đi được hai chiều.
+Tài liệu shipped hoặc mô tả hành vi hiện tại nằm trong `docs/features/`, `docs/modules/`, `docs/architecture/` và `docs/shared/`. Plan chưa hoặc đang triển khai theo từng yêu cầu nằm trong `docs/specs/planning/` khi có file cụ thể. Mọi file quan trọng phải có `## Meta` với các field `**Status**`, `**Compliance**` và `**Links**`, dùng link tương đối thật tới tài liệu liên quan để preview graph đi được hai chiều.

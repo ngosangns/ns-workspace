@@ -6,13 +6,13 @@
     "build:preview": "vite build",
     "check:preview": "vue-tsc -p tsconfig.vue.json --noEmit",
     "lint:docs": "npm run lint:docs:markdown && npm run lint:docs:html",
-    "lint:docs:html": "html-validate \"docs/**/*.html\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/index.html\"",
+    "lint:docs:html": "html-validate \"docs/**/*.html\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/*.html\"",
     "lint:docs:markdown": "markdownlint-cli2 \"README.md\" \"docs/**/*.md\" \"presets/**/*.md\"",
     "lint:preview": "eslint internal/preview/preview_ui_src",
-    "format:docs": "prettier --ignore-unknown --write README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/index.html\"",
-    "format:docs:check": "prettier --ignore-unknown --check README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/index.html\"",
-    "format:preview": "prettier --ignore-unknown --write package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.{ts,vue}\" internal/preview/preview_ui/index.html",
-    "format:preview:check": "prettier --ignore-unknown --check package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.{ts,vue}\" internal/preview/preview_ui/index.html"
+    "format:docs": "prettier --ignore-unknown --write README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/*.html\"",
+    "format:docs:check": "prettier --ignore-unknown --check README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\" \"internal/preview/preview_ui_src/**/*.html\" \"internal/preview/preview_ui/*.html\"",
+    "format:preview": "prettier --ignore-unknown --write package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.{html,ts,vue}\" \"internal/preview/preview_ui/*.html\"",
+    "format:preview:check": "prettier --ignore-unknown --check package.json package-lock.json tsconfig.preview.json eslint.config.mjs .prettierrc.json .prettierignore README.md \"docs/**/*.md\" \"internal/preview/preview_ui_src/**/*.{html,ts,vue}\" \"internal/preview/preview_ui/*.html\""
   },
   "devDependencies": {
     "@eslint/js": "^9.26.0",

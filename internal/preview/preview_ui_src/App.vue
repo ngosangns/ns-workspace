@@ -501,7 +501,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen lg:pl-[22rem]">
+  <div class="preview-layout min-h-screen">
     <Sidebar
       :project="project"
       :specs="specs"
