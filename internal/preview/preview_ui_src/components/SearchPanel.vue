@@ -610,6 +610,14 @@ onUnmounted(() => {
                 <button v-if="result.specId" class="btn btn-primary btn-xs" type="button" @click="emit('openSpecPreview', result.specId)">
                   <Icon name="file-text" class="h-3.5 w-3.5" />Preview doc
                 </button>
+                <button
+                  v-else-if="result.path"
+                  class="btn btn-outline btn-xs"
+                  type="button"
+                  @click="emit('openFilePreview', result.path, result.line || 0)"
+                >
+                  <Icon name="file-text" class="h-3.5 w-3.5" />Preview file
+                </button>
               </div>
             </article>
             <div v-if="panelResults('docsSemantic').length === 0 && !searchLoading" class="search-empty">No document semantic matches.</div>

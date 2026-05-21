@@ -58,9 +58,10 @@ function isExpanded(path: string): boolean {
   <div>
     <button
       v-if="node.type === 'folder'"
-      class="tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 px-2 text-left font-medium"
+      class="tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 overflow-hidden px-2 text-left font-medium"
       :class="{ 'btn-active': selectedFolderPath === node.path }"
       :style="{ paddingLeft: paddingLeft }"
+      :title="node.path"
       @click="handleFolderClick(node.path)"
     >
       <Icon
@@ -70,17 +71,18 @@ function isExpanded(path: string): boolean {
         @click="handleToggleFolder(node.path, $event)"
       />
       <Icon name="folder" class="h-4 w-4 shrink-0 text-base-content/60" />
-      <span class="truncate">{{ node.name }}</span>
+      <span class="min-w-0 flex-1 truncate">{{ node.name }}</span>
     </button>
     <button
       v-else-if="node.spec"
-      class="tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 px-2 text-left font-normal"
+      class="tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 overflow-hidden px-2 text-left font-normal"
       :class="{ 'btn-active': selectedId === node.spec.id }"
       :style="{ paddingLeft: `${(depth || 0) * 16 + 24}px` }"
+      :title="node.spec.path"
       @click="emit('selectSpec', node.spec.id)"
     >
       <Icon name="file-text" class="h-4 w-4 shrink-0 text-base-content/55" />
-      <span class="truncate">{{ displaySpecName(node.spec) }}</span>
+      <span class="min-w-0 flex-1 truncate">{{ displaySpecName(node.spec) }}</span>
     </button>
 
     <!-- Render children recursively when folder is expanded -->

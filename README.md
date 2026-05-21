@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent có thể nhận cùng một bộ workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph khi project có dữ liệu `graphify-out/graph.json`.
+Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph khi project có dữ liệu `graphify-out/graph.json`. Lệnh `graph` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại.
 
 ## Trạng Thái
 
@@ -35,6 +35,7 @@ Nếu đang làm trong checkout local:
 go run . status
 go run . doctor
 go run . preview --project . --open
+go run . graph --project .
 ```
 
 Khi muốn dùng checkout này để preview một project khác, chạy `go run .` từ thư mục `ns-workspace` và trỏ `--project` sang project cần đọc:
@@ -90,6 +91,7 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 | `agents`   | Liệt kê adapter được hỗ trợ, support tier và artifact support.                                                 |
 | `catalog`  | Alias của `agents`.                                                                                            |
 | `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                     |
+| `graph`    | Sinh HTML launcher trong thư mục hiện tại và mở Search/Code Graph standalone bằng local API server.            |
 
 ## Flag Hay Dùng
 
@@ -139,7 +141,7 @@ Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<a
 
 ## Docs Preview
 
-Lệnh `preview` chạy một localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph dùng `graphify-out/graph.json` nếu file này tồn tại.
+Lệnh `preview` chạy một localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph dùng `graphify-out/graph.json` nếu file này tồn tại. Bản `go run github.com/ngosangns/ns-workspace@latest preview` dùng static preview UI đã được Go embed, nên không yêu cầu Node.js ở runtime.
 
 Ví dụ:
 
@@ -160,7 +162,7 @@ Preview flags:
 --no-reload
 ```
 
-Preview frontend source nằm trong `internal/preview/preview_ui_src/` và được build thành static assets trong `internal/preview/preview_ui/` để Go có thể embed. Khi sửa preview UI:
+Preview frontend source nằm trong `internal/preview/preview_ui_src/` và được build thành static assets trong `internal/preview/preview_ui/` để Go có thể embed. `internal/preview/preview_ui/index.html`, `style.css`, `favicon.svg` và bundle JS hashed trong `internal/preview/preview_ui/assets/` phải được cập nhật cùng nhau sau khi build để bản module `@latest` serve được đầy đủ asset. Khi sửa preview UI:
 
 ```bash
 npm install
@@ -168,6 +170,25 @@ npm run check:preview
 npm run lint:preview
 npm run format:preview
 npm run build:preview
+```
+
+## Graph Search Standalone
+
+Lệnh `graph` dùng cùng backend search với `preview`, nhưng mở trực tiếp entry Search standalone. Command tạo file launcher mặc định `ns-workspace-graph.html` trong thư mục đang chạy, start local API server, rồi mở browser mặc định tới launcher đó. File launcher trỏ tới server đang chạy, nên command cần tiếp tục sống trong terminal để search động hoạt động.
+
+```bash
+go run github.com/ngosangns/ns-workspace@latest graph --project ~/path/to/project
+go run . graph --project . --out ./search-graph.html
+```
+
+Graph flags:
+
+```bash
+--project PATH
+--docs-dir docs
+--addr 127.0.0.1:0
+--out ./ns-workspace-graph.html
+--no-open
 ```
 
 ## Phát Triển

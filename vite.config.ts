@@ -11,7 +11,10 @@ export default defineConfig({
     outDir: "../preview_ui",
     emptyOutDir: true,
     rollupOptions: {
-      input: "internal/preview/preview_ui_src/index.html",
+      input: {
+        index: resolve(__dirname, "internal/preview/preview_ui_src/index.html"),
+        search: resolve(__dirname, "internal/preview/preview_ui_src/search.html"),
+      },
     },
   },
   resolve: {

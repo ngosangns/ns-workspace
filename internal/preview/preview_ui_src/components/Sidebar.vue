@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import TreeNode from "./TreeNode.vue";
 import Icon from "./Icon.vue";
 
@@ -32,6 +32,11 @@ const emit = defineEmits<{
 
 const search = ref("");
 const expandedPaths = ref(new Set<string>());
+const sidebarWidth = ref(352);
+const isResizing = ref(false);
+const sidebarWidthStorageKey = "spec-preview-sidebar-width";
+const minSidebarWidth = 256;
+const maxSidebarWidth = 560;
 
 const filteredSpecs = computed(() => {
   const query = search.value.toLowerCase().trim();
@@ -100,6 +105,86 @@ function autoExpandForSelection() {
   }
 }
 
+function clampSidebarWidth(width: number): number {
+  return Math.min(maxSidebarWidth, Math.max(minSidebarWidth, Math.round(width)));
+}
+
+function applySidebarWidth(width: number) {
+  sidebarWidth.value = clampSidebarWidth(width);
+  // Keep the fixed sidebar and the main content offset in sync across components.
+  document.documentElement.style.setProperty("--preview-sidebar-width", `${sidebarWidth.value}px`);
+}
+
+function persistSidebarWidth() {
+  localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidth.value));
+}
+
+function restoreSidebarWidth() {
+  const stored = Number(localStorage.getItem(sidebarWidthStorageKey) || "");
+  if (Number.isFinite(stored) && stored > 0) {
+    applySidebarWidth(stored);
+    return;
+  }
+  applySidebarWidth(sidebarWidth.value);
+}
+
+function handleResizePointerMove(event: PointerEvent) {
+  if (!isResizing.value) return;
+  applySidebarWidth(event.clientX);
+}
+
+function stopSidebarResize() {
+  if (!isResizing.value) return;
+  isResizing.value = false;
+  document.body.classList.remove("is-resizing-sidebar");
+  persistSidebarWidth();
+}
+
+function startSidebarResize(event: PointerEvent) {
+  if (event.button !== 0) return;
+  isResizing.value = true;
+  document.body.classList.add("is-resizing-sidebar");
+  applySidebarWidth(event.clientX);
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+}
+
+function nudgeSidebarWidth(delta: number) {
+  applySidebarWidth(sidebarWidth.value + delta);
+  persistSidebarWidth();
+}
+
+function handleResizeKeydown(event: KeyboardEvent) {
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    nudgeSidebarWidth(event.shiftKey ? -48 : -16);
+  } else if (event.key === "ArrowRight") {
+    event.preventDefault();
+    nudgeSidebarWidth(event.shiftKey ? 48 : 16);
+  } else if (event.key === "Home") {
+    event.preventDefault();
+    applySidebarWidth(minSidebarWidth);
+    persistSidebarWidth();
+  } else if (event.key === "End") {
+    event.preventDefault();
+    applySidebarWidth(maxSidebarWidth);
+    persistSidebarWidth();
+  }
+}
+
+onMounted(() => {
+  restoreSidebarWidth();
+  window.addEventListener("pointermove", handleResizePointerMove);
+  window.addEventListener("pointerup", stopSidebarResize);
+  window.addEventListener("pointercancel", stopSidebarResize);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("pointermove", handleResizePointerMove);
+  window.removeEventListener("pointerup", stopSidebarResize);
+  window.removeEventListener("pointercancel", stopSidebarResize);
+  document.body.classList.remove("is-resizing-sidebar");
+});
+
 watch(
   () => props.selectedId,
   () => autoExpandForSelection(),
@@ -109,7 +194,7 @@ watch(
 
 <template>
   <aside
-    class="border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[22rem] lg:max-h-none lg:border-b-0 lg:border-r"
+    class="preview-sidebar border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:max-h-none lg:border-b-0 lg:border-r"
   >
     <div class="mb-4 flex items-center gap-3">
       <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content">
@@ -144,5 +229,18 @@ watch(
         @toggle-folder="toggleFolder"
       />
     </nav>
+
+    <div
+      class="sidebar-resize-handle hidden lg:block"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      tabindex="0"
+      :aria-valuemin="minSidebarWidth"
+      :aria-valuemax="maxSidebarWidth"
+      :aria-valuenow="sidebarWidth"
+      @pointerdown="startSidebarResize"
+      @keydown="handleResizeKeydown"
+    ></div>
   </aside>
 </template>

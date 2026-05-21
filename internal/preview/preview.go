@@ -55,14 +55,11 @@ func Run(args []string) error {
 		}
 		return err
 	}
+	opt.projectRoot = normalizePreviewProjectRoot(opt.projectRoot)
 	if !opt.noReload {
 		if root, ok := previewModuleRoot(cwd); ok {
-			return runHotReloadSupervisor(root, args)
+			return runHotReloadSupervisor(root, args, opt.projectRoot)
 		}
-	}
-	opt.projectRoot = expandPath(opt.projectRoot)
-	if abs, err := filepath.Abs(opt.projectRoot); err == nil {
-		opt.projectRoot = abs
 	}
 
 	server := newPreviewServer(opt)
@@ -106,13 +103,13 @@ func previewModuleRoot(start string) (string, bool) {
 	}
 }
 
-func runHotReloadSupervisor(moduleRoot string, args []string) error {
+func runHotReloadSupervisor(moduleRoot string, args []string, projectRoot string) error {
 	fmt.Println("docs preview hot reload: watching Go backend and frontend sources")
 	if err := buildPreviewFrontend(moduleRoot); err != nil {
 		return err
 	}
 	tokens := previewSourceTokens(moduleRoot)
-	childArgs, err := previewChildArgs(args)
+	childArgs, err := previewChildArgs(args, projectRoot)
 	if err != nil {
 		return err
 	}
@@ -185,8 +182,10 @@ func buildPreviewFrontend(moduleRoot string) error {
 	return cmd.Run()
 }
 
-func previewChildArgs(args []string) ([]string, error) {
+func previewChildArgs(args []string, projectRoot string) ([]string, error) {
 	childArgs := stripPreviewSupervisorFlags(args)
+	childArgs = stripPreviewProjectFlag(childArgs)
+	childArgs = append(childArgs, "--project", projectRoot)
 	if previewArgsHaveAddrFlag(childArgs) {
 		return childArgs, nil
 	}
@@ -195,6 +194,14 @@ func previewChildArgs(args []string) ([]string, error) {
 		return nil, err
 	}
 	return append(childArgs, "--addr", addr), nil
+}
+
+func normalizePreviewProjectRoot(path string) string {
+	path = expandPath(path)
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
 }
 
 func previewArgsHaveAddrFlag(args []string) bool {
@@ -254,6 +261,22 @@ func stripPreviewSupervisorFlags(args []string) []string {
 			continue
 		}
 		if strings.HasPrefix(arg, "--no-reload=") {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+func stripPreviewProjectFlag(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--project" || arg == "-project" {
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--project=") || strings.HasPrefix(arg, "-project=") {
 			continue
 		}
 		out = append(out, arg)
