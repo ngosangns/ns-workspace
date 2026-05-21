@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -216,6 +217,24 @@ Hello **docs**.
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("preview static asset was not served: %s", res.Status)
+	}
+
+	// The published module must include the hashed Vite bundle referenced by index.html.
+	indexHTML, err := previewUIFS.ReadFile("preview_ui/index.html")
+	if err != nil {
+		t.Fatalf("read embedded preview index: %v", err)
+	}
+	assetPath := regexp.MustCompile(`src="(/assets/[^"]+\.js)"`).FindStringSubmatch(string(indexHTML))
+	if len(assetPath) != 2 {
+		t.Fatalf("preview index should reference a hashed JS bundle: %s", indexHTML)
+	}
+	res, err = http.Get(ts.URL + assetPath[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("preview JS bundle was not served: %s", res.Status)
 	}
 }
 

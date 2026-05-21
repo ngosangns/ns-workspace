@@ -30,4 +30,5 @@ graphify-out/
 node_modules/
 
 # Preview UI build output
-internal/preview/preview_ui/
+internal/preview/preview_ui/assets/*
+!internal/preview/preview_ui/assets/*.js
