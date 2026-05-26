@@ -36,6 +36,7 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".agents", "skills", "spawn-sub-agent", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
+	mustExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
@@ -143,6 +144,31 @@ func TestKiroCLISelectionUsesKiroAdapter(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustNotExist(t, filepath.Join(home, ".qwen", "settings.json"))
+}
+
+func TestGrokSelectionCreatesNativeSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("grok"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	mustExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
+	mustNotExist(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
 }
 
 func TestKiroHomeOverrideUsesKiroPresetPaths(t *testing.T) {

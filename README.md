@@ -1,6 +1,6 @@
 # ns-workspace
 
-`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo này gom một bộ preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của từng tool như Claude Code, OpenCode, Kimi, Kiro, Qwen, Gemini, Codex, Cline, Windsurf và Aider.
+`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo này gom một bộ preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của từng tool như Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Gemini, Codex, Cline, Windsurf và Aider.
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent có thể nhận cùng một bộ workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
@@ -99,7 +99,7 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 --agents-home ~/.agents
 --tools all
 --tools stable
---tools claude,opencode,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,cursor,trae
+--tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,cursor,trae
 --tools kiro-cli
 --dry-run
 --force
@@ -118,7 +118,7 @@ Dùng `--copy` nếu không muốn tạo symlink.
 - Registry-managed skills: `~/.agents/registry/skills.json`
 - Shared settings/hooks: `~/.agents/settings.json`
 - Shared MCP presets: `~/.agents/mcp/servers.json`
-- User-level adapters cho Claude Code, OpenCode, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf, Aider, Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
+- User-level adapters cho Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf, Aider, Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 
 ## Adapter Support
 
@@ -128,6 +128,7 @@ Stable adapters ghi vào các user-level path đã biết:
 | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
 | OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                |
+| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build             |
 | Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                  |
 | Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`; `--tools kiro-cli` là alias của `kiro`        |
 | Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                              |
