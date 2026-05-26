@@ -14,6 +14,11 @@
       "name": "graphify",
       "source": "howell5/willhong-skills",
       "skill": "graphify"
+    },
+    {
+      "name": "gitbutler",
+      "source": "gitbutlerapp/gitbutler",
+      "skill": "but"
     }
   ]
 }
