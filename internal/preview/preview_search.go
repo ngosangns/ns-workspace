@@ -2,6 +2,7 @@ package preview
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -81,31 +82,9 @@ type previewSearchNeighbor struct {
 	Line       int    `json:"line,omitempty"`
 }
 
-type graphifyGraph struct {
-	Nodes         map[string]graphifyNode
-	Links         []graphifyLink
-	Neighbors     map[string][]previewSearchNeighbor
-	OwnerLabels   map[string]string
-	GitFiles      map[string]bool
-	GitFilesKnown bool
-	Warnings      []string
-}
-
-type graphifyNode struct {
-	ID             string
-	Label          string
-	FileType       string
-	SourceFile     string
-	SourceLocation string
-	Community      string
-	NormLabel      string
-}
-
-type graphifyLink struct {
-	Source     string
-	Target     string
-	Relation   string
-	Confidence string
+type previewCodeGraphProvider interface {
+	SearchCodeGraph(ctx context.Context, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) ([]previewSearchResult, []string)
+	Close(ctx context.Context) error
 }
 
 type graphSearchAnchor struct {
@@ -123,35 +102,11 @@ type docsGraphIndex struct {
 	Edges map[string][]graphEdge
 }
 
-type graphifyIndex struct {
-	Nodes map[string]graphifyNode
-	Keys  map[string][]string
-	Edges map[string][]graphifyEdge
-	Root  string
-	Docs  bool
-}
-
-type graphifyEdge struct {
-	To         string
-	Relation   string
-	Confidence string
-	Direction  string
-}
-
 type codeSearchDoc struct {
 	ID      string
 	Title   string
 	Path    string
 	Content string
-}
-
-type codeGraphCandidate struct {
-	ID        string
-	Node      graphifyNode
-	Title     string
-	Path      string
-	Score     float64
-	Exactness int
 }
 
 type searchEvidence struct {
@@ -235,15 +190,14 @@ func (ps *previewServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 	warnings := []string{}
 	if err != nil {
 		project = emptySearchProject(ps.opt.projectRoot, ps.opt.docsDir)
-		warnings = append(warnings, "Docs directory is unavailable; searching code and graphify data only: "+err.Error())
+		warnings = append(warnings, "Docs directory is unavailable; searching code and LSP code graph only: "+err.Error())
 	}
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	mode := "hybrid"
 	keywordOperator := parseSearchKeywordOperator(r.URL.Query().Get("keywordOp"))
 	limit := parseSearchLimit(r.URL.Query().Get("limit"))
-	graphify := loadGraphifyGraph(ps.opt.projectRoot)
-	response := buildPreviewSearchResponse(project, graphify, ps.opt.projectRoot, query, mode, keywordOperator, limit)
+	response := buildPreviewSearchResponse(r.Context(), project, ps.codeGraph, ps.opt.projectRoot, query, mode, keywordOperator, limit)
 	response.Warnings = append(warnings, response.Warnings...)
 	writeJSON(w, response)
 }
@@ -265,13 +219,12 @@ func emptySearchProject(projectRoot, docsDir string) specProject {
 	}
 }
 
-func buildPreviewSearchResponse(project specProject, graphify graphifyGraph, projectRoot, query, mode, keywordOperator string, limit int) previewSearchResponse {
+func buildPreviewSearchResponse(ctx context.Context, project specProject, codeGraph previewCodeGraphProvider, projectRoot, query, mode, keywordOperator string, limit int) previewSearchResponse {
 	response := previewSearchResponse{
 		Query:           query,
 		Mode:            mode,
 		KeywordOperator: keywordOperator,
 		Stats:           map[string]int{},
-		Warnings:        append([]string{}, graphify.Warnings...),
 	}
 	if query == "" {
 		response.Warnings = append(response.Warnings, "Enter a query to search docs and code.")
@@ -315,8 +268,12 @@ func buildPreviewSearchResponse(project specProject, graphify graphifyGraph, pro
 		}
 	}
 	if mode != "keyword" && mode != "semantic" {
-		response.Panels.DocsGraph = searchDocsGraph(project.Graph, graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, limit)
-		response.Panels.CodeGraph = searchCodeGraph(graphify, projectRoot, searchQuery, tokens, exclusionQuery, exclusionTokens, limit)
+		response.Panels.DocsGraph = searchDocsGraph(project.Graph, searchQuery, tokens, exclusionQuery, exclusionTokens, limit)
+		if codeGraph != nil {
+			var codeWarnings []string
+			response.Panels.CodeGraph, codeWarnings = codeGraph.SearchCodeGraph(ctx, searchQuery, tokens, exclusionQuery, exclusionTokens, limit)
+			response.Warnings = append(response.Warnings, codeWarnings...)
+		}
 		boostSemanticWithGraph(response.Panels.DocsSemantic, response.Panels.DocsGraph)
 		boostSemanticWithGraph(response.Panels.CodeSemantic, response.Panels.CodeGraph)
 	}
@@ -804,11 +761,11 @@ func combineSearchScores(keyword, semantic float64, mode string) (float64, []str
 	}
 }
 
-func searchDocsGraph(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
-	return searchDocsGraphByQuery(graph, graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
+func searchDocsGraph(graph specGraph, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
+	return searchDocsGraphByQuery(graph, query, tokens, exclusionQuery, exclusionTokens, limit)
 }
 
-func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
+func searchDocsGraphByQuery(graph specGraph, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
 	results := []previewSearchResult{}
 	for _, node := range graph.Nodes {
 		haystack := strings.Join([]string{node.ID, node.Label, node.Path, node.Category, node.Status}, " ")
@@ -832,281 +789,17 @@ func searchDocsGraphByQuery(graph specGraph, graphify graphifyGraph, projectRoot
 			Neighbors: limitNeighbors(docGraphNeighbors(graph, node.ID), 8),
 		})
 	}
-	for _, result := range searchGraphifyNodes(graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit*2, true) {
-		result.ID = "docs-graphify:" + result.NodeID
-		results = append(results, result)
-	}
 	sortSearchResults(results)
 	return limitResults(dedupeSearchResults(results), limit)
 }
 
-func searchCodeGraph(graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
-	return searchCodeGraphByQuery(graphify, projectRoot, query, tokens, exclusionQuery, exclusionTokens, limit)
-}
-
-func searchCodeGraphByQuery(graphify graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) []previewSearchResult {
-	resultsByNode := map[string]previewSearchResult{}
-	index := newGraphifyIndex(graphify, projectRoot, false)
-	candidates := make([]codeGraphCandidate, 0, len(index.Nodes))
-	for id, node := range index.Nodes {
-		haystack := codeGraphNodeHaystack(graphify, projectRoot, node)
-		if excludedByKeywordSearch(exclusionQuery, exclusionTokens, node.Label, graphifyNodeProjectRel(projectRoot, node), haystack) {
-			continue
-		}
-		title := graphifyNodeTitle(graphify, projectRoot, node, false)
-		path := graphifyNodeProjectRel(projectRoot, node)
-		evidence := codeGraphSearchEvidence(graphify, projectRoot, node, query, tokens)
-		if evidence.Score <= 0 {
-			continue
-		}
-		candidates = append(candidates, codeGraphCandidate{
-			ID:        id,
-			Node:      node,
-			Title:     title,
-			Path:      path,
-			Score:     evidence.Score,
-			Exactness: evidence.Exactness,
-		})
-	}
-	sortCodeGraphCandidates(candidates)
-	for _, candidate := range limitCodeGraphCandidates(candidates, limit) {
-		anchorResults := map[string]previewSearchResult{}
-		expandCodeGraphCallFlow(graphify, index, projectRoot, candidate.ID, candidate.Score, limit, anchorResults)
-		for _, result := range anchorResults {
-			mergeGraphResult(resultsByNode, result)
-		}
-	}
-	results := make([]previewSearchResult, 0, len(resultsByNode))
-	for _, result := range resultsByNode {
-		result.ID = "code-graphify:" + result.NodeID
-		results = append(results, result)
-	}
-	sortSearchResults(results)
-	return limitResults(dedupeSearchResults(results), graphExpansionLimit(limit))
-}
-
-func sortCodeGraphCandidates(candidates []codeGraphCandidate) {
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].Score != candidates[j].Score {
-			return candidates[i].Score > candidates[j].Score
-		}
-		if candidates[i].Exactness != candidates[j].Exactness {
-			return candidates[i].Exactness > candidates[j].Exactness
-		}
-		if candidates[i].Title != candidates[j].Title {
-			return candidates[i].Title < candidates[j].Title
-		}
-		if candidates[i].Path != candidates[j].Path {
-			return candidates[i].Path < candidates[j].Path
-		}
-		return candidates[i].ID < candidates[j].ID
-	})
-}
-
-func limitCodeGraphCandidates(candidates []codeGraphCandidate, limit int) []codeGraphCandidate {
-	if len(candidates) == 0 {
-		return candidates
-	}
-	if limit <= 0 {
-		limit = defaultSearchLimit
-	}
-	// Expand only the best direct matches first; each anchor gets its own local expansion budget.
-	candidateLimit := minInt(len(candidates), maxInt(limit, limit*2))
-	return candidates[:candidateLimit]
-}
-
-func searchGraphifyNodes(graph graphifyGraph, projectRoot, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int, docs bool) []previewSearchResult {
-	results := []previewSearchResult{}
-	for _, node := range graph.Nodes {
-		if classifyGraphifyNode(node) == "doc" != docs {
-			continue
-		}
-		if !docs && !isCodeGraphNode(graph, projectRoot, node) {
-			continue
-		}
-		haystack := graphifyNodeHaystack(node)
-		if !docs {
-			haystack = codeGraphNodeHaystack(graph, projectRoot, node)
-		}
-		if excludedByKeywordSearch(exclusionQuery, exclusionTokens, node.Label, graphifyNodeProjectRel(projectRoot, node), haystack) {
-			continue
-		}
-		score := graphScore(query, tokens, haystack)
-		if score <= 0 {
-			continue
-		}
-		line := lineFromLocation(node.SourceLocation)
-		results = append(results, previewSearchResult{
-			Title:      graphifyNodeTitle(graph, projectRoot, node, docs),
-			Path:       graphifyNodeProjectRel(projectRoot, node),
-			Kind:       firstNonEmpty(node.FileType, "graph-node"),
-			Source:     "graphify",
-			Line:       line,
-			Score:      score,
-			MatchedBy:  []string{"graph"},
-			NodeID:     node.ID,
-			Community:  node.Community,
-			Neighbors:  graphifySearchNeighbors(graph, projectRoot, node.ID, docs),
-			Confidence: "graphify",
-		})
-	}
-	sortSearchResults(results)
-	return limitResults(results, limit)
-}
-
-func expandCodeGraphCallFlow(graph graphifyGraph, index graphifyIndex, projectRoot, startID string, startScore float64, limit int, results map[string]previewSearchResult) {
-	// Code Graph is a call graph: class/member containers enrich labels but never become result nodes.
-	if node, ok := index.Nodes[startID]; ok {
-		result := graphifyNodeSearchResult(graph, projectRoot, node, startScore, []string{"graph"}, false)
-		result.Anchor = true
-		result.AnchorID = startID
-		result.FlowAnchor = startID
-		mergeGraphResult(results, result)
-	}
-	expandDirectedCallFlow(graph, index, projectRoot, startID, startID, startScore, graphExpansionLimit(limit), results)
-}
-
-func expandDirectedCallFlow(graph graphifyGraph, index graphifyIndex, projectRoot, seedID, anchorID string, startScore float64, limit int, results map[string]previewSearchResult) {
-	type queued struct {
-		ID          string
-		Depth       int
-		ReachedSeed bool
-	}
-	rootDepths := map[string]int{seedID: 0}
-	queue := []queued{{ID: seedID}}
-	for len(queue) > 0 && len(rootDepths) < limit {
-		item := queue[0]
-		queue = queue[1:]
-		for _, edge := range sortedCodeGraphFlowEdges(index.Edges[item.ID]) {
-			if !isCallRelation(edge.Relation) || edge.Direction != "incoming" {
-				continue
-			}
-			if _, seen := rootDepths[edge.To]; seen {
-				continue
-			}
-			rootDepths[edge.To] = item.Depth + 1
-			queue = append(queue, queued{ID: edge.To, Depth: item.Depth + 1})
-		}
-	}
-	roots := []queued{}
-	for id, depth := range rootDepths {
-		hasIncoming := false
-		for _, edge := range index.Edges[id] {
-			if isCallRelation(edge.Relation) && edge.Direction == "incoming" {
-				hasIncoming = true
-				break
-			}
-		}
-		if !hasIncoming {
-			roots = append(roots, queued{ID: id, Depth: depth, ReachedSeed: id == seedID})
-		}
-	}
-	if len(roots) == 0 {
-		roots = append(roots, queued{ID: seedID, ReachedSeed: true})
-	}
-	sort.Slice(roots, func(i, j int) bool {
-		if roots[i].Depth != roots[j].Depth {
-			return roots[i].Depth > roots[j].Depth
-		}
-		return roots[i].ID < roots[j].ID
-	})
-	seen := map[string]bool{}
-	queue = roots
-	for len(queue) > 0 && len(results) < limit {
-		item := queue[0]
-		queue = queue[1:]
-		seenKey := fmt.Sprintf("%s:%t", item.ID, item.ReachedSeed)
-		if seen[seenKey] {
-			continue
-		}
-		seen[seenKey] = true
-		edge := graphifyEdge{}
-		switch {
-		case item.ID == seedID:
-			edge = graphifyEdge{}
-		case item.ReachedSeed:
-			edge = graphifyEdge{Relation: "calls", Direction: "outgoing"}
-		case rootDepths[item.ID] == item.Depth:
-			edge = graphifyEdge{Relation: "calls", Direction: "root-caller"}
-		default:
-			edge = graphifyEdge{Relation: "calls", Direction: "incoming"}
-		}
-		node, ok := index.Nodes[item.ID]
-		if ok {
-			result := graphifyNodeSearchResult(graph, projectRoot, node, codeGraphFlowScore(startScore, item.Depth, edge), codeGraphFlowMatchedBy(item.Depth, edge), false)
-			result.Anchor = item.ID == anchorID
-			result.AnchorID = anchorID
-			result.Depth = item.Depth
-			result.FlowAnchor = anchorID
-			result.FlowDepth = item.Depth
-			mergeGraphResult(results, result)
-		}
-		for _, edge := range sortedCodeGraphFlowEdges(index.Edges[item.ID]) {
-			if !isCallRelation(edge.Relation) || edge.Direction != "outgoing" {
-				continue
-			}
-			queue = append(queue, queued{ID: edge.To, Depth: item.Depth + 1, ReachedSeed: item.ReachedSeed || edge.To == seedID})
-		}
-	}
-}
-
-func sortedCodeGraphFlowEdges(edges []graphifyEdge) []graphifyEdge {
-	out := append([]graphifyEdge{}, edges...)
-	sort.SliceStable(out, func(i, j int) bool {
-		left := codeGraphFlowEdgePriority(out[i])
-		right := codeGraphFlowEdgePriority(out[j])
-		if left != right {
-			return left < right
-		}
-		if out[i].Relation != out[j].Relation {
-			return out[i].Relation < out[j].Relation
-		}
-		return out[i].To < out[j].To
-	})
-	return out
-}
-
-func codeGraphFlowEdgePriority(edge graphifyEdge) int {
-	relation := strings.ToLower(strings.TrimSpace(edge.Relation))
-	if isCallRelation(relation) {
-		if edge.Direction == "incoming" {
-			return 0
-		}
-		return 1
-	}
-	if relation == "method" {
-		return 2
-	}
-	if relation == "contains" {
-		return 3
-	}
-	return 4
-}
-
-func codeGraphFlowScore(anchorScore float64, depth int, edge graphifyEdge) float64 {
+func codeGraphFlowScore(anchorScore float64, depth int, relation string) float64 {
 	score := graphExpansionScore(anchorScore, depth)
-	relation := strings.ToLower(strings.TrimSpace(edge.Relation))
+	relation = strings.ToLower(strings.TrimSpace(relation))
 	if depth >= 1 && isCallRelation(relation) {
 		return roundScore(math.Max(score, anchorScore-0.03))
 	}
 	return score
-}
-
-func codeGraphFlowMatchedBy(depth int, edge graphifyEdge) []string {
-	if depth == 0 {
-		return []string{"graph"}
-	}
-	relation := strings.ToLower(strings.TrimSpace(edge.Relation))
-	if isCallRelation(relation) {
-		if edge.Direction == "root-caller" {
-			return []string{"graph-root-caller", "graph-caller", "graph-flow"}
-		}
-		if edge.Direction == "incoming" {
-			return []string{"graph-caller", "graph-flow"}
-		}
-		return []string{"graph-callee", "graph-flow"}
-	}
-	return []string{"graph-flow"}
 }
 
 func isCallRelation(relation string) bool {
@@ -1124,32 +817,6 @@ func searchDocsGraphFromSemantic(graph specGraph, semantic []previewSearchResult
 	for _, anchor := range anchors {
 		for _, nodeID := range index.match(anchor) {
 			expandDocsGraphAnchor(graph, index, nodeID, anchor, limit, results)
-			if len(results) >= limit {
-				break
-			}
-		}
-		if len(results) >= limit {
-			break
-		}
-	}
-	out := make([]previewSearchResult, 0, len(results))
-	for _, result := range results {
-		out = append(out, result)
-	}
-	sortSearchResults(out)
-	return limitResults(out, limit)
-}
-
-func searchGraphifyFromSemantic(graph graphifyGraph, projectRoot string, semantic []previewSearchResult, limit int, docs bool) []previewSearchResult {
-	if len(semantic) == 0 || len(graph.Nodes) == 0 {
-		return nil
-	}
-	index := newGraphifyIndex(graph, projectRoot, docs)
-	anchors := graphAnchorsFromSemantic(semantic)
-	results := map[string]previewSearchResult{}
-	for _, anchor := range anchors {
-		for _, nodeID := range index.match(anchor) {
-			expandGraphifyAnchor(graph, index, projectRoot, nodeID, anchor, limit, results)
 			if len(results) >= limit {
 				break
 			}
@@ -1210,58 +877,6 @@ func expandDocsGraphAnchor(graph specGraph, index docsGraphIndex, startID string
 	}
 }
 
-func expandGraphifyAnchor(graph graphifyGraph, index graphifyIndex, projectRoot, startID string, anchor graphSearchAnchor, limit int, results map[string]previewSearchResult) {
-	type queued struct {
-		ID    string
-		Depth int
-	}
-	seen := map[string]bool{startID: true}
-	queue := []queued{{ID: startID}}
-	for len(queue) > 0 && len(results) < limit {
-		item := queue[0]
-		queue = queue[1:]
-		node, ok := index.Nodes[item.ID]
-		if !ok {
-			continue
-		}
-		result := graphifyNodeSearchResult(graph, projectRoot, node, graphExpansionScore(anchor.Score, item.Depth), graphExpansionMatchedBy(item.Depth), index.Docs)
-		result.Anchor = item.Depth == 0
-		result.AnchorID = anchor.ID
-		result.Depth = item.Depth
-		result.Neighbors = graphifySearchNeighbors(graph, projectRoot, node.ID, index.Docs)
-		mergeGraphResult(results, result)
-		if item.Depth >= graphExpansionDepth(limit) {
-			continue
-		}
-		for _, edge := range index.Edges[item.ID] {
-			nextID := edge.To
-			if seen[nextID] {
-				continue
-			}
-			seen[nextID] = true
-			queue = append(queue, queued{ID: nextID, Depth: item.Depth + 1})
-		}
-	}
-}
-
-func graphifyNodeSearchResult(graph graphifyGraph, projectRoot string, node graphifyNode, score float64, matchedBy []string, docs bool) previewSearchResult {
-	line := lineFromLocation(node.SourceLocation)
-	return previewSearchResult{
-		Title:      graphifyNodeTitle(graph, projectRoot, node, docs),
-		Path:       graphifyNodeProjectRel(projectRoot, node),
-		Kind:       firstNonEmpty(node.FileType, "graph-node"),
-		Source:     "graphify",
-		Line:       line,
-		Score:      score,
-		MatchedBy:  matchedBy,
-		NodeID:     node.ID,
-		Community:  node.Community,
-		Neighbors:  graphifySearchNeighbors(graph, projectRoot, node.ID, docs),
-		Confidence: "graphify",
-		FlowRole:   codeGraphFlowRole(matchedBy),
-	}
-}
-
 func codeGraphFlowRole(matchedBy []string) string {
 	switch {
 	case containsString(matchedBy, "graph-root-caller"):
@@ -1277,27 +892,6 @@ func codeGraphFlowRole(matchedBy []string) string {
 	default:
 		return ""
 	}
-}
-
-func graphifySearchNeighbors(graph graphifyGraph, projectRoot, nodeID string, docs bool) []previewSearchNeighbor {
-	neighbors := graph.Neighbors[nodeID]
-	if docs {
-		return limitNeighbors(neighbors, maxGraphNeighborUI)
-	}
-	filtered := make([]previewSearchNeighbor, 0, len(neighbors))
-	for _, neighbor := range neighbors {
-		node, ok := graph.Nodes[neighbor.ID]
-		if !ok {
-			continue
-		}
-		// Code Graph must not reintroduce docs, untracked files, or file-only nodes through neighbor rendering.
-		if !isCodeGraphNode(graph, projectRoot, node) {
-			continue
-		}
-		neighbor.Label = graphifyNodeTitle(graph, projectRoot, node, false)
-		filtered = append(filtered, neighbor)
-	}
-	return limitNeighbors(filtered, maxGraphNeighborUI)
 }
 
 func docGraphNeighbors(graph specGraph, nodeID string) []previewSearchNeighbor {
@@ -1345,61 +939,6 @@ func (index docsGraphIndex) match(anchor graphSearchAnchor) []string {
 	return matches
 }
 
-func newGraphifyIndex(graph graphifyGraph, projectRoot string, docs bool) graphifyIndex {
-	index := graphifyIndex{
-		Nodes: map[string]graphifyNode{},
-		Keys:  map[string][]string{},
-		Edges: map[string][]graphifyEdge{},
-		Root:  projectRoot,
-		Docs:  docs,
-	}
-	for id, node := range graph.Nodes {
-		if classifyGraphifyNode(node) == "doc" != docs {
-			continue
-		}
-		if !docs && !isCodeGraphNode(graph, projectRoot, node) {
-			continue
-		}
-		index.Nodes[id] = node
-		for _, key := range graphifyNodeKeys(graph, node, projectRoot, docs) {
-			index.Keys[key] = appendUniqueString(index.Keys[key], id)
-		}
-	}
-	for _, link := range graph.Links {
-		if _, ok := index.Nodes[link.Source]; !ok {
-			continue
-		}
-		if _, ok := index.Nodes[link.Target]; !ok {
-			continue
-		}
-		index.Edges[link.Source] = append(index.Edges[link.Source], graphifyEdge{To: link.Target, Relation: link.Relation, Confidence: link.Confidence, Direction: "outgoing"})
-		index.Edges[link.Target] = append(index.Edges[link.Target], graphifyEdge{To: link.Source, Relation: link.Relation, Confidence: link.Confidence, Direction: "incoming"})
-	}
-	return index
-}
-
-func (index graphifyIndex) match(anchor graphSearchAnchor) []string {
-	matches := []string{}
-	for _, key := range anchorKeys(anchor) {
-		for _, nodeID := range index.Keys[key] {
-			matches = appendUniqueString(matches, nodeID)
-		}
-	}
-	if len(matches) > 0 {
-		return matches
-	}
-	for id, node := range index.Nodes {
-		if anchor.Path != "" && graphPathMatches(relPath(index.Root, node.SourceFile), anchor.Path) {
-			matches = appendUniqueString(matches, id)
-			continue
-		}
-		if anchor.Title != "" && fuzzyGraphKeyMatch(anchor.Title, strings.Join([]string{node.ID, node.Label, node.NormLabel}, " ")) {
-			matches = appendUniqueString(matches, id)
-		}
-	}
-	return matches
-}
-
 func graphAnchorsFromSemantic(semantic []previewSearchResult) []graphSearchAnchor {
 	anchors := make([]graphSearchAnchor, 0, len(semantic))
 	for _, result := range semantic {
@@ -1430,15 +969,6 @@ func graphNodeKeys(node graphNode) []string {
 	return normalizedGraphKeys(values...)
 }
 
-func graphifyNodeKeys(graph graphifyGraph, node graphifyNode, projectRoot string, docs bool) []string {
-	rel := graphifyNodeProjectRel(projectRoot, node)
-	values := []string{node.ID, node.Label, node.NormLabel, rel, strings.TrimPrefix(rel, "docs/"), filepath.Base(rel)}
-	if !docs {
-		values = append(values, graphifyCodeOwnerLabel(graph, projectRoot, node), graphifyNodeTitle(graph, projectRoot, node, false))
-	}
-	return normalizedGraphKeys(values...)
-}
-
 func anchorKeys(anchor graphSearchAnchor) []string {
 	values := []string{anchor.ID, anchor.Title, anchor.Path, anchor.SpecID}
 	if anchor.Path != "" {
@@ -1461,18 +991,6 @@ func normalizedGraphKeys(values ...string) []string {
 		}
 	}
 	return keys
-}
-
-func graphPathMatches(sourcePath, anchorPath string) bool {
-	sourcePath = strings.TrimPrefix(strings.ToLower(filepath.ToSlash(sourcePath)), "./")
-	anchorPath = strings.TrimPrefix(strings.ToLower(filepath.ToSlash(anchorPath)), "./")
-	return sourcePath == anchorPath || strings.TrimPrefix(sourcePath, "docs/") == strings.TrimPrefix(anchorPath, "docs/") || strings.HasSuffix(sourcePath, "/"+anchorPath)
-}
-
-func fuzzyGraphKeyMatch(needle, haystack string) bool {
-	needleKey := strings.Join(searchTokens(needle), "")
-	haystackKey := strings.Join(searchTokens(haystack), "")
-	return needleKey != "" && haystackKey != "" && (strings.Contains(haystackKey, needleKey) || strings.Contains(needleKey, haystackKey))
 }
 
 func graphExpansionLimit(limit int) int {
@@ -1643,15 +1161,6 @@ func mergeMatchMethods(methods []string, method string) []string {
 }
 
 func codeKeywordEvidence(query string, tokens []string, title string, path string, symbols []string, content string) searchEvidence {
-	return searchFieldEvidence(query, tokens, title, path, symbols, content)
-}
-
-func codeGraphSearchEvidence(graph graphifyGraph, projectRoot string, node graphifyNode, query string, tokens []string) searchEvidence {
-	title := graphifyNodeTitle(graph, projectRoot, node, false)
-	owner := graphifyCodeOwnerLabel(graph, projectRoot, node)
-	symbols := []string{node.ID, node.Label, node.NormLabel, owner, title}
-	path := graphifyNodeProjectRel(projectRoot, node)
-	content := strings.Join([]string{node.FileType, node.SourceFile, node.SourceLocation, node.Community}, " ")
 	return searchFieldEvidence(query, tokens, title, path, symbols, content)
 }
 
@@ -2256,144 +1765,6 @@ func languageForPath(path string) string {
 	}
 }
 
-func loadGraphifyGraph(projectRoot string) graphifyGraph {
-	gitFiles, gitFilesKnown := gitTrackedFiles(projectRoot)
-	graph := graphifyGraph{
-		Nodes:         map[string]graphifyNode{},
-		Neighbors:     map[string][]previewSearchNeighbor{},
-		OwnerLabels:   map[string]string{},
-		GitFiles:      gitFiles,
-		GitFilesKnown: gitFilesKnown,
-	}
-	path := filepath.Join(projectRoot, "graphify-out", "graph.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		graph.Warnings = append(graph.Warnings, "Graphify graph not found; code graph panel will use available sources only.")
-		return graph
-	}
-	var raw struct {
-		Nodes []map[string]any `json:"nodes"`
-		Links []map[string]any `json:"links"`
-		Edges []map[string]any `json:"edges"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		graph.Warnings = append(graph.Warnings, "Graphify graph could not be parsed: "+err.Error())
-		return graph
-	}
-	for _, item := range raw.Nodes {
-		node := graphifyNode{
-			ID:             stringField(item, "id"),
-			Label:          stringField(item, "label"),
-			FileType:       stringField(item, "file_type"),
-			SourceFile:     stringField(item, "source_file"),
-			SourceLocation: stringField(item, "source_location"),
-			Community:      stringField(item, "community"),
-			NormLabel:      stringField(item, "norm_label"),
-		}
-		if node.ID == "" {
-			continue
-		}
-		graph.Nodes[node.ID] = node
-	}
-	for _, link := range append(raw.Links, raw.Edges...) {
-		edge := graphifyLink{
-			Source:     firstNonEmpty(stringField(link, "source"), stringField(link, "_src"), stringField(link, "from")),
-			Target:     firstNonEmpty(stringField(link, "target"), stringField(link, "_tgt"), stringField(link, "to")),
-			Relation:   firstNonEmpty(stringField(link, "relation"), stringField(link, "type"), stringField(link, "label")),
-			Confidence: stringField(link, "confidence"),
-		}
-		if edge.Source == "" || edge.Target == "" {
-			continue
-		}
-		graph.Links = append(graph.Links, edge)
-		target := graph.Nodes[edge.Target]
-		source := graph.Nodes[edge.Source]
-		graph.Neighbors[edge.Source] = append(graph.Neighbors[edge.Source], previewSearchNeighbor{
-			ID:         edge.Target,
-			Label:      firstNonEmpty(target.Label, edge.Target),
-			Relation:   edge.Relation,
-			Confidence: edge.Confidence,
-			Direction:  "outgoing",
-			SourceID:   edge.Source,
-			TargetID:   edge.Target,
-			Path:       cleanProjectRel(projectRoot, target.SourceFile),
-			Line:       lineFromLocation(target.SourceLocation),
-		})
-		graph.Neighbors[edge.Target] = append(graph.Neighbors[edge.Target], previewSearchNeighbor{
-			ID:         edge.Source,
-			Label:      firstNonEmpty(source.Label, edge.Source),
-			Relation:   edge.Relation,
-			Confidence: edge.Confidence,
-			Direction:  "incoming",
-			SourceID:   edge.Source,
-			TargetID:   edge.Target,
-			Path:       cleanProjectRel(projectRoot, source.SourceFile),
-			Line:       lineFromLocation(source.SourceLocation),
-		})
-	}
-	graph.OwnerLabels = buildGraphifyOwnerLabels(graph, projectRoot)
-	return graph
-}
-
-func classifyGraphifyNode(node graphifyNode) string {
-	ext := strings.ToLower(filepath.Ext(node.SourceFile))
-	if node.FileType == "doc" || ext == ".md" {
-		return "doc"
-	}
-	return "code"
-}
-
-func graphifyNodeHaystack(node graphifyNode) string {
-	return strings.Join([]string{node.ID, node.Label, node.NormLabel, node.FileType, node.SourceFile, node.SourceLocation, node.Community}, " ")
-}
-
-func codeGraphNodeHaystack(graph graphifyGraph, projectRoot string, node graphifyNode) string {
-	return strings.Join([]string{
-		graphifyNodeHaystack(node),
-		graphifyNodeProjectRel(projectRoot, node),
-		graphifyCodeOwnerLabel(graph, projectRoot, node),
-		graphifyNodeTitle(graph, projectRoot, node, false),
-	}, " ")
-}
-
-func graphifyNodeIsGitTracked(graph graphifyGraph, projectRoot string, node graphifyNode) bool {
-	if !graph.GitFilesKnown {
-		return false
-	}
-	rel := graphifyNodeProjectRel(projectRoot, node)
-	return graph.GitFiles[rel]
-}
-
-func isCodeGraphNode(graph graphifyGraph, projectRoot string, node graphifyNode) bool {
-	if classifyGraphifyNode(node) == "doc" || !graphifyNodeIsGitTracked(graph, projectRoot, node) || isGraphifyFileOnlyNode(projectRoot, node) {
-		return false
-	}
-	return isGraphifyCallableNode(node)
-}
-
-func isGraphifyCallableNode(node graphifyNode) bool {
-	label := strings.TrimSpace(firstNonEmpty(node.Label, node.NormLabel, node.ID))
-	return strings.Contains(label, "(") && strings.Contains(label, ")")
-}
-
-func isGraphifyFileOnlyNode(projectRoot string, node graphifyNode) bool {
-	rel := graphifyNodeProjectRel(projectRoot, node)
-	base := filepath.Base(rel)
-	label := strings.TrimSpace(node.Label)
-	if label == "" {
-		label = strings.TrimSpace(node.NormLabel)
-	}
-	if !strings.EqualFold(label, base) {
-		return false
-	}
-	line := lineFromLocation(node.SourceLocation)
-	return line == 0 || line == 1
-}
-
-func graphifyNodeProjectRel(projectRoot string, node graphifyNode) string {
-	return cleanProjectRel(projectRoot, node.SourceFile)
-}
-
 func cleanProjectRel(projectRoot, path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -2412,223 +1783,6 @@ func cleanRelPath(path string) string {
 		return ""
 	}
 	return path
-}
-
-func graphifyNodeTitle(graph graphifyGraph, projectRoot string, node graphifyNode, docs bool) string {
-	label := firstNonEmpty(node.Label, node.NormLabel, node.ID)
-	if docs || !isGraphifyCallableNode(node) {
-		return label
-	}
-	owner := graphifyCodeOwnerLabel(graph, projectRoot, node)
-	if owner == "" {
-		return label
-	}
-	return prefixedMethodLabel(owner, label)
-}
-
-func graphifyCodeOwnerLabel(graph graphifyGraph, projectRoot string, node graphifyNode) string {
-	if !isGraphifyCallableNode(node) {
-		return ""
-	}
-	return graph.OwnerLabels[node.ID]
-}
-
-func isCodeGraphOwnerRelation(relation string) bool {
-	relation = strings.ToLower(strings.TrimSpace(relation))
-	return relation == "method" || relation == "contains"
-}
-
-func graphifyCodeOwnerDisplayLabel(node graphifyNode) string {
-	label := strings.TrimSpace(firstNonEmpty(node.Label, node.NormLabel, node.ID))
-	fields := strings.Fields(label)
-	if len(fields) == 0 {
-		return label
-	}
-	// Graphify can include declaration modifiers in class labels; method prefixes should use the class name.
-	skip := 0
-	for skip < len(fields) {
-		field := strings.ToLower(strings.Trim(fields[skip], " \t\n\r"))
-		if field != "abstract" && field != "class" && field != "interface" && field != "struct" && field != "type" {
-			break
-		}
-		skip++
-	}
-	if skip < len(fields) {
-		return strings.Join(fields[skip:], " ")
-	}
-	return label
-}
-
-func buildGraphifyOwnerLabels(graph graphifyGraph, projectRoot string) map[string]string {
-	owners := map[string]string{}
-	for _, link := range graph.Links {
-		if !isCodeGraphOwnerRelation(link.Relation) {
-			continue
-		}
-		node, nodeOK := graph.Nodes[link.Target]
-		owner, ownerOK := graph.Nodes[link.Source]
-		if !nodeOK || !ownerOK || !isGraphifyCallableNode(node) || !isGraphifyOwnerCandidate(graph, projectRoot, owner, node) {
-			continue
-		}
-		owners[node.ID] = graphifyCodeOwnerDisplayLabel(owner)
-	}
-
-	byFile := graphifyOwnerCandidatesByFile(graph, projectRoot)
-	for _, node := range graph.Nodes {
-		if owners[node.ID] != "" || !isCodeGraphNode(graph, projectRoot, node) {
-			continue
-		}
-		fileOwners := byFile[graphifyNodeProjectRel(projectRoot, node)]
-		if owner := graphifyOwnerLabelByNodeID(fileOwners, node); owner != "" {
-			owners[node.ID] = owner
-			continue
-		}
-		if owner := graphifyOwnerLabelBySourceOrder(fileOwners, node); owner != "" {
-			owners[node.ID] = owner
-		}
-	}
-	return owners
-}
-
-func graphifyOwnerCandidatesByFile(graph graphifyGraph, projectRoot string) map[string][]graphifyNode {
-	byFile := map[string][]graphifyNode{}
-	for _, node := range graph.Nodes {
-		if classifyGraphifyNode(node) == "doc" || isGraphifyFileOnlyNode(projectRoot, node) || isGraphifyCallableNode(node) || !graphifyNodeIsGitTracked(graph, projectRoot, node) {
-			continue
-		}
-		rel := graphifyNodeProjectRel(projectRoot, node)
-		byFile[rel] = append(byFile[rel], node)
-	}
-	for rel := range byFile {
-		sort.Slice(byFile[rel], func(i, j int) bool {
-			leftLine := lineFromLocation(byFile[rel][i].SourceLocation)
-			rightLine := lineFromLocation(byFile[rel][j].SourceLocation)
-			if leftLine != rightLine {
-				return leftLine < rightLine
-			}
-			return byFile[rel][i].ID < byFile[rel][j].ID
-		})
-	}
-	return byFile
-}
-
-func graphifyOwnerLabelByNodeID(fileOwners []graphifyNode, node graphifyNode) string {
-	nodeID := normalizedGraphID(node.ID)
-	if nodeID == "" {
-		return ""
-	}
-	best := graphifyNode{}
-	bestLen := 0
-	for _, owner := range fileOwners {
-		ownerID := normalizedGraphID(owner.ID)
-		if ownerID == "" || !strings.HasPrefix(nodeID, ownerID+"_") || len(ownerID) <= bestLen {
-			continue
-		}
-		best = owner
-		bestLen = len(ownerID)
-	}
-	if bestLen == 0 {
-		return ""
-	}
-	return graphifyCodeOwnerDisplayLabel(best)
-}
-
-func graphifyOwnerLabelBySourceOrder(fileOwners []graphifyNode, node graphifyNode) string {
-	line := lineFromLocation(node.SourceLocation)
-	if line <= 0 {
-		return ""
-	}
-	best := graphifyNode{}
-	bestLine := 0
-	for _, owner := range fileOwners {
-		ownerLine := lineFromLocation(owner.SourceLocation)
-		if ownerLine >= line {
-			break
-		}
-		if ownerLine <= 0 || ownerLine <= bestLine || !graphifyOwnerLabelHasDeclarationMarker(owner) {
-			continue
-		}
-		best = owner
-		bestLine = ownerLine
-	}
-	if bestLine == 0 {
-		return ""
-	}
-	return graphifyCodeOwnerDisplayLabel(best)
-}
-
-func isGraphifyOwnerCandidate(graph graphifyGraph, projectRoot string, owner graphifyNode, node graphifyNode) bool {
-	if owner.ID == "" || owner.ID == node.ID || !sameCleanProjectRel(projectRoot, owner.SourceFile, node.SourceFile) {
-		return false
-	}
-	if classifyGraphifyNode(owner) == "doc" || isGraphifyFileOnlyNode(projectRoot, owner) || isGraphifyCallableNode(owner) {
-		return false
-	}
-	return graphifyNodeIsGitTracked(graph, projectRoot, owner)
-}
-
-func graphifyOwnerLabelHasDeclarationMarker(node graphifyNode) bool {
-	label := strings.ToLower(strings.TrimSpace(firstNonEmpty(node.Label, node.NormLabel)))
-	return strings.Contains(label, "abstract ") || strings.Contains(label, "class ") || strings.Contains(label, "interface ") || strings.Contains(label, "struct ") || strings.Contains(label, "type ")
-}
-
-func sameCleanProjectRel(projectRoot, left, right string) bool {
-	return cleanProjectRel(projectRoot, left) == cleanProjectRel(projectRoot, right)
-}
-
-func normalizedGraphID(value string) string {
-	return strings.Join(searchTokens(value), "_")
-}
-
-func prefixedMethodLabel(owner, label string) string {
-	owner = strings.TrimSpace(owner)
-	label = strings.TrimSpace(label)
-	if owner == "" || label == "" {
-		return firstNonEmpty(label, owner)
-	}
-	for _, prefix := range []string{owner + ".", owner + "#", owner + "::", "(" + owner + ")"} {
-		if strings.HasPrefix(label, prefix) {
-			return label
-		}
-	}
-	return owner + "." + strings.TrimPrefix(label, ".")
-}
-
-func stringField(item map[string]any, key string) string {
-	value, ok := item[key]
-	if !ok || value == nil {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case float64:
-		if typed == math.Trunc(typed) {
-			return strconv.Itoa(int(typed))
-		}
-		return strconv.FormatFloat(typed, 'f', -1, 64)
-	default:
-		return strings.TrimSpace(strings.Trim(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(toJSONish(typed)), "\n", " "), "\t", " "), `"`))
-	}
-}
-
-func toJSONish(value any) string {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
-func lineFromLocation(value string) int {
-	for _, pattern := range []string{`(?i)\bL(\d+)\b`, `(?i)\bline\s+(\d+)\b`, `:(\d+)(?::\d+)?(?:\D*$|$)`} {
-		match := regexp.MustCompile(pattern).FindStringSubmatch(value)
-		if len(match) == 2 {
-			line, _ := strconv.Atoi(match[1])
-			return line
-		}
-	}
-	return 0
 }
 
 func (cfg previewEmbeddingConfig) embedBatch(texts []string) ([][]float32, error) {

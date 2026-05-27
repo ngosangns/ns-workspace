@@ -49,8 +49,8 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	if !strings.Contains(string(data), "context7") || !strings.Contains(string(data), "figma") {
 		t.Fatalf("qwen settings did not include MCP preset: %s", data)
 	}
-	if !strings.Contains(string(data), "PreToolUse") || !strings.Contains(string(data), "graphify-out/graph.json") {
-		t.Fatalf("qwen settings did not include shared hooks: %s", data)
+	if strings.Contains(string(data), "PreToolUse") || strings.Contains(string(data), "graphify-out/graph.json") {
+		t.Fatalf("qwen settings should not install graphify hooks: %s", data)
 	}
 
 	kiro, err := os.ReadFile(filepath.Join(home, ".kiro", "settings", "mcp.json"))

@@ -1,5 +1,7 @@
 # Cải Thiện Tốc Độ Preview Search
 
+> Ghi chú 2026-05-27: phần Code Graph/Graphify trong kế hoạch này là bối cảnh lịch sử. Thiết kế hiện tại thay Code Graph bằng LSP runtime trong [Thay Code Graph Graphify Bằng LSP](./lsp-code-graph-search.md); các ý tưởng cache còn lại chỉ áp dụng cho docs/code semantic search và embedding index.
+
 ## Bối Cảnh
 
 Preview Search hiện phục vụ cả Search tab trong `preview` và Search standalone của lệnh `graph`. Backend chính nằm trong `internal/preview/preview_search.go`; entry HTTP là `handleSearch()`, sau đó gọi `ps.load()`, `loadGraphifyGraph()` và `buildPreviewSearchResponse()`.

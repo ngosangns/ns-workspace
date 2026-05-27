@@ -21,7 +21,7 @@
 
 ## Quan Hệ
 
-Preview đọc `docs/_index.md` và `docs/_sync.md` khi có, đồng thời scan toàn bộ file text dưới `docs/`. Bảng `## Modules` trong `_index.md`, field `**Links**` trong `## Meta`, relationship map và dependency diagram tạo thành graph điều hướng. Search page và Search standalone đọc docs corpus, source code corpus ngoài `docs/`, và `graphify-out/graph.json` nếu tồn tại.
+Preview đọc `docs/_index.md` và `docs/_sync.md` khi có, đồng thời scan toàn bộ file text dưới `docs/`. Bảng `## Modules` trong `_index.md`, field `**Links**` trong `## Meta`, relationship map và dependency diagram tạo thành graph điều hướng. Search page và Search standalone đọc docs corpus, source code corpus ngoài `docs/`, và Code Graph dựng symbol graph từ LSP trên source code tracked bởi Git khi language server tương ứng có sẵn.
 
 ## Quyết Định Liên Quan
 

@@ -19,7 +19,6 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 | `internal/preview/preview_ui/`     | Static build output được Go embed; `index.html`, `search.html`, `style.css`, `favicon.svg` và bundle JS hashed là artifact release của preview/graph. |
 | `presets/`                         | Preset embedded cho agents, skills, settings, subagents, registry, OpenCode và MCP servers.                                                           |
 | `docs/`                            | Knowledge base hiện trạng của repo, gồm index, sync snapshot, architecture, modules, features, specs.                                                 |
-| `graphify-out/`                    | Output graphify local, dùng bởi preview/code graph khi có, không commit.                                                                              |
 
 ## Chạy CLI Local
 
@@ -111,4 +110,5 @@ Docs trong `docs/` mô tả trạng thái hiện tại, không giữ changelog d
 - Repo có thể ghi vào user-level config thật; luôn dùng `--dry-run` trước với thay đổi adapter hoặc preset.
 - `--force` thay thế file đã tồn tại trong `init`, nên chỉ dùng khi đã đọc diff/backups.
 - Preview search có thể dùng embedding runtime local nếu được cấu hình; fallback lexical vẫn phải cho kết quả hợp lý khi embedding không khả dụng.
-- `graphify-out/` và `node_modules/` là dữ liệu local, không phải source of truth.
+- Code Graph dựa vào language server cài trong môi trường local; resolver kiểm tra `PATH`, Go bin dirs như `GOBIN`/`GOPATH/bin`/`~/go/bin` và local `node_modules/.bin`. Khi LSP binary thiếu hoặc không hỗ trợ call hierarchy/references, search phải fail-open bằng warning thay vì làm hỏng preview.
+- `node_modules/` là dữ liệu local, không phải source of truth.

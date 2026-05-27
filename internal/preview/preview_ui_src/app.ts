@@ -960,7 +960,7 @@ function renderSearchResult(result, panelName) {
     ...(result.matchedBy || []),
     result.community ? `community ${result.community}` : "",
     result.relation,
-    result.confidence && result.confidence !== "graphify" ? result.confidence : "",
+    result.confidence && result.confidence !== "lsp" ? result.confidence : "",
   ].filter(Boolean);
   const neighbors = renderSearchNeighbors(result.neighbors || []);
   const actions = renderSearchResultActions(result, panelName);
