@@ -173,28 +173,26 @@ Không thêm field nếu không có giá trị thật. Không tạo bảng metad
 ## Quy Trình
 
 1. Kiểm tra trạng thái hiện tại bằng `git status --short` và định vị docs hiện có bằng `rg --files ./docs` khi `./docs` tồn tại. Nếu cần tạo docs mới, tạo bên trong `./docs`.
-2. Nếu `graphify-out/GRAPH_REPORT.md` tồn tại, đọc file này trước khi search raw code để nắm god nodes, community structure và các knowledge gaps hiện tại.
-3. Đọc `./docs/_sync.md` trước nếu file này tồn tại. Trích xuất synced commit/HEAD từ đó. Nếu user nêu target commit, dùng commit đó làm target; nếu không thì dùng `HEAD`. Nếu không có sync state, xem docs là chưa sync và dùng commit liên quan cũ nhất hoặc diff hiện tại của worktree làm nguồn so sánh.
-4. So sánh sync-state commit với target commit. Dùng cả commit summaries và diffs:
+2. Đọc `./docs/_sync.md` trước nếu file này tồn tại. Trích xuất synced commit/HEAD từ đó. Nếu user nêu target commit, dùng commit đó làm target; nếu không thì dùng `HEAD`. Nếu không có sync state, xem docs là chưa sync và dùng commit liên quan cũ nhất hoặc diff hiện tại của worktree làm nguồn so sánh.
+3. So sánh sync-state commit với target commit. Dùng cả commit summaries và diffs:
    - `git log --oneline <synced-commit>..<target-commit>`
    - `git diff --name-status <synced-commit>..<target-commit>`
    - `git diff <synced-commit>..<target-commit> -- <relevant paths>`
    - Thêm `git diff --name-status` và `git diff -- <relevant paths>` cho thay đổi chưa commit khi worktree dirty.
-5. Nếu có hơn một commit giữa synced commit và target commit, duyệt từng commit theo thứ tự thời gian:
+4. Nếu có hơn một commit giữa synced commit và target commit, duyệt từng commit theo thứ tự thời gian:
    - Lấy danh sách commit theo thứ tự bằng `git rev-list --reverse <synced-commit>..<target-commit>`.
    - Với mỗi commit, inspect `git show --stat --oneline <commit>` và targeted diffs như `git show --name-status <commit>` hoặc `git show <commit> -- <relevant paths>`.
    - Tích lũy final behavior, renamed paths, deleted concepts, module mới và relationship đã thay đổi.
    - Không cập nhật docs như journal theo từng commit; dùng việc duyệt commit để không bỏ sót rename, removal hoặc semantic change ở giữa.
-6. Đọc `./docs/overview.md` và `./docs/specs` bị chạm bởi các module đã đổi. Đồng thời đọc các code path đã đổi vừa đủ để hiểu final behavior tại target commit.
-7. Quyết định tập docs nhỏ nhất cần cập nhật từ commit walk và final diff. Tránh rewrite rộng và duplicate docs.
-8. Cập nhật docs để mô tả thiết kế hiện tại tại target commit, không mô tả chuỗi commit đã dẫn tới trạng thái đó. Xóa statement stale thay vì thêm correction bên cạnh.
-9. Duy trì link hai chiều khi document relationships. Dùng Markdown link tương đối thật tới file `.md`.
-10. Cập nhật `./docs/_index.md` khi thêm, move hoặc xóa docs có ý nghĩa.
-11. Cập nhật `./docs/_sync.md` như snapshot sync cuối cùng sau khi docs đã phản ánh target commit.
-12. Nếu repo có `graphify-out/graph.json`, refresh graph sau khi cập nhật bằng `graphify update .`. Nếu CLI không có sẵn hoặc command lỗi, báo rõ trong phản hồi cuối thay vì bỏ qua âm thầm.
-13. Chạy formatter cho Markdown/HTML docs đã sửa khi repo có script, ưu tiên `npm run format:docs`. Nếu worktree có thay đổi ngoài scope và formatter toàn repo sẽ rewrite file không liên quan, không chạy write-mode toàn repo; dùng `npm run format:docs:check` để báo rõ file nào chưa format.
-14. Chạy lint docs khi repo có script, ưu tiên `npm run lint:docs` hoặc các script hẹp hơn như `npm run lint:docs:markdown` và `npm run lint:docs:html`.
-15. Chạy `git diff --check` cho docs đã sửa. Nếu repo có doc validation khác, chạy nó trừ khi user yêu cầu không chạy.
+5. Đọc `./docs/overview.md` và `./docs/specs` bị chạm bởi các module đã đổi. Đồng thời đọc các code path đã đổi vừa đủ để hiểu final behavior tại target commit.
+6. Quyết định tập docs nhỏ nhất cần cập nhật từ commit walk và final diff. Tránh rewrite rộng và duplicate docs.
+7. Cập nhật docs để mô tả thiết kế hiện tại tại target commit, không mô tả chuỗi commit đã dẫn tới trạng thái đó. Xóa statement stale thay vì thêm correction bên cạnh.
+8. Duy trì link hai chiều khi document relationships. Dùng Markdown link tương đối thật tới file `.md`.
+9. Cập nhật `./docs/_index.md` khi thêm, move hoặc xóa docs có ý nghĩa.
+10. Cập nhật `./docs/_sync.md` như snapshot sync cuối cùng sau khi docs đã phản ánh target commit.
+11. Chạy formatter cho Markdown/HTML docs đã sửa khi repo có script, ưu tiên `npm run format:docs`. Nếu worktree có thay đổi ngoài scope và formatter toàn repo sẽ rewrite file không liên quan, không chạy write-mode toàn repo; dùng `npm run format:docs:check` để báo rõ file nào chưa format.
+12. Chạy lint docs khi repo có script, ưu tiên `npm run lint:docs` hoặc các script hẹp hơn như `npm run lint:docs:markdown` và `npm run lint:docs:html`.
+13. Chạy `git diff --check` cho docs đã sửa. Nếu repo có doc validation khác, chạy nó trừ khi user yêu cầu không chạy.
 
 ## Sync State
 
@@ -300,4 +298,4 @@ Dùng cấu trúc này cho `docs/modules/*.md`:
 
 ## Phản Hồi Cuối
 
-Báo cáo docs đã thay đổi, kết quả sync state, kết quả refresh `graphify` nếu graph tồn tại, và validation đã chạy. Giữ câu trả lời cô đọng.
+Báo cáo docs đã thay đổi, kết quả sync state và validation đã chạy. Giữ câu trả lời cô đọng.

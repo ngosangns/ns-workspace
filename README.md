@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent có thể nhận cùng một bộ workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph khi project có dữ liệu `graphify-out/graph.json`. Lệnh `graph` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại.
+Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph dựa trên LSP khi language server của project có sẵn. Lệnh `graph` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại.
 
 ## Trạng Thái
 
@@ -128,7 +128,7 @@ Stable adapters ghi vào các user-level path đã biết:
 | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
 | OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                |
-| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build             |
+| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build          |
 | Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                  |
 | Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`; `--tools kiro-cli` là alias của `kiro`        |
 | Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                              |
@@ -142,7 +142,7 @@ Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<a
 
 ## Docs Preview
 
-Lệnh `preview` chạy một localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph dùng `graphify-out/graph.json` nếu file này tồn tại. Bản `go run github.com/ngosangns/ns-workspace@latest preview` dùng static preview UI đã được Go embed, nên không yêu cầu Node.js ở runtime.
+Lệnh `preview` chạy một localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph index symbol từ LSP trên các file code tracked bởi Git, rồi mở rộng caller/callee hoặc references khi language server hỗ trợ. Bản `go run github.com/ngosangns/ns-workspace@latest preview` dùng static preview UI đã được Go embed, nên không yêu cầu Node.js ở runtime.
 
 Ví dụ:
 

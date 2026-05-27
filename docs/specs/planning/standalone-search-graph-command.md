@@ -1,5 +1,7 @@
 # Tách Search Page Thành Frontend Standalone Và Thêm Lệnh Graph
 
+> Ghi chú 2026-05-27: kế hoạch này mô tả bối cảnh trước khi Code Graph chuyển khỏi Graphify. Search standalone vẫn đúng, nhưng Code Graph hiện lấy symbol/relations từ LSP runtime theo [Thay Code Graph Graphify Bằng LSP](./lsp-code-graph-search.md).
+
 ## Bối Cảnh
 
 Preview web hiện là một SPA Vue trong `internal/preview/preview_ui_src/`, được Vite build vào `internal/preview/preview_ui/` rồi Go embed để lệnh `preview` phục vụ qua local HTTP server. Search hiện nằm trong `SearchPanel.vue`, được nhúng trong `App.vue`, gọi `/api/search`, mở preview tài liệu qua `/api/docs/{id}`, mở preview file qua `/api/files`, và render graph bằng `js/network_graph.ts`.

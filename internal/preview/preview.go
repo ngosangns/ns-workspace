@@ -33,8 +33,9 @@ type previewOptions struct {
 }
 
 type previewServer struct {
-	opt previewOptions
-	srv *http.Server
+	opt       previewOptions
+	srv       *http.Server
+	codeGraph previewCodeGraphProvider
 }
 
 func Run(args []string) error {
@@ -409,6 +410,7 @@ func fileExists(path string) bool {
 
 func newPreviewServer(opt previewOptions) *previewServer {
 	ps := &previewServer{opt: opt}
+	ps.codeGraph = newPreviewLSPCodeGraphProvider(opt.projectRoot, docsRoot(opt.projectRoot, opt.docsDir))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/project", ps.handleProject)
 	mux.HandleFunc("/api/docs", ps.handleSpecs)
@@ -463,6 +465,9 @@ func isPreviewStaticAssetPath(path string) bool {
 }
 
 func (ps *previewServer) shutdown(ctx context.Context) error {
+	if ps.codeGraph != nil {
+		_ = ps.codeGraph.Close(ctx)
+	}
 	return ps.srv.Shutdown(ctx)
 }
 

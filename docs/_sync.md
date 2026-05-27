@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: d9bc8b1c5dd6123d1e525e335a84eeb54f925729
+- **Last Synced Commit**: 3532c7bf20cc54afbf0b0660e610a7780b75fc6e
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-21T04:30:46Z
-- **Scope**: README, developer guide, docs index, preview feature/module docs and sync state for current preview search behavior, generated preview UI assets and removed planning specs.
-- **Known Unsynced**: Local change in `presets/skills/update-docs/SKILL.md` is outside this docs sync scope.
+- **Sync Date**: 2026-05-27T10:43:28Z
+- **Scope**: README, developer guide, docs index, preview feature/module docs, planning notes and sync state for LSP-backed Code Graph replacing Graphify in preview search, including local LSP executable discovery.
+- **Known Unsynced**: Current worktree contains the implementation and docs changes for this sync snapshot until they are committed.

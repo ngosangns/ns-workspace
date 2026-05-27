@@ -3,7 +3,6 @@ package agentsync
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,8 +50,8 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	if !strings.Contains(qwen, "context7") || !strings.Contains(qwen, "figma") {
 		t.Fatalf("qwen settings did not include MCP preset: %s", qwen)
 	}
-	if !strings.Contains(qwen, "PreToolUse") || !strings.Contains(qwen, "graphify-out/graph.json") {
-		t.Fatalf("qwen settings did not include shared hooks: %s", qwen)
+	if strings.Contains(qwen, "PreToolUse") || strings.Contains(qwen, "graphify-out/graph.json") {
+		t.Fatalf("qwen settings should not install graphify hooks: %s", qwen)
 	}
 
 	kiro := readFile(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
@@ -71,7 +70,7 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	}
 }
 
-func TestInstalledHookCommandsRunInProject(t *testing.T) {
+func TestInstalledSettingsDoNotInstallGraphifyHooks(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
@@ -90,9 +89,6 @@ func TestInstalledHookCommandsRunInProject(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	projectRoot := mustProjectRoot(t)
-	mustExist(t, filepath.Join(projectRoot, "graphify-out", "graph.json"))
-
 	settingsPaths := []string{
 		filepath.Join(home, ".agents", "settings.json"),
 		filepath.Join(home, ".claude", "settings.json"),
@@ -102,20 +98,12 @@ func TestInstalledHookCommandsRunInProject(t *testing.T) {
 	for _, path := range settingsPaths {
 		t.Run(filepath.Base(filepath.Dir(path))+"/"+filepath.Base(path), func(t *testing.T) {
 			commands := hookCommands(t, path)
-			if len(commands) == 0 {
-				t.Fatalf("expected installed hook commands in %s", path)
+			if len(commands) != 0 {
+				t.Fatalf("expected no installed hook commands in %s, got %v", path, commands)
 			}
-			for _, command := range commands {
-				cmd := exec.Command("sh", "-c", command)
-				cmd.Dir = projectRoot
-				output, err := cmd.CombinedOutput()
-				if err != nil {
-					t.Fatalf("hook command failed: %v\n%s", err, output)
-				}
-				got := string(output)
-				if !strings.Contains(got, `"hookEventName":"PreToolUse"`) || !strings.Contains(got, "graphify: Knowledge graph exists") {
-					t.Fatalf("hook command did not emit graphify context:\n%s", got)
-				}
+			settings := readFile(t, path)
+			if strings.Contains(settings, "graphify-out") || strings.Contains(settings, "GRAPH_REPORT") {
+				t.Fatalf("settings should not reference graphify artifacts: %s", settings)
 			}
 		})
 	}
@@ -263,20 +251,6 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
-}
-
-func mustProjectRoot(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := filepath.Abs(filepath.Join(wd, "../.."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustExist(t, filepath.Join(root, "go.mod"))
-	return root
 }
 
 func hookCommands(t *testing.T, path string) []string {
