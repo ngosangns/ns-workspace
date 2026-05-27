@@ -17,7 +17,8 @@ Với task lớn, chỉ dùng skill này sau khi user đã duyệt plan được
 - **Review toàn bộ changes sau khi edit:** Sau mỗi lượt sửa file, đọc lại toàn bộ diff mình vừa tạo, xóa phần thừa, gom hoặc đơn giản hóa logic nếu có thể, và đảm bảo không còn thay đổi cơ học không cần thiết.
 - **Tối ưu diff trước khi kết thúc:** Code cuối cùng phải rõ, ít nhánh thừa, ít duplication, đúng helper/pattern hiện có và không chứa dead code, log/debug tạm, TODO vô căn cứ hoặc import không dùng.
 - **Comment bằng tiếng Anh đầy đủ ở vùng đã sửa:** Với code mới hoặc code vừa chạm, thêm/cập nhật comment tiếng Anh cho logic không tự giải thích, edge case quan trọng, contract nội bộ hoặc quyết định kỹ thuật đáng lưu lại. Không thêm comment hiển nhiên chỉ để lấp chỗ.
-- **Báo cáo cô đọng:** Nói thẳng việc đã làm, vì sao làm, validation nào đã chạy.
+- **Báo cáo có diễn giải:** Nói thẳng việc đã làm, vì sao làm, validation nào đã chạy, và giải thích chi tiết ý nghĩa của các thay đổi sau khi change để user hiểu tác động thực tế lên behavior, architecture, docs hoặc workflow.
+- **Liệt kê việc còn lại nếu chưa xong:** Nếu task chưa được xử lý trọn vẹn, phải nêu rõ các công việc còn lại chưa hoàn thành, lý do còn dang dở và gợi ý bước tiếp theo ngắn gọn.
 - **Không build chỉ để kết thúc:** Không chạy build rộng nếu repo guidance không yêu cầu.
 - **Tự review liên tục:** Lặp lại review và cleanup đến khi diff không còn vấn đề rõ ràng về scope, chất lượng, comment hoặc validation.
 
@@ -41,7 +42,9 @@ Với task lớn, chỉ dùng skill này sau khi user đã duyệt plan được
 8. Rà comment trong vùng code vừa chạm; bổ sung hoặc chuyển sang tiếng Anh ở những điểm cần ngữ cảnh để người sau đọc nhanh hơn, đồng thời giữ comment ngắn, chính xác và không mô tả điều code đã nói rõ.
 9. Lặp lại review và cleanup cho đến khi không còn vấn đề rõ ràng cần sửa.
 10. Chạy validation có mục tiêu khi có sẵn và phù hợp, nhưng không chạy full build chỉ để kết thúc nếu guidance của repo nói không cần build.
-11. Nếu thay đổi code ảnh hưởng đến flow, business rule, architecture, quan hệ module hoặc constraint, dùng `update-docs` để cập nhật docs/specs liên quan.
+11. Tổng kết sau thay đổi bằng cách giải thích ý nghĩa của từng nhóm thay đổi: vấn đề hoặc nhu cầu nào được xử lý, hành vi/contract nào đổi hoặc được giữ nguyên, rủi ro nào giảm, và user cần lưu ý điều gì khi tiếp tục làm việc.
+12. Nếu thay đổi code ảnh hưởng đến flow, business rule, architecture, quan hệ module hoặc constraint, dùng `update-docs` để cập nhật docs/specs liên quan.
+13. Trước khi kết thúc, nếu chưa hoàn thành toàn bộ yêu cầu, liệt kê rõ các phần còn lại chưa làm, trạng thái hiện tại và bước tiếp theo được đề xuất.
 
 ## Ràng Buộc
 
