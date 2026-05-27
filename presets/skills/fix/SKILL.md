@@ -20,6 +20,8 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 - **Validation mục tiêu:** Chạy validation sát với lỗi đã sửa; không cần full build nếu repo guidance không yêu cầu.
 - **Review toàn bộ changes sau khi edit:** Sau mỗi lượt sửa file, đọc lại toàn bộ diff mình vừa tạo, loại bỏ phần thừa, tối ưu logic và đảm bảo fix không kéo theo thay đổi ngoài nguyên nhân lỗi.
 - **Comment bằng tiếng Anh đầy đủ ở vùng đã sửa:** Với code mới hoặc code vừa chạm, thêm/cập nhật comment tiếng Anh cho edge case, regression guard, invariant hoặc workaround bắt buộc. Không thêm comment hiển nhiên hoặc comment thay cho code rõ ràng.
+- **Giải thích ý nghĩa sau fix:** Khi báo cáo kết quả, phải giải thích chi tiết ý nghĩa của các thay đổi sau khi change: lỗi gốc được loại bỏ ra sao, regression nào được chặn, hành vi nào đổi hoặc được giữ nguyên, và phần nào còn rủi ro nếu có.
+- **Liệt kê việc còn lại nếu chưa xong:** Nếu bug chưa được sửa hoặc xác minh trọn vẹn, phải nêu rõ phần còn lại chưa hoàn thành, bằng chứng hiện có, lý do còn dang dở và bước tiếp theo ngắn gọn.
 - **Tôn trọng worktree:** Không revert hoặc chạm vào thay đổi không liên quan của user.
 
 ## Quy Trình
@@ -35,7 +37,8 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 9. Cleanup ngay những phần thừa hoặc kém tối ưu; ưu tiên fix nhỏ, trực tiếp, đọc được và phù hợp với kiến trúc hiện tại.
 10. Rà comment trong vùng code vừa chạm; bổ sung hoặc chuyển sang tiếng Anh nếu fix phụ thuộc vào edge case, invariant hoặc ràng buộc khó thấy từ code.
 11. Chạy lại command tái hiện lỗi và validation mục tiêu.
-12. Review diff lần cuối, cleanup các thay đổi thừa, rồi báo ngắn gọn nguyên nhân gốc rễ, cách sửa và cách đã xác minh.
+12. Review diff lần cuối, cleanup các thay đổi thừa, rồi báo nguyên nhân gốc rễ, cách sửa, cách đã xác minh và ý nghĩa thực tế của từng nhóm thay đổi sau fix.
+13. Nếu bug chưa được xử lý hoặc xác minh hết, liệt kê rõ các công việc còn lại chưa hoàn thành, trạng thái hiện tại và bước tiếp theo được đề xuất.
 
 ## Ràng Buộc
 
