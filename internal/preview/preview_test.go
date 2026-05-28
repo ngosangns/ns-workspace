@@ -1,6 +1,7 @@
 package preview
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -269,6 +270,112 @@ func TestGraphLauncherWritesRedirectHTML(t *testing.T) {
 	}
 	if !strings.Contains(text, `window.location.replace("http:\/\/localhost:12345\/search.html")`) {
 		t.Fatalf("graph launcher should emit a valid JavaScript redirect string: %s", text)
+	}
+}
+
+func TestGraphQueryJSONUsesSearchPipeline(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "docs/auth.md", "# Auth\n\nCredential vault documentation.\n")
+	writeTestFile(t, root, "auth.go", `package demo
+
+func credentialVault() {}
+`)
+	initGitRepo(t, root, "docs/_index.md", "docs/auth.md", "auth.go")
+
+	provider := &staticCodeGraphProvider{
+		warnings: []string{"Code Graph relation expansion is unavailable for this language server."},
+		results: []previewSearchResult{{
+			ID:         "code-lsp:credential_vault",
+			Title:      "credentialVault()",
+			Path:       "auth.go",
+			Kind:       "function",
+			Source:     "lsp",
+			Line:       3,
+			Score:      0.91,
+			MatchedBy:  []string{"graph"},
+			NodeID:     "credential_vault",
+			Confidence: "lsp",
+			Neighbors: []previewSearchNeighbor{{
+				ID:        "caller",
+				Label:     "caller()",
+				Relation:  "calls",
+				Direction: "incoming",
+				Path:      "caller.go",
+				Line:      9,
+			}},
+		}},
+	}
+	opt := graphOptions{projectRoot: root, docsDir: "docs", query: "credentialVault", limit: 3, keywordOp: "sum", jsonOutput: true}
+	var buf bytes.Buffer
+	if err := runGraphQueryWithProvider(context.Background(), opt, provider, &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	var search previewSearchResponse
+	if err := json.NewDecoder(&buf).Decode(&search); err != nil {
+		t.Fatalf("graph query should print valid JSON: %v\n%s", err, buf.String())
+	}
+	if search.Query != "credentialVault" || search.KeywordOperator != "sum" {
+		t.Fatalf("graph query should preserve query metadata: %+v", search)
+	}
+	if len(search.Panels.CodeGraph) != 1 {
+		t.Fatalf("graph query should include LSP Code Graph results: %+v", search.Panels.CodeGraph)
+	}
+	if search.Panels.CodeGraph[0].Path != "auth.go" || search.Panels.CodeGraph[0].Line != 3 {
+		t.Fatalf("graph query should expose source location: %+v", search.Panels.CodeGraph[0])
+	}
+	if len(search.Panels.CodeGraph[0].Neighbors) != 1 || search.Panels.CodeGraph[0].Neighbors[0].Path != "caller.go" {
+		t.Fatalf("graph query should expose neighbor preview targets: %+v", search.Panels.CodeGraph[0].Neighbors)
+	}
+	if !containsString(search.Warnings, "Code Graph relation expansion is unavailable for this language server.") {
+		t.Fatalf("graph query should preserve Code Graph warnings: %+v", search.Warnings)
+	}
+}
+
+func TestGraphQueryTextPrioritizesGraphContext(t *testing.T) {
+	response := previewSearchResponse{
+		Query: "credentialVault",
+		Stats: map[string]int{
+			"docsSemantic": 1,
+			"docsGraph":    1,
+			"codeSemantic": 1,
+			"codeGraph":    1,
+		},
+		Warnings: []string{"gopls not found"},
+		Panels: previewSearchPanels{
+			CodeGraph: []previewSearchResult{{
+				Title:      "credentialVault()",
+				Path:       "auth.go",
+				Line:       3,
+				Source:     "lsp",
+				Confidence: "lsp",
+				FlowRole:   "match",
+				Neighbors: []previewSearchNeighbor{{
+					Label:     "caller()",
+					Relation:  "calls",
+					Direction: "incoming",
+					Path:      "caller.go",
+					Line:      9,
+				}},
+			}},
+		},
+	}
+	var buf bytes.Buffer
+	if err := writeGraphQueryText(&buf, response); err != nil {
+		t.Fatal(err)
+	}
+	text := buf.String()
+	if !strings.Contains(text, "Warnings:") || !strings.Contains(text, "gopls not found") {
+		t.Fatalf("text output should include warnings: %s", text)
+	}
+	codeGraphIndex := strings.Index(text, "Code Graph:")
+	docsGraphIndex := strings.Index(text, "Docs Graph:")
+	if codeGraphIndex < 0 || docsGraphIndex < 0 || codeGraphIndex > docsGraphIndex {
+		t.Fatalf("text output should show Code Graph before other panels: %s", text)
+	}
+	if !strings.Contains(text, "credentialVault() (auth.go:3)") || !strings.Contains(text, "incoming caller() via calls (caller.go:9)") {
+		t.Fatalf("text output should include source and neighbor locations: %s", text)
 	}
 }
 
@@ -715,6 +822,214 @@ func TestLSPCodeGraphSearchUsesSymbolOwnersAndDeterministicSorting(t *testing.T)
 	}
 	if results[0].Title != "CredentialVault.LoadSecret()" {
 		t.Fatalf("method node title should include LSP owner, got %+v", results[0])
+	}
+}
+
+func TestFlattenLSPSymbolsIndexesOnlyCallableNodesWithOwners(t *testing.T) {
+	root := t.TempDir()
+	file := lspSourceFile{
+		Rel:      "service.ts",
+		Abs:      filepath.Join(root, "service.ts"),
+		Language: lspLanguage{ServerID: "typescript", LanguageID: "typescript"},
+	}
+	index := lspCodeGraphIndex{Nodes: map[string]lspCodeNode{}, ByPath: map[string][]string{}}
+
+	flattenLSPSymbols(&index, file, []lspDocumentSymbol{{
+		Name: "CredentialVault",
+		Kind: 5,
+		Range: lspRange{
+			Start: lspPosition{Line: 1},
+			End:   lspPosition{Line: 20},
+		},
+		SelectionRange: lspRange{Start: lspPosition{Line: 1}},
+		Children: []lspDocumentSymbol{
+			{
+				Name: "loadSecret",
+				Kind: 6,
+				Range: lspRange{
+					Start: lspPosition{Line: 4},
+					End:   lspPosition{Line: 8},
+				},
+				SelectionRange: lspRange{Start: lspPosition{Line: 4, Character: 2}},
+			},
+			{
+				Name:           "hydrate",
+				Kind:           12,
+				ContainerName:  "ExplicitContainer",
+				Range:          lspRange{Start: lspPosition{Line: 10}, End: lspPosition{Line: 12}},
+				SelectionRange: lspRange{Start: lspPosition{Line: 10, Character: 2}},
+			},
+			{
+				Name:           "state",
+				Kind:           13,
+				Range:          lspRange{Start: lspPosition{Line: 14}, End: lspPosition{Line: 14}},
+				SelectionRange: lspRange{Start: lspPosition{Line: 14, Character: 2}},
+			},
+		},
+	}}, nil)
+
+	if len(index.Nodes) != 2 {
+		t.Fatalf("expected only callable child symbols to be indexed, got %+v", index.Nodes)
+	}
+	if got := len(index.ByPath["service.ts"]); got != 2 {
+		t.Fatalf("expected ByPath to include both callables, got %d", got)
+	}
+	var loadSecret, hydrate lspCodeNode
+	for _, node := range index.Nodes {
+		switch node.Name {
+		case "loadSecret":
+			loadSecret = node
+		case "hydrate":
+			hydrate = node
+		}
+	}
+	if loadSecret.FullName != "CredentialVault.loadSecret" || loadSecret.Owner != "CredentialVault" || loadSecret.KindLabel != "method" {
+		t.Fatalf("expected nested method to inherit owner and kind label, got %+v", loadSecret)
+	}
+	if hydrate.FullName != "ExplicitContainer.hydrate" || hydrate.Owner != "ExplicitContainer" || hydrate.KindLabel != "function" {
+		t.Fatalf("expected containerName to override parent owner, got %+v", hydrate)
+	}
+}
+
+func TestParseLSPDocumentSymbolsSupportsFlatAndHierarchicalResults(t *testing.T) {
+	flatRaw := json.RawMessage(`[
+		{"name":"LoadSecret","kind":12,"containerName":"CredentialVault","location":{"uri":"file:///tmp/service.go","range":{"start":{"line":4,"character":1},"end":{"line":6,"character":1}}}}
+	]`)
+	flat, err := parseLSPDocumentSymbols(flatRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flat) != 1 || flat[0].Name != "LoadSecret" || flat[0].ContainerName != "CredentialVault" || flat[0].SelectionRange.Start.Line != 4 {
+		t.Fatalf("flat SymbolInformation results should map to document symbols, got %+v", flat)
+	}
+
+	hierRaw := json.RawMessage(`[
+		{"name":"CredentialVault","kind":5,"range":{"start":{"line":1,"character":0},"end":{"line":9,"character":1}},"selectionRange":{"start":{"line":1,"character":6},"end":{"line":1,"character":21}},"children":[{"name":"LoadSecret","kind":6,"range":{"start":{"line":3,"character":2},"end":{"line":5,"character":3}},"selectionRange":{"start":{"line":3,"character":7},"end":{"line":3,"character":17}}}]}
+	]`)
+	hier, err := parseLSPDocumentSymbols(hierRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hier) != 1 || len(hier[0].Children) != 1 || hier[0].Children[0].Name != "LoadSecret" {
+		t.Fatalf("hierarchical DocumentSymbol results should preserve children, got %+v", hier)
+	}
+}
+
+func TestLSPCodeGraphLocationMappingUsesSelectionRangeAndSmallestContainer(t *testing.T) {
+	root := t.TempDir()
+	authPath := filepath.Join(root, "internal", "auth.go")
+	index := lspCodeGraphIndex{
+		Nodes: map[string]lspCodeNode{
+			"outer": {
+				ID:   "outer",
+				Path: "internal/auth.go",
+				Range: lspRange{
+					Start: lspPosition{Line: 1},
+					End:   lspPosition{Line: 20},
+				},
+				SelectionRange: lspRange{Start: lspPosition{Line: 1, Character: 5}, End: lspPosition{Line: 1, Character: 10}},
+			},
+			"inner": {
+				ID:   "inner",
+				Path: "internal/auth.go",
+				Range: lspRange{
+					Start: lspPosition{Line: 6},
+					End:   lspPosition{Line: 8},
+				},
+				SelectionRange: lspRange{Start: lspPosition{Line: 6, Character: 4}, End: lspPosition{Line: 6, Character: 9}},
+			},
+		},
+		ByPath: map[string][]string{"internal/auth.go": {"outer", "inner"}},
+	}
+
+	if got := index.nodeIDForLocation(root, fileURI(authPath), lspPosition{Line: 6, Character: 6}); got != "inner" {
+		t.Fatalf("selection range should map exact symbol location, got %q", got)
+	}
+	if got := index.containingNodeIDForLocation(root, fileURI(authPath), lspPosition{Line: 7, Character: 1}); got != "inner" {
+		t.Fatalf("reference fallback should choose smallest containing node, got %q", got)
+	}
+	if got := index.containingNodeIDForLocation(root, fileURI(authPath), lspPosition{Line: 15, Character: 1}); got != "outer" {
+		t.Fatalf("outer range should contain locations outside inner range, got %q", got)
+	}
+}
+
+func TestAssignLSPGraphNeighborsDedupeAndLimit(t *testing.T) {
+	index := lspCodeGraphIndex{Nodes: map[string]lspCodeNode{
+		"anchor": {
+			ID:             "anchor",
+			Name:           "Anchor",
+			FullName:       "Anchor",
+			Kind:           12,
+			KindLabel:      "function",
+			Path:           "anchor.go",
+			SelectionRange: lspRange{Start: lspPosition{Line: 2}},
+		},
+	}}
+	results := map[string]previewSearchResult{
+		"anchor": {Title: "Anchor()", NodeID: "anchor"},
+	}
+	edges := []lspCodeEdge{}
+	for i := 0; i < maxGraphNeighborUI+3; i++ {
+		id := fmt.Sprintf("neighbor_%02d", i)
+		index.Nodes[id] = lspCodeNode{
+			ID:             id,
+			Name:           fmt.Sprintf("Neighbor%02d", i),
+			FullName:       fmt.Sprintf("Neighbor%02d", i),
+			Kind:           12,
+			KindLabel:      "function",
+			Path:           fmt.Sprintf("neighbor_%02d.go", i),
+			SelectionRange: lspRange{Start: lspPosition{Line: i}},
+		}
+		edges = append(edges, lspCodeEdge{Source: "anchor", Target: id, Relation: "calls", SourceID: "anchor", TargetID: id})
+	}
+	edges = append(edges, edges[0])
+
+	assignLSPGraphNeighbors(results, index, edges)
+	neighbors := results["anchor"].Neighbors
+	if len(neighbors) != maxGraphNeighborUI {
+		t.Fatalf("neighbors should be deduped and capped to UI limit, got %d: %+v", len(neighbors), neighbors)
+	}
+	if neighbors[0].Direction != "outgoing" || neighbors[0].Relation != "calls" || neighbors[0].Path != "neighbor_00.go" || neighbors[0].Line != 1 {
+		t.Fatalf("neighbor should include direction, relation and preview target, got %+v", neighbors[0])
+	}
+}
+
+func TestSearchLSPCodeGraphExclusionAndRelationWarnings(t *testing.T) {
+	root := t.TempDir()
+	provider := newPreviewLSPCodeGraphProvider(root, filepath.Join(root, "docs"))
+	index := lspCodeGraphIndex{
+		Nodes: map[string]lspCodeNode{
+			"needle": {
+				ID:             "needle",
+				Name:           "Needle",
+				FullName:       "Needle",
+				Kind:           12,
+				KindLabel:      "function",
+				ServerID:       "missing",
+				Path:           "needle.go",
+				SelectionRange: lspRange{Start: lspPosition{Line: 3}},
+			},
+		},
+		ByPath: map[string][]string{"needle.go": {"needle"}},
+	}
+
+	results, warnings := searchLSPCodeGraph(context.Background(), provider, index, "Needle", searchTokens("Needle"), "needle.go", searchTokens("needle.go"), 8)
+	if len(results) != 0 || len(warnings) != 0 {
+		t.Fatalf("exclusion query should remove candidate before relation expansion, got results=%+v warnings=%+v", results, warnings)
+	}
+
+	results, warnings = searchLSPCodeGraph(context.Background(), provider, index, "Needle", searchTokens("Needle"), "", nil, 8)
+	if len(results) == 0 || results[0].NodeID != "needle" || !results[0].Anchor || results[0].FlowRole != "match" {
+		t.Fatalf("expected direct anchor result despite missing relation server, got %+v", results)
+	}
+	var warned bool
+	for _, warning := range warnings {
+		if strings.Contains(warning, "LSP server missing is not running") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("expected relation warning for missing server, got %+v", warnings)
 	}
 }
 

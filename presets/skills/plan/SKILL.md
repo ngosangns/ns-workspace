@@ -88,7 +88,7 @@ Thay vào đó, kế hoạch phải chuyển hóa thông tin đã đọc thành:
 
 ## Quy Trình
 
-1. Đảm bảo bước nghiên cứu đã xác định docs/specs liên quan, đường dẫn code, ràng buộc và các giả định chưa được giải quyết.
+1. Đảm bảo bước nghiên cứu đã xác định docs/specs liên quan, đường dẫn code, ràng buộc và các giả định chưa được giải quyết. Khi kế hoạch phụ thuộc vào quan hệ symbol/call/reference, dùng skill `lsp-code-graph` trước; nếu command báo thiếu language server hoặc không đủ kết quả, ghi rõ fallback sang docs, diff và code inspection.
 2. Làm rõ nguyên nhân gốc rễ hoặc động lực thiết kế chính: vấn đề thật sự là gì, vì sao xảy ra, contract/invariant nào liên quan và hậu quả nếu chỉ vá triệu chứng.
 3. Xác định bức tranh tổng quan vừa đủ rồi thu hẹp trọng tâm: module boundary, luồng dữ liệu, API/contract, vùng bị ảnh hưởng, vùng ngoài phạm vi và tiêu chí giữ scope.
 4. Nếu user đưa tên branch hoặc commit/ref, đọc toàn bộ thay đổi liên quan bằng lệnh Git chỉ đọc, không switch branch và không làm đổi worktree.

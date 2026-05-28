@@ -28,7 +28,7 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 
 1. Đọc bug report, failing output hoặc triệu chứng user đưa.
 2. Kiểm tra git status để nhận diện thay đổi đang có và tránh đè việc của user.
-3. Xác định code path liên quan bằng `rg`, test hiện có, docs/specs hoặc call site gần nhất.
+3. Xác định code path liên quan bằng `rg`, test hiện có, docs/specs hoặc call site gần nhất. Khi lỗi phụ thuộc vào quan hệ symbol/caller/callee/reference, dùng skill `lsp-code-graph` trước; nếu command báo thiếu language server hoặc không đủ kết quả, ghi rõ fallback sang `rg` và code inspection.
 4. Dựng giả thuyết nguyên nhân gốc rễ: vì sao lỗi phát sinh, contract hoặc invariant nào bị phá, dữ liệu đi qua đâu, và khu vực nào không nên chạm.
 5. Tái hiện lỗi bằng command nhỏ nhất có thể, hoặc ghi rõ nếu không tái hiện được nhưng đã có bằng chứng đủ từ code/log.
 6. Sửa nguyên nhân gốc theo pattern hiện có của repo.

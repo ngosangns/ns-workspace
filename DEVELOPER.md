@@ -33,7 +33,7 @@ go run . graph --project .
 
 Khi chạy preview từ chính checkout này, supervisor sẽ build frontend bằng `npm run build:preview`, giữ một port ổn định rồi restart child process khi source thay đổi. Dùng `--no-reload` khi cần chạy server trực tiếp bằng static assets hiện có. Khi chạy `go run github.com/ngosangns/ns-workspace@latest preview` từ project khác, preview dùng static UI đã embed trong module và không chạy Node/npm ở runtime.
 
-Lệnh `graph` sinh HTML launcher vào current working directory, start local API server và mở Search standalone từ static entry `search.html`. Dùng `--no-open` khi kiểm tra command trong script hoặc test thủ công mà không muốn mở browser.
+Lệnh `graph` sinh HTML launcher vào current working directory, start local API server và mở Search standalone từ static entry `search.html`. Dùng `--no-open` khi kiểm tra command trong script hoặc test thủ công mà không muốn mở browser. Dùng `graph --query <text> --json` để chạy cùng Search/LSP Code Graph pipeline ở chế độ terminal non-interactive; chế độ này không sinh launcher và phải giữ JSON sạch trên stdout.
 
 ## Test Và Validation
 

@@ -9,7 +9,7 @@
 
 ## Tổng Quan
 
-`ns-workspace` gồm hai bề mặt chính: CLI đồng bộ cấu hình agent và preview/search web để đọc knowledge base của một project. CLI giữ preset trong repo, ghi hoặc link sang các vị trí user-level của agent, còn preview web phục vụ tài liệu trong `docs/` qua local HTTP server. Lệnh `graph` dùng cùng backend preview/search nhưng mở entry Search standalone qua HTML launcher sinh tại thư mục đang chạy.
+`ns-workspace` gồm hai bề mặt chính: CLI đồng bộ cấu hình agent và preview/search web để đọc knowledge base của một project. CLI giữ preset trong repo, ghi hoặc link sang các vị trí user-level của agent, còn preview web phục vụ tài liệu trong `docs/` qua local HTTP server. Lệnh `graph` dùng cùng backend preview/search nhưng mở entry Search standalone qua HTML launcher sinh tại thư mục đang chạy hoặc chạy query terminal bằng Search/LSP Code Graph.
 
 ## Thành Phần
 
