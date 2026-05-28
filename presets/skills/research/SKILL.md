@@ -17,7 +17,7 @@ Dùng skill này trước khi lập plan hoặc triển khai các thay đổi co
 
 ## Quy Trình
 
-1. Nghiên cứu codebase cẩn thận bằng công cụ tìm kiếm local nhanh như `rg` và `rg --files`.
+1. Nghiên cứu codebase cẩn thận bằng công cụ tìm kiếm local nhanh như `rg` và `rg --files`. Khi cần hiểu symbol, caller/callee hoặc references, dùng skill `lsp-code-graph` trước; nếu command báo thiếu language server hoặc không đủ kết quả, nói rõ fallback sang `rg` và code inspection.
 2. Khi đọc, tìm kiếm, giải thích hoặc trả lời từ docs/specs, dùng `read-search-docs` tại `presets/skills/read-search-docs/SKILL.md`.
 3. Nếu ý định của user mơ hồ, đọc các file liên quan trong `docs/specs/` trước và suy luận ý định khả dĩ từ requirements, module docs và planning notes hiện có.
 4. Xác định nguyên nhân gốc rễ hoặc khoảng trống hiểu biết chính bằng cách đối chiếu docs/specs, code path, call site, dữ liệu vào/ra và hành vi hiện tại.

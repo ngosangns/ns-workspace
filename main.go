@@ -118,5 +118,9 @@ Graph flags:
   --docs-dir PATH     docs directory, default docs
   --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
   --out PATH          generated launcher HTML path, default ./ns-workspace-graph.html
-  --no-open           write the launcher without opening the browser`)
+  --no-open           write the launcher without opening the browser
+  --query TEXT        run a non-interactive Search/Code Graph query and exit
+  --limit N           maximum results per search panel in query mode, default 8
+  --keyword-op OP     keyword operator for comma-separated query terms: sum or difference
+  --json              print query results as JSON`)
 }

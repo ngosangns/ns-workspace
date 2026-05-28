@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 3532c7bf20cc54afbf0b0660e610a7780b75fc6e
+- **Last Synced Commit**: 1f390bed341d1428d862c176e87dcaf1f8d0a387
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-27T10:43:28Z
-- **Scope**: README, developer guide, docs index, preview feature/module docs, planning notes and sync state for LSP-backed Code Graph replacing Graphify in preview search, including local LSP executable discovery.
-- **Known Unsynced**: Current worktree contains the implementation and docs changes for this sync snapshot until they are committed.
+- **Sync Date**: 2026-05-28T04:57:59Z
+- **Scope**: README, developer guide, docs index, preview feature/module/architecture docs, planning note and sync state for packaging LSP Search Graph as `graph --query` plus the `lsp-code-graph` skill workflow.
+- **Known Unsynced**: Current worktree contains the command, skill and docs changes for this sync snapshot until they are committed.

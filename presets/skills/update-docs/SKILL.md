@@ -184,7 +184,7 @@ Không thêm field nếu không có giá trị thật. Không tạo bảng metad
    - Với mỗi commit, inspect `git show --stat --oneline <commit>` và targeted diffs như `git show --name-status <commit>` hoặc `git show <commit> -- <relevant paths>`.
    - Tích lũy final behavior, renamed paths, deleted concepts, module mới và relationship đã thay đổi.
    - Không cập nhật docs như journal theo từng commit; dùng việc duyệt commit để không bỏ sót rename, removal hoặc semantic change ở giữa.
-5. Đọc `./docs/overview.md` và `./docs/specs` bị chạm bởi các module đã đổi. Đồng thời đọc các code path đã đổi vừa đủ để hiểu final behavior tại target commit.
+5. Đọc `./docs/overview.md` và `./docs/specs` bị chạm bởi các module đã đổi. Khi cần code graph context để hiểu symbol, caller/callee hoặc references, dùng skill `lsp-code-graph`; nếu command báo thiếu language server hoặc không đủ kết quả, ghi rõ fallback sang diff và code inspection. Đồng thời đọc các code path đã đổi vừa đủ để hiểu final behavior tại target commit.
 6. Quyết định tập docs nhỏ nhất cần cập nhật từ commit walk và final diff. Tránh rewrite rộng và duplicate docs.
 7. Cập nhật docs để mô tả thiết kế hiện tại tại target commit, không mô tả chuỗi commit đã dẫn tới trạng thái đó. Xóa statement stale thay vì thêm correction bên cạnh.
 8. Duy trì link hai chiều khi document relationships. Dùng Markdown link tương đối thật tới file `.md`.

@@ -545,16 +545,22 @@ func limitLSPCodeGraphCandidates(candidates []lspCodeGraphCandidate, limit int) 
 
 func (index lspCodeGraphIndex) nodeIDForLocation(projectRoot, uri string, pos lspPosition) string {
 	rel := cleanProjectRel(projectRoot, pathFromLSPURI(uri))
+	best := ""
+	bestSpan := int(^uint(0) >> 1)
 	for _, id := range index.ByPath[rel] {
 		node := index.Nodes[id]
-		if positionInLSPRange(pos, node.SelectionRange) || positionInLSPRange(pos, node.Range) {
-			return id
-		}
-		if node.SelectionRange.Start.Line == pos.Line {
-			return id
+		if positionInLSPRange(pos, node.SelectionRange) || node.SelectionRange.Start.Line == pos.Line {
+			span := lspRangeSpan(node.SelectionRange)
+			if span < bestSpan {
+				best = id
+				bestSpan = span
+			}
 		}
 	}
-	return ""
+	if best != "" {
+		return best
+	}
+	return index.containingNodeIDForLocation(projectRoot, uri, pos)
 }
 
 func (index lspCodeGraphIndex) containingNodeIDForLocation(projectRoot, uri string, pos lspPosition) string {
@@ -566,13 +572,21 @@ func (index lspCodeGraphIndex) containingNodeIDForLocation(projectRoot, uri stri
 		if !positionInLSPRange(pos, node.Range) {
 			continue
 		}
-		span := (node.Range.End.Line - node.Range.Start.Line) + 1
+		span := lspRangeSpan(node.Range)
 		if span < bestSpan {
 			best = id
 			bestSpan = span
 		}
 	}
 	return best
+}
+
+func lspRangeSpan(rng lspRange) int {
+	span := (rng.End.Line - rng.Start.Line) + 1
+	if span <= 0 {
+		return 1
+	}
+	return span
 }
 
 func positionInLSPRange(pos lspPosition, rng lspRange) bool {
