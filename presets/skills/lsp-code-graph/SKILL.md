@@ -9,36 +9,51 @@ Dùng skill này để lấy bối cảnh code graph có cấu trúc trước kh
 
 ## Workflow
 
-1. Chạy query non-interactive bằng lệnh `graph` từ checkout local của `ns-workspace`, rồi trỏ `--project` sang repo cần inspect:
+1. Chạy query non-interactive bằng lệnh `graph` từ checkout local của `ns-workspace`, rồi trỏ `--project` sang repo cần inspect. Mặc định dùng `--ensure-lsp` để tự cài language server còn thiếu cho các language phát hiện trong project:
 
    ```sh
    cd /Users/ngosangns/Github/ns-workspace
-   go run . graph --project /path/to/project --query "<symbol-or-concept>" --json
+   go run . graph --project /path/to/project --ensure-lsp --query "<symbol-or-concept>" --json
    ```
 
    Khi đang inspect chính checkout `ns-workspace`, `--project .` là đủ. Không dùng `go run github.com/ngosangns/ns-workspace@latest` cho workflow này cho tới khi bản module đã publish query flags.
 
-2. Nếu `graph` báo không có `--query`/`--json`, command đang chạy không phải bản local mới. Không fallback qua Search UI/API; chuyển về checkout `ns-workspace` rồi chạy lại `go run . graph --query`.
-3. Đọc `warnings` trước. Nếu command báo thiếu language server hoặc relation expansion không khả dụng, nói rõ fallback và tiếp tục bằng `rg`/code inspection.
+2. Nếu `graph` báo không có `--query`/`--json`/`--ensure-lsp`, command đang chạy không phải bản local mới. Không fallback qua Search UI/API; chuyển về checkout `ns-workspace` rồi chạy lại `go run . graph --ensure-lsp --query`.
+3. Đọc `warnings` trước. Nếu command báo install fail, thiếu prerequisite hoặc relation expansion không khả dụng, nói rõ fallback và tiếp tục bằng `rg`/code inspection.
 4. Ưu tiên `panels.codeGraph` cho symbol, owner/container, caller/callee, references và path:line cần inspect.
 5. Dùng `panels.docsGraph` khi câu hỏi cần quan hệ tài liệu/spec/module.
 6. Sau khi có path/line, inspect file bằng `sed`, `rg`, hoặc test liên quan. Không kết luận chỉ từ title graph nếu cần hiểu logic chi tiết.
 
 ## Language Servers
 
-Code Graph cần language server local. Với TypeScript/JavaScript, binary phải tìm được dưới một trong các vị trí resolver biết như `PATH`, project `node_modules/.bin` hoặc checkout `node_modules/.bin`. Chạy command từ checkout `ns-workspace` giúp resolver thấy `node_modules/.bin/typescript-language-server` của chính checkout này ngay cả khi project được inspect chưa cài language server.
+Code Graph cần language server local. Resolver tìm trong `PATH`, Go bin dirs, project `node_modules/.bin`, checkout `node_modules/.bin` và cache của `ns-workspace`. Cache mặc định nằm dưới `os.UserCacheDir()/ns-workspace/lsp`; có thể override bằng `NS_WORKSPACE_LSP_CACHE`.
 
-Nếu warning có dạng `typescript-language-server not found in PATH or known local tool locations`, chạy trong repo có `package.json` tương ứng:
+Language coverage hiện có:
+
+- HTML: `vscode-html-language-server --stdio`
+- CSS/SCSS/Sass: `vscode-css-language-server --stdio`
+- JavaScript/TypeScript: `typescript-language-server --stdio`
+- Go/Golang: `gopls serve`
+- Kotlin: `kotlin-lsp --stdio`
+
+Kiểm tra trạng thái:
 
 ```sh
-npm install
+go run . lsp list --project /path/to/project
 ```
 
-Sau đó kiểm tra:
+Cài thủ công nếu không muốn dùng one-shot `--ensure-lsp`:
 
 ```sh
-node_modules/.bin/typescript-language-server --version
+go run . lsp install auto --project /path/to/project
+go run . lsp install html
+go run . lsp install css
+go run . lsp install typescript
+go run . lsp install go
+go run . lsp install kotlin
 ```
+
+Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/`js` map về TypeScript server, `golang` map về Go server và `kt` map về Kotlin. Kotlin hiện có resolver và warning/install guide, nhưng `lsp install kotlin` không tự tải binary; cài `kotlin-lsp` thủ công rồi chạy lại `lsp list` hoặc `graph --ensure-lsp`.
 
 ## Flags Hữu Ích
 
@@ -48,6 +63,7 @@ node_modules/.bin/typescript-language-server --version
 --limit 8
 --keyword-op sum
 --keyword-op difference
+--ensure-lsp
 --query "term"
 --json
 ```

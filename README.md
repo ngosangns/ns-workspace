@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent có thể nhận cùng một bộ workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph dựa trên LSP khi language server của project có sẵn. Lệnh `search` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại, còn lệnh `graph` chạy query non-interactive để agent lấy kết quả Search/Code Graph dạng text/JSON.
+Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph dựa trên LSP khi language server của project có sẵn. Lệnh `search` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại, lệnh `graph` chạy query non-interactive để agent lấy kết quả Search/Code Graph dạng text/JSON, còn nhóm `lsp` quản lý language server dùng cho Code Graph.
 
 ## Trạng Thái
 
@@ -37,6 +37,7 @@ go run . doctor
 go run . preview --project . --open
 go run . search --project .
 go run . graph --project . --query buildPreviewSearchResponse --json
+go run . lsp list --project .
 ```
 
 Khi muốn dùng checkout này để preview một project khác, chạy `go run .` từ thư mục `ns-workspace` và trỏ `--project` sang project cần đọc:
@@ -94,6 +95,7 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 | `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                     |
 | `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                        |
 | `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                   |
+| `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                       |
 
 ## Flag Hay Dùng
 
@@ -179,13 +181,16 @@ npm run build:preview
 
 Lệnh `search` dùng cùng backend search với `preview`, nhưng mở trực tiếp entry Search standalone. Command tạo file launcher mặc định `ns-workspace-search.html` trong thư mục đang chạy, start local API server, rồi mở browser mặc định tới launcher đó. File launcher trỏ tới server đang chạy, nên command cần tiếp tục sống trong terminal để search động hoạt động.
 
-Lệnh `graph` chỉ chạy query terminal: nó không sinh launcher, không mở browser và không giữ server sống. Output dùng cùng response với `/api/search`, gồm `docsSemantic`, `docsGraph`, `codeSemantic`, `codeGraph`, `stats` và `warnings`. Nếu language server thiếu hoặc không hỗ trợ relation expansion, command vẫn trả kết quả fail-open kèm warning để agent có thể fallback sang search code thường.
+Lệnh `graph` chỉ chạy query terminal: nó không sinh launcher, không mở browser và không giữ server sống. Output dùng cùng response với `/api/search`, gồm `docsSemantic`, `docsGraph`, `codeSemantic`, `codeGraph`, `stats` và `warnings`. Nếu language server thiếu hoặc không hỗ trợ relation expansion, command vẫn trả kết quả fail-open kèm warning để agent có thể fallback sang search code thường. Thêm `--ensure-lsp` để command tự cài language server còn thiếu cho các language phát hiện trong project trước khi query.
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest search --project /Users/ngosangns/Github/viclass
 go run . search --project . --out ./search.html
 go run . graph --project . --query buildPreviewSearchResponse --json
+go run . graph --project . --ensure-lsp --query buildPreviewSearchResponse --json
 go run . graph --project . --query auth,session --keyword-op difference --limit 5
+go run . lsp list --project .
+go run . lsp install auto --project .
 ```
 
 Search flags:
@@ -206,8 +211,18 @@ Graph flags:
 --query "symbol-or-concept"
 --limit 8
 --keyword-op sum|difference
+--ensure-lsp
 --json
 ```
+
+LSP commands:
+
+```bash
+lsp list [--project PATH] [--docs-dir docs] [--json]
+lsp install <language|auto> [--project PATH] [--docs-dir docs] [--force] [--dry-run] [--json]
+```
+
+`lsp` hỗ trợ HTML, CSS, SCSS/Sass, JavaScript, TypeScript, Go/Golang và Kotlin. `lsp install` cài vào cache user của `ns-workspace` thay vì sửa project được inspect. Mặc định dùng `os.UserCacheDir()/ns-workspace/lsp`; có thể override bằng `NS_WORKSPACE_LSP_CACHE`. Resolver vẫn ưu tiên binary có sẵn trong `PATH`, Go bin dirs và `node_modules/.bin` của project/checkout trước khi dùng cache. Kotlin dùng `kotlin-lsp`; do upstream chưa có artifact release ổn định kèm checksum để tải tự động an toàn, `lsp install kotlin` trả hướng dẫn cài thủ công thay vì tự tải archive.
 
 ## Phát Triển
 

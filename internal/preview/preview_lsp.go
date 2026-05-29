@@ -79,11 +79,13 @@ type lspCodeEdge struct {
 }
 
 type lspLanguage struct {
+	ID         string
 	ServerID   string
 	LanguageID string
 	Name       string
 	Command    string
 	Args       []string
+	SymbolMode lspSymbolMode
 }
 
 type lspSourceFile struct {
@@ -216,7 +218,10 @@ func (p *previewLSPCodeGraphProvider) buildIndex(ctx context.Context, files []ls
 		ByPath:   map[string][]string{},
 		Warnings: []string{},
 	}
-	missing := map[string]string{}
+	missing := map[string]struct {
+		Language lspLanguage
+		Err      string
+	}{}
 	for _, file := range files {
 		if ctx.Err() != nil {
 			index.Warnings = append(index.Warnings, "Code Graph LSP indexing timed out; showing partial results.")
@@ -224,7 +229,10 @@ func (p *previewLSPCodeGraphProvider) buildIndex(ctx context.Context, files []ls
 		}
 		srv, err := p.manager.ServerFor(file.Language)
 		if err != nil {
-			missing[file.Language.Name] = err.Error()
+			missing[file.Language.ServerID] = struct {
+				Language lspLanguage
+				Err      string
+			}{Language: file.Language, Err: err.Error()}
 			continue
 		}
 		symbols, err := srv.DocumentSymbols(ctx, file.Abs, file.Language.LanguageID)
@@ -235,13 +243,14 @@ func (p *previewLSPCodeGraphProvider) buildIndex(ctx context.Context, files []ls
 		flattenLSPSymbols(&index, file, symbols, nil)
 	}
 	if len(missing) > 0 {
-		names := make([]string, 0, len(missing))
-		for name := range missing {
-			names = append(names, name)
+		serverIDs := make([]string, 0, len(missing))
+		for serverID := range missing {
+			serverIDs = append(serverIDs, serverID)
 		}
-		sort.Strings(names)
-		for _, name := range names {
-			index.Warnings = append(index.Warnings, fmt.Sprintf("Code Graph LSP server for %s is unavailable: %s", name, missing[name]))
+		sort.Strings(serverIDs)
+		for _, serverID := range serverIDs {
+			entry := missing[serverID]
+			index.Warnings = append(index.Warnings, lspUnavailableWarning(entry.Language, entry.Err))
 		}
 	}
 	index.Supported = len(index.Nodes) > 0
@@ -252,7 +261,7 @@ func flattenLSPSymbols(index *lspCodeGraphIndex, file lspSourceFile, symbols []l
 	for _, sym := range symbols {
 		owner := lspSymbolOwner(sym, parents)
 		fullName := lspFullSymbolName(sym.Name, owner)
-		if lspSymbolIsCallable(sym.Kind) {
+		if lspSymbolIsResultNode(file.Language, sym) {
 			node := lspCodeNode{
 				ID:             lspCodeNodeID(file.Language.ServerID, file.Rel, fullName, sym.SelectionRange.Start),
 				Name:           sym.Name,
@@ -643,7 +652,7 @@ func lspSourceFiles(projectRoot, docsRoot string) (string, []lspSourceFile, []st
 		}
 		abs := filepath.Join(projectRoot, filepath.FromSlash(rel))
 		lang, ok := lspLanguageForPath(abs)
-		if !ok || !isSearchableCodePath(abs) {
+		if !ok || !isPreviewableFilePath(abs) {
 			return
 		}
 		info, err := os.Stat(abs)
@@ -702,20 +711,26 @@ func lspSourceToken(files []lspSourceFile) string {
 }
 
 func lspLanguageForPath(path string) (lspLanguage, bool) {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".go":
-		return lspLanguage{ServerID: "go", LanguageID: "go", Name: "Go", Command: "gopls", Args: []string{"serve"}}, true
-	case ".ts":
-		return lspLanguage{ServerID: "typescript", LanguageID: "typescript", Name: "TypeScript", Command: "typescript-language-server", Args: []string{"--stdio"}}, true
-	case ".tsx":
-		return lspLanguage{ServerID: "typescript", LanguageID: "typescriptreact", Name: "TypeScript", Command: "typescript-language-server", Args: []string{"--stdio"}}, true
-	case ".js", ".cjs", ".mjs":
-		return lspLanguage{ServerID: "typescript", LanguageID: "javascript", Name: "JavaScript", Command: "typescript-language-server", Args: []string{"--stdio"}}, true
-	case ".jsx":
-		return lspLanguage{ServerID: "typescript", LanguageID: "javascriptreact", Name: "JavaScript", Command: "typescript-language-server", Args: []string{"--stdio"}}, true
-	default:
-		return lspLanguage{}, false
+	ext := strings.ToLower(filepath.Ext(path))
+	for _, lang := range lspLanguageSpecs() {
+		if !stringInSlice(ext, lang.Extensions) {
+			continue
+		}
+		server, ok := lspInstallSpecByID(lang.ServerID)
+		if !ok {
+			return lspLanguage{}, false
+		}
+		return lspLanguage{
+			ID:         lang.ID,
+			ServerID:   lang.ServerID,
+			LanguageID: lang.LanguageID,
+			Name:       lang.Name,
+			Command:    server.Command,
+			Args:       server.Args,
+			SymbolMode: lang.SymbolMode,
+		}, true
 	}
+	return lspLanguage{}, false
 }
 
 func newPreviewLSPManager(root string) *previewLSPManager {
@@ -738,15 +753,20 @@ func (m *previewLSPManager) ServerFor(lang lspLanguage) (*previewLSPServer, erro
 }
 
 func (m *previewLSPManager) resolveCommand(lang lspLanguage) (string, error) {
-	if path, err := exec.LookPath(lang.Command); err == nil {
-		return path, nil
+	path, _, err := m.resolveCommandWithSource(lang.Command)
+	return path, err
+}
+
+func (m *previewLSPManager) resolveCommandWithSource(command string) (string, string, error) {
+	if path, err := exec.LookPath(command); err == nil {
+		return path, "path", nil
 	}
-	for _, candidate := range m.commandCandidates(lang.Command) {
+	for _, candidate := range m.commandCandidates(command) {
 		if executableFile(candidate) {
-			return candidate, nil
+			return candidate, lspCommandSource(candidate, m.root), nil
 		}
 	}
-	return "", fmt.Errorf("%s not found in PATH or known local tool locations", lang.Command)
+	return "", "", fmt.Errorf("%s not found in PATH or known local tool locations", command)
 }
 
 func (m *previewLSPManager) commandCandidates(command string) []string {
@@ -779,6 +799,9 @@ func (m *previewLSPManager) commandCandidates(command string) []string {
 			// GUI-launched processes often miss GOPATH/bin in PATH even when gopls is installed there.
 			addDir(filepath.Join(home, "go", "bin"))
 		}
+	}
+	for _, dir := range lspCacheCommandDirs(command) {
+		addDir(dir)
 	}
 
 	candidates := []string{}
@@ -1244,6 +1267,25 @@ func lspSymbolIsCallable(kind int) bool {
 	}
 }
 
+func lspSymbolIsResultNode(lang lspLanguage, sym lspDocumentSymbol) bool {
+	if strings.TrimSpace(sym.Name) == "" {
+		return false
+	}
+	switch lang.SymbolMode {
+	case lspSymbolModeDocument:
+		return sym.Kind != 1 && sym.Kind != 2
+	case lspSymbolModeSelector:
+		switch sym.Kind {
+		case 5, 7, 8, 12, 13, 14, 15, 18, 20:
+			return true
+		default:
+			return false
+		}
+	default:
+		return lspSymbolIsCallable(sym.Kind)
+	}
+}
+
 func lspSymbolIsContainer(kind int) bool {
 	switch kind {
 	case 2, 3, 5, 11, 18, 23:
@@ -1269,10 +1311,26 @@ func lspSymbolKindLabel(kind int) string {
 		return "interface"
 	case 12:
 		return "function"
+	case 7:
+		return "property"
+	case 8:
+		return "field"
+	case 13:
+		return "variable"
+	case 14:
+		return "constant"
+	case 15:
+		return "string"
 	case 18:
 		return "object"
+	case 20:
+		return "key"
 	case 23:
 		return "struct"
+	case 24:
+		return "event"
+	case 25:
+		return "operator"
 	default:
 		return "symbol"
 	}

@@ -24,6 +24,8 @@ type graphOptions struct {
 	limit       int
 	keywordOp   string
 	jsonOutput  bool
+	ensureLSP   bool
+	warnings    []string
 }
 
 type searchOptions struct {
@@ -52,6 +54,7 @@ func RunGraph(args []string) error {
 	fs.IntVar(&opt.limit, "limit", defaultSearchLimit, "maximum results per search panel in query mode")
 	fs.StringVar(&opt.keywordOp, "keyword-op", "sum", "keyword operator for comma-separated query terms: sum or difference")
 	fs.BoolVar(&opt.jsonOutput, "json", false, "print query results as JSON")
+	fs.BoolVar(&opt.ensureLSP, "ensure-lsp", false, "install missing LSP servers for detected project languages before querying")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -64,6 +67,11 @@ func RunGraph(args []string) error {
 	opt.query = strings.TrimSpace(opt.query)
 	if opt.query == "" {
 		return fmt.Errorf("graph requires --query; use the search command for the standalone HTML launcher")
+	}
+	if opt.ensureLSP {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		opt.warnings = append(opt.warnings, ensureProjectLSP(ctx, opt.projectRoot, opt.docsDir, lspEnsureOptions{Progress: os.Stderr})...)
 	}
 	return runGraphQuery(opt, os.Stdout)
 }
@@ -160,7 +168,7 @@ func buildGraphQueryResponse(ctx context.Context, opt graphOptions, codeGraph pr
 		warnings = append(warnings, "Docs directory is unavailable; searching code and LSP code graph only: "+err.Error())
 	}
 	response := buildPreviewSearchResponse(ctx, project, codeGraph, opt.projectRoot, opt.query, "hybrid", opt.keywordOp, opt.limit)
-	response.Warnings = append(warnings, response.Warnings...)
+	response.Warnings = append(append(opt.warnings, warnings...), response.Warnings...)
 	return response
 }
 
