@@ -36,6 +36,8 @@ type searchOptions struct {
 	openBrowser bool
 }
 
+var ensureProjectLSPForGraph = ensureProjectLSP
+
 func RunGraph(args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -46,7 +48,9 @@ func RunGraph(args []string) error {
 		docsDir:     "docs",
 		limit:       defaultSearchLimit,
 		keywordOp:   "sum",
+		ensureLSP:   true,
 	}
+	noEnsureLSP := false
 	fs := flag.NewFlagSet("graph", flag.ContinueOnError)
 	fs.StringVar(&opt.projectRoot, "project", opt.projectRoot, "project root to inspect")
 	fs.StringVar(&opt.docsDir, "docs-dir", opt.docsDir, "docs directory relative to project root, or absolute path")
@@ -54,12 +58,16 @@ func RunGraph(args []string) error {
 	fs.IntVar(&opt.limit, "limit", defaultSearchLimit, "maximum results per search panel in query mode")
 	fs.StringVar(&opt.keywordOp, "keyword-op", "sum", "keyword operator for comma-separated query terms: sum or difference")
 	fs.BoolVar(&opt.jsonOutput, "json", false, "print query results as JSON")
-	fs.BoolVar(&opt.ensureLSP, "ensure-lsp", false, "install missing LSP servers for detected project languages before querying")
+	fs.BoolVar(&opt.ensureLSP, "ensure-lsp", true, "ensure missing LSP servers for detected project languages before querying")
+	fs.BoolVar(&noEnsureLSP, "no-ensure-lsp", false, "skip automatic LSP install before querying")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
+	}
+	if noEnsureLSP {
+		opt.ensureLSP = false
 	}
 	opt.projectRoot = normalizePreviewProjectRoot(opt.projectRoot)
 	opt.keywordOp = parseSearchKeywordOperator(opt.keywordOp)
@@ -71,7 +79,7 @@ func RunGraph(args []string) error {
 	if opt.ensureLSP {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		opt.warnings = append(opt.warnings, ensureProjectLSP(ctx, opt.projectRoot, opt.docsDir, lspEnsureOptions{Progress: os.Stderr})...)
+		opt.warnings = append(opt.warnings, ensureProjectLSPForGraph(ctx, opt.projectRoot, opt.docsDir, lspEnsureOptions{Progress: os.Stderr})...)
 	}
 	return runGraphQuery(opt, os.Stdout)
 }

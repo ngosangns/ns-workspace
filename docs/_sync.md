@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: a9345de30972cc78aa6982300e416c8aa4d53bfe
+- **Last Synced Commit**: 889d48fd2e4eb94546dd21f7ba905351cd1bd5e0
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-29T05:38:49Z
-- **Scope**: README, preview feature/module/architecture docs, planning notes, sync state and `lsp-code-graph` skill workflow for expanded LSP coverage across HTML, CSS, SCSS/Sass, JavaScript, TypeScript, Go/Golang and Kotlin, including install aliases, cache resolution and `graph --ensure-lsp`.
-- **Known Unsynced**: Current worktree contains the command, skill and docs changes for this sync snapshot until they are committed.
+- **Sync Date**: 2026-05-29T06:13:26Z
+- **Scope**: README, preview feature/module/architecture docs, planning notes, sync state and `lsp-code-graph` skill workflow for default LSP auto-ensure in `graph --query`, including opt-out `--no-ensure-lsp`.
+- **Known Unsynced**: Current worktree contains the auto-ensure graph query changes for this sync snapshot until they are committed.

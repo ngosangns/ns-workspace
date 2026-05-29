@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -280,6 +281,74 @@ func TestGraphRequiresQuery(t *testing.T) {
 	}
 }
 
+func TestGraphQueryAutoEnsuresLSPByDefault(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+
+	var called bool
+	restore := replaceGraphEnsureHook(func(ctx context.Context, projectRoot, docsDir string, opts lspEnsureOptions) []string {
+		called = true
+		if projectRoot != root || docsDir != "docs" {
+			t.Fatalf("ensure should receive normalized project/docs, got %q %q", projectRoot, docsDir)
+		}
+		if opts.Progress == nil {
+			t.Fatal("graph ensure should write progress to stderr, not stdout")
+		}
+		return []string{"auto ensure warning"}
+	})
+	defer restore()
+
+	output, err := captureStdout(t, func() error {
+		return RunGraph([]string{"--project", root, "--query", "Spec", "--limit", "1", "--json"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("graph query should ensure LSP by default")
+	}
+	var search previewSearchResponse
+	if err := json.Unmarshal([]byte(output), &search); err != nil {
+		t.Fatalf("graph query should keep JSON stdout valid after ensure: %v\n%s", err, output)
+	}
+	if !containsString(search.Warnings, "auto ensure warning") {
+		t.Fatalf("graph query should include ensure warnings, got %+v", search.Warnings)
+	}
+}
+
+func TestGraphQueryCanSkipAutoEnsureLSP(t *testing.T) {
+	cases := [][]string{
+		{"--no-ensure-lsp"},
+		{"--ensure-lsp=false"},
+	}
+	for _, extra := range cases {
+		t.Run(strings.Join(extra, " "), func(t *testing.T) {
+			root := t.TempDir()
+			writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+
+			var called bool
+			restore := replaceGraphEnsureHook(func(ctx context.Context, projectRoot, docsDir string, opts lspEnsureOptions) []string {
+				called = true
+				return nil
+			})
+			defer restore()
+
+			args := append([]string{"--project", root, "--query", "Spec", "--json"}, extra...)
+			output, err := captureStdout(t, func() error { return RunGraph(args) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if called {
+				t.Fatalf("%v should skip automatic LSP ensure", extra)
+			}
+			var search previewSearchResponse
+			if err := json.Unmarshal([]byte(output), &search); err != nil {
+				t.Fatalf("graph query should print valid JSON: %v\n%s", err, output)
+			}
+		})
+	}
+}
+
 func TestGraphQueryJSONUsesSearchPipeline(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
@@ -338,6 +407,44 @@ func credentialVault() {}
 	if !containsString(search.Warnings, "Code Graph relation expansion is unavailable for this language server.") {
 		t.Fatalf("graph query should preserve Code Graph warnings: %+v", search.Warnings)
 	}
+}
+
+func replaceGraphEnsureHook(hook func(context.Context, string, string, lspEnsureOptions) []string) func() {
+	previous := ensureProjectLSPForGraph
+	ensureProjectLSPForGraph = hook
+	return func() {
+		ensureProjectLSPForGraph = previous
+	}
+}
+
+func captureStdout(t *testing.T, run func() error) (string, error) {
+	t.Helper()
+	previous := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writer
+	done := make(chan struct {
+		text string
+		err  error
+	}, 1)
+	go func() {
+		data, readErr := io.ReadAll(reader)
+		done <- struct {
+			text string
+			err  error
+		}{text: string(data), err: readErr}
+	}()
+	runErr := run()
+	_ = writer.Close()
+	os.Stdout = previous
+	result := <-done
+	_ = reader.Close()
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	return result.text, runErr
 }
 
 func TestGraphQueryTextPrioritizesGraphContext(t *testing.T) {

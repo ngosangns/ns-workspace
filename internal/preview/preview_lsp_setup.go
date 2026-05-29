@@ -762,7 +762,7 @@ func lspUnavailableWarning(lang lspLanguage, detail string) string {
 	if spec, ok := lspInstallSpecByServerID(lang.ServerID); ok {
 		command = "go run . lsp install " + spec.ID
 	}
-	return fmt.Sprintf("Code Graph LSP server for %s is unavailable: %s. Run: %s. Or one-shot: go run . graph --ensure-lsp --project <path> --query <term> --json", name, detail, command)
+	return fmt.Sprintf("Code Graph LSP server for %s is unavailable: %s. Run: %s. CLI graph queries auto-ensure LSP by default; use --no-ensure-lsp only when install side effects must be skipped.", name, detail, command)
 }
 
 func trimCommandOutput(out []byte) string {
