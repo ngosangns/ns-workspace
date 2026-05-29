@@ -15,6 +15,7 @@
 
 - CLI Go trong `main.go` xử lý các lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`, `preview`, `search`, `graph` và `lsp`.
 - Package `internal/agentsync` gom logic adapter và operation sync cho các agent. Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf và Aider.
+- Lệnh `update` rewrite artifact do `internal/agentsync` quản lý từ preset hiện tại. File, tree và JSON key managed được backup trước khi ghi; entry hoặc key đã bị xóa khỏi preset sẽ không được giữ lại trong output hiện tại.
 - Package `internal/preview` scan docs, parse metadata, dựng graph, phục vụ API, chạy preview server, sinh launcher cho Search standalone, query LSP Code Graph và cài language server vào cache user khi CLI `lsp` hoặc `graph --query` cần chuẩn bị LSP; `graph --no-ensure-lsp` bỏ qua bước cài tự động.
 - Frontend preview dùng TypeScript source trong `internal/preview/preview_ui_src/`, build ra static assets trong `internal/preview/preview_ui/`, gồm SPA preview chính và entry `search.html` cho lệnh `search`.
 - Preset agent instruction trong `presets/agents/AGENTS.md` nhận trigger skill dạng `//<tag>` cho pipeline research, search docs, plan, execution, fix, update-docs và commit. Trigger riêng `/s` gọi skill `spawn-opencode` để spawn OpenCode process như sub-agent.

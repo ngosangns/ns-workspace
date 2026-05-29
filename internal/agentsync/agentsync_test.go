@@ -109,6 +109,71 @@ func TestInstalledSettingsDoNotInstallGraphifyHooks(t *testing.T) {
 	}
 }
 
+func TestUpdateRewritesManagedPresetContent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("all"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	staleSharedSkill := filepath.Join(home, ".agents", "skills", "stale-local", "SKILL.md")
+	staleNativeSkill := filepath.Join(home, ".claude", "skills", "stale-local", "SKILL.md")
+	for _, path := range []string{staleSharedSkill, staleNativeSkill} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("stale\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, ".qwen", "settings.json"), []byte(`{"mcpServers":{"stale":{}},"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"stale"}]}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".config", "opencode", "opencode.json"), []byte(`{"stale":true,"mcp":{"stale":{}},"permission":"deny"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := manager.Apply(opt, true); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	mustNotExist(t, staleSharedSkill)
+	mustNotExist(t, staleNativeSkill)
+	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".claude", "skills", "execution", "SKILL.md"))
+
+	qwen := readJSONFile(t, filepath.Join(home, ".qwen", "settings.json"))
+	if _, ok := qwen["mcpServers"].(map[string]any)["stale"]; ok {
+		t.Fatalf("update kept stale qwen MCP preset: %v", qwen)
+	}
+	if hooks, ok := qwen["hooks"].(map[string]any); !ok || len(hooks) != 0 {
+		t.Fatalf("update did not rewrite qwen hooks from preset: %v", qwen)
+	}
+
+	opencode := readJSONFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if _, ok := opencode["stale"]; ok {
+		t.Fatalf("update kept stale opencode root key: %v", opencode)
+	}
+	if _, ok := opencode["mcp"].(map[string]any)["stale"]; ok {
+		t.Fatalf("update kept stale opencode MCP preset: %v", opencode)
+	}
+	if opencode["permission"] != "allow" {
+		t.Fatalf("update did not rewrite opencode permission from preset: %v", opencode)
+	}
+}
+
 func TestKiroCLISelectionUsesKiroAdapter(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -251,6 +316,19 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func readJSONFile(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		t.Fatalf("invalid JSON in %s: %v", path, err)
+	}
+	return obj
 }
 
 func hookCommands(t *testing.T, path string) []string {
