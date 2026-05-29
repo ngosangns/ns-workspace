@@ -181,13 +181,13 @@ npm run build:preview
 
 Lệnh `search` dùng cùng backend search với `preview`, nhưng mở trực tiếp entry Search standalone. Command tạo file launcher mặc định `ns-workspace-search.html` trong thư mục đang chạy, start local API server, rồi mở browser mặc định tới launcher đó. File launcher trỏ tới server đang chạy, nên command cần tiếp tục sống trong terminal để search động hoạt động.
 
-Lệnh `graph` chỉ chạy query terminal: nó không sinh launcher, không mở browser và không giữ server sống. Output dùng cùng response với `/api/search`, gồm `docsSemantic`, `docsGraph`, `codeSemantic`, `codeGraph`, `stats` và `warnings`. Nếu language server thiếu hoặc không hỗ trợ relation expansion, command vẫn trả kết quả fail-open kèm warning để agent có thể fallback sang search code thường. Thêm `--ensure-lsp` để command tự cài language server còn thiếu cho các language phát hiện trong project trước khi query.
+Lệnh `graph` chỉ chạy query terminal: nó không sinh launcher, không mở browser và không giữ server sống. Output dùng cùng response với `/api/search`, gồm `docsSemantic`, `docsGraph`, `codeSemantic`, `codeGraph`, `stats` và `warnings`. Mặc định command tự ensure language server còn thiếu cho các language phát hiện trong project trước khi query, cài vào cache user của `ns-workspace` và vẫn fail-open nếu cài đặt lỗi hoặc server không hỗ trợ relation expansion. Dùng `--no-ensure-lsp` khi cần query read-only không có network/install side effect.
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest search --project ~/path/to/project
 go run . search --project . --out ./search.html
 go run . graph --project . --query buildPreviewSearchResponse --json
-go run . graph --project . --ensure-lsp --query buildPreviewSearchResponse --json
+go run . graph --project . --no-ensure-lsp --query buildPreviewSearchResponse --json
 go run . graph --project . --query auth,session --keyword-op difference --limit 5
 go run . lsp list --project .
 go run . lsp install auto --project .
@@ -212,6 +212,7 @@ Graph flags:
 --limit 8
 --keyword-op sum|difference
 --ensure-lsp
+--no-ensure-lsp
 --json
 ```
 

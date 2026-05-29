@@ -11,7 +11,7 @@
 
 `graph` hiện là command query-only cho Search/LSP Code Graph. Backend `internal/preview` có `previewLSPManager`, `lspLanguageForPath()`, resolver binary, provider `previewLSPCodeGraphProvider` và registry cài đặt LSP cho HTML, CSS/SCSS/Sass, JavaScript/TypeScript, Go/Golang và Kotlin. Khi thiếu binary như `gopls`, `typescript-language-server`, `vscode-html-language-server`, `vscode-css-language-server` hoặc `kotlin-lsp`, preview/search vẫn fail-open: Code Semantic có kết quả, Code Graph rỗng và response có warning kèm command sửa lỗi.
 
-Flow chuẩn hiện tại là explicit: user hoặc agent có thể chạy `lsp list/install` để chuẩn bị môi trường, hoặc dùng `graph --ensure-lsp` như one-shot trước khi query. Install không chạm target project; binary được cài vào cache user của `ns-workspace`, rồi resolver tìm được cache đó sau các vị trí local quen thuộc.
+Flow chuẩn hiện tại là command-first: user hoặc agent có thể chạy `graph --query` để vừa chuẩn bị LSP mặc định vừa query Code Graph, hoặc chạy `lsp list/install` khi muốn kiểm tra/cài thủ công. Install không chạm target project; binary được cài vào cache user của `ns-workspace`, rồi resolver tìm được cache đó sau các vị trí local quen thuộc. `--ensure-lsp` vẫn được chấp nhận để tương thích, còn `--no-ensure-lsp` bỏ qua bước cài tự động.
 
 Tham khảo `knowns-dev/knowns`: Knowns tách code intelligence khỏi semantic search, có nhóm lệnh `knowns lsp list`, `knowns lsp install <language>` và `knowns lsp cleanup`; docs của họ mô tả Code Intelligence dựa trên LSP với thao tác list/install rõ ràng. Implementation cũng có adapter theo ngôn ngữ, prerequisite check, install guide, trạng thái install và installer có cache/cleanup/concurrent-install guard.
 
@@ -19,7 +19,7 @@ Tham khảo `knowns-dev/knowns`: Knowns tách code intelligence khỏi semantic 
 
 Triệu chứng trực tiếp:
 
-- `graph --query` chạy được nhưng `panels.codeGraph` có thể rỗng nếu binary LSP thiếu.
+- Trước thay đổi auto-ensure mặc định, `graph --query` chạy được nhưng `panels.codeGraph` có thể rỗng nếu binary LSP thiếu.
 - Warning hiện chỉ nói binary không tìm thấy, chưa đưa flow cài đặt thống nhất.
 - Nếu agent chạy từ môi trường GUI hoặc checkout khác, `PATH` và `node_modules/.bin` dễ lệch.
 
@@ -33,7 +33,7 @@ Lý do chọn hướng đi:
 
 - Tách `lsp` management thành lớp riêng giống Knowns để giữ trách nhiệm sạch: list/install/status thuộc CLI setup; query thuộc `graph`; web preview chỉ đọc trạng thái và fail-open.
 - Cài vào tool cache của `ns-workspace` thay vì sửa project hoặc bắt user cài global. Resolver hiện đã có khái niệm "known local tool locations"; thêm cache riêng sẽ giảm phụ thuộc `PATH`, không chạm `package.json`, không làm bẩn repo được inspect.
-- `graph` nên có flag explicit như `--ensure-lsp` để agent có one-shot workflow, nhưng mặc định vẫn không tự cài để tránh side effect bất ngờ trong command query.
+- `graph` là CLI agent-first nên có thể tự ensure LSP theo mặc định; môi trường cần read-only có opt-out `--no-ensure-lsp`.
 
 ## Góc Nhìn Tổng Quan Và Phạm Vi Tập Trung
 
@@ -42,7 +42,7 @@ Phạm vi tập trung là Go CLI và backend LSP resolver trong repo này:
 - CLI `main.go`: thêm nhóm command `lsp`.
 - Package mới hoặc file mới trong `internal/preview`: registry LSP install/status, cache path, installer wrappers.
 - `internal/preview/preview_lsp.go`: resolver biết thêm cache path đã cài.
-- `graph`: thêm opt-in `--ensure-lsp` để tự cài các LSP thiếu cho project trước khi query.
+- `graph`: tự ensure LSP trước query theo mặc định, với `--no-ensure-lsp` để bỏ qua side effect.
 - Docs và `lsp-code-graph` skill: cập nhật workflow command-first.
 
 Không cần thay frontend preview trong vòng này. Search UI chỉ cần nhận warning tốt hơn từ backend hiện tại.
@@ -55,11 +55,11 @@ Không cần thay frontend preview trong vòng này. Search UI chỉ cần nhậ
   - `go run . lsp install go`
   - `go run . lsp install auto --project /path/to/project`
 - Có workflow one-shot cho agent:
-  - `go run . graph --project /path/to/project --ensure-lsp --query "Symbol" --json`
+  - `go run . graph --project /path/to/project --query "Symbol" --json`
 - Binary được cài vào cache do `ns-workspace` quản lý, ví dụ `os.UserCacheDir()/ns-workspace/lsp` hoặc `NS_WORKSPACE_LSP_CACHE`, và resolver tìm được cache đó.
 - Cài đặt có prerequisite check rõ: Go cho `gopls`, Node/npm cho TypeScript.
 - Missing LSP vẫn fail-open khi không bật ensure/install, nhưng warning kèm command cụ thể để sửa.
-- Output `lsp list` và `graph --ensure-lsp --json` đủ ổn định cho skill dùng.
+- Output `lsp list` và `graph --query --json` đủ ổn định cho skill dùng.
 
 ## Ngoài Phạm Vi
 
@@ -144,7 +144,7 @@ Thứ tự này giữ ưu tiên cho user/project trước cache do tool cài.
 
 ### Graph ensure flow
 
-`graph --ensure-lsp --project PATH --query TEXT --json`:
+`graph --project PATH --query TEXT --json`:
 
 1. Normalize project.
 2. Detect languages từ project.
@@ -152,7 +152,7 @@ Thứ tự này giữ ưu tiên cho user/project trước cache do tool cài.
 4. Chạy query như hiện tại.
 5. Nếu ensure fail một phần, response vẫn fail-open nhưng warnings thêm chi tiết install failure.
 
-Mặc định `graph --query` không cài gì. Điều này giữ contract hiện tại và tránh network side effect không mong muốn.
+Mặc định `graph --query` tự ensure LSP. Dùng `--no-ensure-lsp` để giữ query read-only và tránh network side effect.
 
 ### Warning và skill
 
@@ -167,14 +167,14 @@ Nên đổi thành warning có action:
 ```text
 TypeScript LSP is unavailable: typescript-language-server not found.
 Run: go run . lsp install typescript
-Or one-shot: go run . graph --ensure-lsp --project <path> --query "<term>" --json
+Graph queries auto-ensure LSP by default; use --no-ensure-lsp only when install side effects must be skipped.
 ```
 
 Skill `lsp-code-graph` nên dùng:
 
 ```sh
 cd ~/path/to/ns-workspace
-go run . graph --project /path/to/project --ensure-lsp --query "<symbol-or-concept>" --json
+go run . graph --project /path/to/project --query "<symbol-or-concept>" --json
 ```
 
 Nếu install fail do prerequisite thiếu, skill đọc warning rồi fallback sang `rg`/code inspection, không fallback qua UI/API.
@@ -183,7 +183,7 @@ Nếu install fail do prerequisite thiếu, skill đọc warning rồi fallback 
 
 ```mermaid
 flowchart LR
-  Agent["Agent / skill"] --> Graph["graph --ensure-lsp --query"]
+  Agent["Agent / skill"] --> Graph["graph --query"]
   User["User"] --> LSPCLI["lsp list/install"]
   Graph --> Ensure["LSP ensure service"]
   LSPCLI --> Ensure
@@ -243,11 +243,11 @@ lsp cleanup [--json]
 
 `cleanup` có thể chỉ xóa cache cũ nếu cache versioned; nếu vòng đầu chưa versioned thì có thể để ngoài phạm vi hoặc chỉ xóa temp/empty dirs. Nếu thêm `cleanup`, giữ behavior đơn giản và test được.
 
-### 4. Gắn `graph --ensure-lsp`
+### 4. Gắn auto-ensure cho `graph --query`
 
-Thêm flag `ensureLSP bool` vào `graphOptions`.
+Thêm flag `ensureLSP bool` vào `graphOptions`, mặc định `true`.
 
-Trước `runGraphQuery()`, gọi `ensureProjectLSP()` khi flag bật. Vì `runGraphQuery()` tạo provider mới, resolver sẽ thấy binary cache sau khi cài.
+Trước `runGraphQuery()`, gọi `ensureProjectLSP()` khi ensure đang bật. Vì `runGraphQuery()` tạo provider mới, resolver sẽ thấy binary cache sau khi cài. `--ensure-lsp` vẫn được giữ để tương thích; `--no-ensure-lsp` tắt bước ensure cho workflow read-only.
 
 Nếu `--json`, warnings install nên đi vào JSON response thay vì stdout xen vào. Cách sạch nhất:
 
@@ -274,11 +274,11 @@ for _, candidate := range lspCachedCommandCandidates(command) {
 
 ### 6. Cập nhật docs và skill
 
-- README: thêm `lsp list/install`, `graph --ensure-lsp`.
+- README: thêm `lsp list/install`, auto-ensure mặc định và `--no-ensure-lsp`.
 - `docs/modules/preview.md`: mô tả LSP cache và ensure flow.
 - `docs/features/preview-web.md`: giữ preview fail-open, không auto-install trong UI.
 - `docs/specs/planning/lsp-code-graph-search.md`: cập nhật phần "Không auto-install" thành trạng thái mới nếu triển khai.
-- `presets/skills/lsp-code-graph/SKILL.md`: dùng `--ensure-lsp` làm command mặc định.
+- `presets/skills/lsp-code-graph/SKILL.md`: dùng `graph --query` làm command mặc định vì graph tự ensure LSP.
 
 ## Chi Tiết Triển Khai
 
@@ -304,7 +304,7 @@ Các tình huống cần xử lý:
 - Install command thất bại: exit non-zero, stderr chứa command/package manager và output rút gọn.
 - Install thành công nhưng resolver không thấy: error, vì đây là bug cache path/resolver.
 
-### `graph --ensure-lsp`
+### `graph --query`
 
 Behavior:
 
@@ -312,7 +312,7 @@ Behavior:
 - Nếu missing và cài thành công: query Code Graph có cơ hội trả result ngay.
 - Nếu cài thất bại: query vẫn chạy, `warnings` có install failure và fallback LSP missing.
 
-Không nên hỏi xác nhận interactive trong `graph`; agent workflow cần deterministic. Side effect đã được opt-in bằng flag.
+Không nên hỏi xác nhận interactive trong `graph`; agent workflow cần deterministic. Side effect nằm trong CLI graph mặc định và có opt-out bằng `--no-ensure-lsp`.
 
 ### Version và package manager
 
@@ -326,7 +326,7 @@ Installer hiện tại:
 
 ### Concurrency và cache lock
 
-Vì `graph --ensure-lsp` có thể chạy song song trong cùng process, installer dùng process-local mutex theo language ID và kiểm tra lại resolver sau khi lấy lock. Guard này tránh hai goroutine trong cùng CLI/server process cùng cài một cache entry. Nó không phải cross-process file lock; nếu nhiều process độc lập cài cùng lúc thì npm/go toolchain vẫn là lớp chịu trách nhiệm xử lý cache/package install của chúng.
+Vì nhiều `graph --query` process có thể chạy song song, installer dùng process-local mutex theo language ID và kiểm tra lại resolver sau khi lấy lock. Guard này tránh hai goroutine trong cùng CLI/server process cùng cài một cache entry. Nó không phải cross-process file lock; nếu nhiều process độc lập cài cùng lúc thì npm/go toolchain vẫn là lớp chịu trách nhiệm xử lý cache/package install của chúng.
 
 ## Phạm Vi Đã Áp Dụng
 
@@ -340,11 +340,11 @@ Vì `graph --ensure-lsp` có thể chạy song song trong cùng process, install
    - `kotlin-lsp` qua resolver/manual install guide; `lsp install kotlin` trả status `manual` nếu thiếu binary.
 5. Resolver tìm binary trong cache sau `PATH`, Go bin dirs và `node_modules/.bin` local.
 6. CLI có `lsp list/install` trong `main.go` và usage.
-7. `graph --ensure-lsp` chạy ensure trước query và đưa install warnings vào response.
+7. `graph --query` chạy ensure trước query theo mặc định và đưa install warnings vào response; `--no-ensure-lsp` bỏ qua bước này.
 8. Warning thiếu LSP có command sửa lỗi.
-9. `lsp-code-graph` skill dùng `--ensure-lsp` mặc định và không fallback qua UI/API.
+9. `lsp-code-graph` skill dùng `graph --query` mặc định và không fallback qua UI/API.
 10. README và docs shipped mô tả behavior mới.
-11. Unit tests hiện phủ cache resolver, `lsp install auto --dry-run`, explicit JSON failure và path Code Graph missing-LSP fail-open.
+11. Unit tests hiện phủ cache resolver, `lsp install auto --dry-run`, explicit JSON failure, default graph auto-ensure, opt-out `--no-ensure-lsp`/`--ensure-lsp=false` và path Code Graph missing-LSP fail-open.
 
 ## Rủi Ro Và Ràng Buộc
 
@@ -353,7 +353,7 @@ Vì `graph --ensure-lsp` có thể chạy song song trong cùng process, install
 - TypeScript, HTML và CSS language servers cần Node/npm; Go language server cần Go toolchain. Missing prerequisite phải rõ, không che bằng warning generic. Kotlin hiện cần user cài `kotlin-lsp` thủ công.
 - Cài vào cache không sửa project, nhưng language server vẫn có thể cần dependency project để hiểu code sâu. Ví dụ TypeScript server hoạt động tốt hơn khi project có `typescript` hoặc tsconfig phù hợp; cache có `typescript` fallback nhưng không thay thế project config.
 - Resolver order phải tôn trọng project/PATH trước cache để không override môi trường user đã chuẩn bị.
-- Nếu `graph --ensure-lsp --json` in progress vào stdout, JSON sẽ hỏng. Mọi progress phải đi stderr hoặc warnings JSON.
+- Nếu `graph --query --json` in progress vào stdout, JSON sẽ hỏng. Mọi progress phải đi stderr hoặc warnings JSON.
 - File lock cross-platform có thể làm scope lớn. Nếu chưa làm lock file ngay, cần document process-local guard và test idempotency.
 
 ## Kiểm Chứng
@@ -365,7 +365,8 @@ go test ./...
 npm run format:docs:check
 go run . lsp list --project . --json
 go run . lsp install auto --project . --dry-run
-go run . graph --project . --ensure-lsp --query buildPreviewSearchResponse --json
+go run . graph --project . --query buildPreviewSearchResponse --json
+go run . graph --project . --no-ensure-lsp --query buildPreviewSearchResponse --json
 ```
 
 Coverage hiện có:
@@ -374,17 +375,17 @@ Coverage hiện có:
 - `lsp install auto --dry-run` phát hiện TypeScript từ project và trả command cache đúng.
 - `lsp install <language> --json` vẫn trả non-zero khi explicit install fail.
 - Missing prerequisite không panic và được serialize thành install result `failed`.
-- `graph --ensure-lsp` đã được kiểm thử thủ công để gọi query và trả Code Graph khi LSP sẵn sàng.
+- `graph --query` đã được kiểm thử để gọi ensure mặc định, giữ JSON stdout hợp lệ và trả Code Graph khi LSP sẵn sàng.
 
 Gaps còn lại:
 
 - Chưa có fake executor riêng để assert command `go install`/`npm install` mà không phụ thuộc toolchain thật.
 - Chưa có unit test riêng cho cache `gopls`, dù resolver dùng cùng helper cache theo command.
-- Chưa có test riêng chứng minh `graph --query` không gọi ensure khi thiếu `--ensure-lsp`; behavior hiện được giữ bằng flag branch trong `RunGraph`.
+- Chưa có fake executor riêng để assert install command thật được gọi qua default graph auto-ensure mà không phụ thuộc toolchain/network.
 
 ## Tiêu Chí Chấp Nhận
 
-- Agent có thể chạy một command duy nhất `graph --ensure-lsp --query` để chuẩn bị LSP thiếu và query Code Graph.
+- Agent có thể chạy một command duy nhất `graph --query` để chuẩn bị LSP thiếu và query Code Graph.
 - User có thể xem trạng thái và cài thủ công bằng `lsp list/install`.
 - Preview/Search UI vẫn fail-open, không tự cài LSP trong request web.
 - Warning thiếu LSP luôn có command sửa lỗi rõ ràng.

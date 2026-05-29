@@ -9,16 +9,16 @@ Dùng skill này để lấy bối cảnh code graph có cấu trúc trước kh
 
 ## Workflow
 
-1. Chạy query non-interactive bằng lệnh `graph` từ checkout local của `ns-workspace`, rồi trỏ `--project` sang repo cần inspect. Mặc định dùng `--ensure-lsp` để tự cài language server còn thiếu cho các language phát hiện trong project:
+1. Chạy query non-interactive bằng lệnh `graph` từ checkout local của `ns-workspace`, rồi trỏ `--project` sang repo cần inspect. `graph --query` tự ensure language server còn thiếu cho các language phát hiện trong project:
 
    ```sh
    cd ~/path/to/ns-workspace
-   go run . graph --project /path/to/project --ensure-lsp --query "<symbol-or-concept>" --json
+   go run . graph --project /path/to/project --query "<symbol-or-concept>" --json
    ```
 
    Khi đang inspect chính checkout `ns-workspace`, `--project .` là đủ. Không dùng `go run github.com/ngosangns/ns-workspace@latest` cho workflow này cho tới khi bản module đã publish query flags.
 
-2. Nếu `graph` báo không có `--query`/`--json`/`--ensure-lsp`, command đang chạy không phải bản local mới. Không fallback qua Search UI/API; chuyển về checkout `ns-workspace` rồi chạy lại `go run . graph --ensure-lsp --query`.
+2. Nếu `graph` báo không có `--query`/`--json` hoặc không tự ensure LSP, command đang chạy không phải bản local mới. Không fallback qua Search UI/API; chuyển về checkout `ns-workspace` rồi chạy lại `go run . graph --query`.
 3. Đọc `warnings` trước. Nếu command báo install fail, thiếu prerequisite hoặc relation expansion không khả dụng, nói rõ fallback và tiếp tục bằng `rg`/code inspection.
 4. Ưu tiên `panels.codeGraph` cho symbol, owner/container, caller/callee, references và path:line cần inspect.
 5. Dùng `panels.docsGraph` khi câu hỏi cần quan hệ tài liệu/spec/module.
@@ -42,7 +42,7 @@ Kiểm tra trạng thái:
 go run . lsp list --project /path/to/project
 ```
 
-Cài thủ công nếu không muốn dùng one-shot `--ensure-lsp`:
+Cài thủ công nếu muốn chuẩn bị trước hoặc nếu auto ensure báo prerequisite/install failure:
 
 ```sh
 go run . lsp install auto --project /path/to/project
@@ -53,7 +53,7 @@ go run . lsp install go
 go run . lsp install kotlin
 ```
 
-Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/`js` map về TypeScript server, `golang` map về Go server và `kt` map về Kotlin. Kotlin hiện có resolver và warning/install guide, nhưng `lsp install kotlin` không tự tải binary; cài `kotlin-lsp` thủ công rồi chạy lại `lsp list` hoặc `graph --ensure-lsp`.
+Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/`js` map về TypeScript server, `golang` map về Go server và `kt` map về Kotlin. Kotlin hiện có resolver và warning/install guide, nhưng `lsp install kotlin` không tự tải binary; cài `kotlin-lsp` thủ công rồi chạy lại `lsp list` hoặc `graph --query`.
 
 ## Flags Hữu Ích
 
@@ -64,8 +64,9 @@ Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/
 --keyword-op sum
 --keyword-op difference
 --ensure-lsp
+--no-ensure-lsp
 --query "term"
 --json
 ```
 
-`graph` chỉ dành cho query terminal và yêu cầu `--query`. Không dùng browser tools hoặc Search standalone API cho workflow này.
+`graph` chỉ dành cho query terminal và yêu cầu `--query`. Dùng `--no-ensure-lsp` khi cần cấm network/install side effect. Không dùng browser tools hoặc Search standalone API cho workflow này.

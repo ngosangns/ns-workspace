@@ -9,7 +9,7 @@
 
 ## Bối Cảnh
 
-Flow LSP đã có CLI `lsp list/install`, cache `NS_WORKSPACE_LSP_CACHE`, resolver cache và `graph --ensure-lsp`. Trước thay đổi coverage này, registry runtime chỉ map Code Graph cho Go và TypeScript/JavaScript:
+Flow LSP đã có CLI `lsp list/install`, cache `NS_WORKSPACE_LSP_CACHE`, resolver cache và auto-ensure mặc định cho `graph --query`. Trước thay đổi coverage này, registry runtime chỉ map Code Graph cho Go và TypeScript/JavaScript:
 
 - `.go` dùng `gopls serve`.
 - `.ts`, `.tsx`, `.js`, `.jsx`, `.cjs`, `.mjs` dùng `typescript-language-server --stdio`.
@@ -23,7 +23,7 @@ Tham khảo local checkout `knowns-dev/knowns`: Knowns có registry/adapter riê
 Triệu chứng trực tiếp:
 
 - `lsp list --project` chỉ báo Go và TypeScript/JavaScript dù project có HTML, CSS, SCSS hoặc Kotlin.
-- `graph --ensure-lsp` không cài server cho HTML/CSS/SCSS/Kotlin.
+- Graph ensure không cài server cho HTML/CSS/SCSS/Kotlin.
 - `lspLanguageForPath()` bỏ qua `.html`, `.htm`, `.css`, `.scss`, `.sass`, `.kt`, `.kts`, nên Code Graph không index các file này.
 
 Nguyên nhân gốc rễ:
@@ -36,7 +36,7 @@ Lý do chọn hướng đi:
 
 - Tách model language/server/install để hỗ trợ alias và server dùng chung mà không làm sai output hiện tại.
 - Dùng các LSP server phổ biến, cài vào cache user giống flow hiện tại, không mutate project.
-- Giữ Preview/Search HTTP fail-open; chỉ `lsp install` và `graph --ensure-lsp` mới có side effect.
+- Giữ Preview/Search HTTP fail-open; chỉ `lsp install` và CLI `graph --query` mới có side effect cài LSP. `graph --no-ensure-lsp` bỏ qua side effect này.
 - Với HTML/CSS/SCSS, coi Code Graph là symbol/reference graph thay vì hứa caller/callee đầy đủ.
 
 ## Mục Tiêu
@@ -52,7 +52,7 @@ Lý do chọn hướng đi:
 - `lsp list --project` hiển thị trạng thái cho các language user-facing hoặc ít nhất hiển thị rõ server nào cover các language trên.
 - `lsp install <language>` chấp nhận các ID/alias: `html`, `css`, `scss`, `sass`, `javascript`, `js`, `typescript`, `ts`, `go`, `golang`, `kotlin`, `kt`, `auto`.
 - `lsp install auto --project` phát hiện đủ language từ source files và cài các server thiếu.
-- `graph --ensure-lsp` chuẩn bị đủ server cho những language được phát hiện rồi query như hiện tại.
+- `graph --query` chuẩn bị đủ server cho những language được phát hiện rồi query như hiện tại; `--no-ensure-lsp` giữ query read-only.
 - Code Graph có kết quả phù hợp cho HTML/CSS/SCSS bằng symbol kinds phù hợp, không chỉ callable symbols.
 - Warning thiếu LSP phải nói đúng language/server và command sửa lỗi.
 
@@ -139,7 +139,7 @@ Warning thiếu LSP cần nói theo language user nhìn thấy, nhưng dedupe th
 ```text
 Code Graph LSP server for HTML is unavailable: vscode-html-language-server not found.
 Run: go run . lsp install html
-Or one-shot: go run . graph --ensure-lsp --project <path> --query <term> --json
+Graph queries auto-ensure LSP by default; use --no-ensure-lsp only when install side effects must be skipped.
 ```
 
 Với server dùng chung:
@@ -154,7 +154,7 @@ flowchart LR
   Detect --> LangSpec["Language specs: html/css/scss/js/ts/go/kotlin"]
   LangSpec --> ServerSpec["Server specs"]
   ServerSpec --> Resolver["Resolver PATH/project/cache"]
-  ServerSpec --> Installer["lsp install / graph --ensure-lsp"]
+  ServerSpec --> Installer["lsp install / graph --query"]
   Resolver --> Provider["LSP Code Graph provider"]
   Provider --> SymbolMode["Language-aware symbol filtering"]
   SymbolMode --> Results["Code Graph results + warnings"]
@@ -228,7 +228,7 @@ Installer Kotlin dùng hướng resolver + install guide:
 
 - `lsp list` phát hiện Kotlin và báo missing kèm install guide.
 - `lsp install kotlin` trả status `manual` nếu binary thiếu.
-- `graph --ensure-lsp` không fail cả query, warning nêu rõ Kotlin cần cài thủ công.
+- `graph --query` không fail cả query, warning nêu rõ Kotlin cần cài thủ công.
 - Khi official release có artifact/checksum đủ ổn định, có thể thêm archive installer sau mà không đổi language spec.
 
 ### 6. Thêm language-aware symbol filtering
@@ -339,7 +339,7 @@ go test ./...
 npm run format:docs:check
 go run . lsp list --project . --json
 go run . lsp install auto --project <fixture> --dry-run --json
-go run . graph --project <fixture> --ensure-lsp --query "<known-symbol>" --json
+go run . graph --project <fixture> --query "<known-symbol>" --json
 ```
 
 Fixture cần có:
@@ -360,4 +360,4 @@ Acceptance:
 - `lsp install auto --dry-run --json` dedupe đúng server: HTML, CSS, TypeScript, Go, Kotlin.
 - `lsp install javascript`, `lsp install typescript`, `lsp install golang`, `lsp install scss` đều resolve đúng server.
 - Code Graph có node từ fake LSP cho từng language trong fixture.
-- `graph --ensure-lsp --json` không làm hỏng JSON stdout và vẫn fail-open khi Kotlin installer chưa có prerequisite hoặc chưa bật auto-download an toàn.
+- `graph --query --json` không làm hỏng JSON stdout và vẫn fail-open khi Kotlin installer chưa có prerequisite hoặc chưa bật auto-download an toàn.

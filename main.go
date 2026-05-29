@@ -134,7 +134,8 @@ Graph flags:
   --query TEXT        run a Search/Code Graph query
   --limit N           maximum results per search panel, default 8
   --keyword-op OP     keyword operator for comma-separated query terms: sum or difference
-  --ensure-lsp        install missing LSP servers for detected project languages before querying
+  --ensure-lsp        ensure missing LSP servers before querying, default true
+  --no-ensure-lsp     skip automatic LSP install before querying
   --json              print query results as JSON
 
 LSP commands:
