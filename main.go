@@ -32,7 +32,7 @@ func run(args []string) error {
 		return nil
 	}
 	switch cmd {
-	case "init", "update", "status", "doctor", "registry", "agents", "catalog", "preview", "search", "graph":
+	case "init", "update", "status", "doctor", "registry", "agents", "catalog", "preview", "search", "graph", "lsp":
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", cmd)
@@ -45,6 +45,9 @@ func run(args []string) error {
 	}
 	if cmd == "graph" {
 		return preview.RunGraph(args[1:])
+	}
+	if cmd == "lsp" {
+		return preview.RunLSP(args[1:])
 	}
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
@@ -97,6 +100,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest preview [flags]
   go run github.com/ngosangns/ns-workspace@latest search [flags]
   go run github.com/ngosangns/ns-workspace@latest graph [flags]
+  go run github.com/ngosangns/ns-workspace@latest lsp <list|install> [flags]
 
 Local checkout usage:
   cd /path/to/ns-workspace
@@ -130,5 +134,10 @@ Graph flags:
   --query TEXT        run a Search/Code Graph query
   --limit N           maximum results per search panel, default 8
   --keyword-op OP     keyword operator for comma-separated query terms: sum or difference
-  --json              print query results as JSON`)
+  --ensure-lsp        install missing LSP servers for detected project languages before querying
+  --json              print query results as JSON
+
+LSP commands:
+  list                show supported language servers and install status
+  install LANG        install a supported language server or auto-detected missing servers`)
 }

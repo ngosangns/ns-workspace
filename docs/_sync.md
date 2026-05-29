@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 1f390bed341d1428d862c176e87dcaf1f8d0a387
+- **Last Synced Commit**: a9345de30972cc78aa6982300e416c8aa4d53bfe
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-28T10:44:29Z
-- **Scope**: README, preview feature/module/architecture docs, planning notes and sync state for splitting Search standalone into the `search` command while keeping `graph` query-only, plus the `lsp-code-graph` skill workflow.
+- **Sync Date**: 2026-05-29T05:38:49Z
+- **Scope**: README, preview feature/module/architecture docs, planning notes, sync state and `lsp-code-graph` skill workflow for expanded LSP coverage across HTML, CSS, SCSS/Sass, JavaScript, TypeScript, Go/Golang and Kotlin, including install aliases, cache resolution and `graph --ensure-lsp`.
 - **Known Unsynced**: Current worktree contains the command, skill and docs changes for this sync snapshot until they are committed.

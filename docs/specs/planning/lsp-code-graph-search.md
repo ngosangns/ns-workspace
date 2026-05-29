@@ -9,7 +9,7 @@
 
 ## Bối Cảnh
 
-Ghi chú triển khai 2026-05-27: kế hoạch này đã được áp dụng ở backend preview, preset agent mặc định và docs user-facing. Code Graph hiện dùng LSP provider runtime thay vì đọc `graphify-out/graph.json`; các đoạn dưới giữ lại bối cảnh và quyết định thiết kế của thay đổi.
+Trạng thái hiện tại: kế hoạch này đã được áp dụng ở backend preview, preset agent mặc định và docs user-facing. Code Graph hiện dùng LSP provider runtime thay vì đọc `graphify-out/graph.json`. Preview/Search HTTP vẫn fail-open khi thiếu language server, còn CLI có flow setup explicit qua `lsp list/install` và `graph --ensure-lsp`.
 
 Preview/Search hiện có bốn panel: Docs Semantic, Docs Graph, Code Semantic và Code Graph. Docs Graph dùng graph tài liệu được scan từ `docs/_index.md`, metadata và relationship map. Code Graph lại dùng file local `graphify-out/graph.json` nếu file này tồn tại, sau đó filter node callable, file tracked bởi Git, caller/callee và neighbor trước khi trả về contract `/api/search`.
 
@@ -42,7 +42,7 @@ Phạm vi tập trung:
 Ngoài phạm vi:
 
 - Không xây MCP code editing tool như `knowns`; chỉ lấy phần LSP cần cho search graph.
-- Không auto-install LSP server trong bước đầu. Nếu binary thiếu, preview fail-open và trả warning có hướng dẫn cài đặt.
+- Không auto-install LSP server trong HTTP `/api/search`, `preview` hoặc `search` UI. Nếu binary thiếu, các bề mặt này fail-open và trả warning có command cài đặt; CLI setup explicit nằm ở `lsp install` và `graph --ensure-lsp`.
 - Không thay thế Docs Graph bằng LSP. Docs Graph vẫn là typed docs graph của repo.
 - Không viết persistent daemon ngoài preview server.
 - Không giữ tương thích bắt buộc với `graphify-out/graph.json` nếu mục tiêu đã là thay Graphify. Nếu cần giai đoạn migration, chỉ để fallback tạm thời và có ngày gỡ bỏ rõ ràng.
@@ -52,7 +52,7 @@ Ngoài phạm vi:
 - Code Graph Search chạy được trên source code tracked bởi Git mà không cần `graphify-out/graph.json`.
 - Kết quả Code Graph vẫn có `nodeId`, `title`, `path`, `line`, `neighbors`, `matchedBy`, `flowRole`, `anchor` và `confidence` để UI render graph hiện tại.
 - Query trực tiếp theo symbol name, file path hoặc owner label vẫn trả node match trước, sau đó mở rộng caller/callee nếu LSP support.
-- Missing LSP server không làm `/api/search` lỗi; response có warning ngắn gọn.
+- Missing LSP server không làm `/api/search` lỗi; response có warning kèm command `lsp install <language>` hoặc `graph --ensure-lsp`.
 - Preset agent không còn cài hoặc nhắc Graphify như source of truth bắt buộc.
 
 ## Logic Nghiệp Vụ

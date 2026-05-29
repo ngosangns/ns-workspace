@@ -1083,6 +1083,234 @@ func TestPreviewLSPManagerFindsProjectNodeBinOutsidePATH(t *testing.T) {
 	}
 }
 
+func TestPreviewLSPManagerFindsCachedNodeBinOutsidePATH(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	cache := t.TempDir()
+	command := executableNames("typescript-language-server")[0]
+	writeTestFile(t, cache, filepath.Join("typescript", "node_modules", ".bin", command), "#!/bin/sh\n")
+	if err := os.Chmod(filepath.Join(cache, "typescript", "node_modules", ".bin", command), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+	t.Setenv(lspCacheEnv, cache)
+	t.Chdir(root)
+
+	manager := newPreviewLSPManager(root)
+	got, source, err := manager.resolveCommandWithSource("typescript-language-server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Join(cache, "typescript", "node_modules", ".bin", command) {
+		t.Fatalf("expected cached TypeScript LSP fallback, got %q", got)
+	}
+	if source != "cache" {
+		t.Fatalf("expected cache source, got %q", source)
+	}
+}
+
+func TestPreviewLSPManagerFindsCachedWebAndKotlinBinsOutsidePATH(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	cache := t.TempDir()
+	commands := map[string]string{
+		"html":   "vscode-html-language-server",
+		"css":    "vscode-css-language-server",
+		"kotlin": "kotlin-lsp",
+	}
+	for id, command := range commands {
+		name := executableNames(command)[0]
+		dir := filepath.Join(id, "bin")
+		if id == "html" || id == "css" {
+			dir = filepath.Join(id, "node_modules", ".bin")
+		}
+		writeTestFile(t, cache, filepath.Join(dir, name), "#!/bin/sh\n")
+		if err := os.Chmod(filepath.Join(cache, dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+	t.Setenv(lspCacheEnv, cache)
+	t.Chdir(root)
+
+	manager := newPreviewLSPManager(root)
+	for id, command := range commands {
+		got, source, err := manager.resolveCommandWithSource(command)
+		if err != nil {
+			t.Fatalf("%s should resolve from cache: %v", command, err)
+		}
+		if !strings.Contains(got, filepath.Join(cache, id)) {
+			t.Fatalf("expected %s cached under %s, got %q", command, id, got)
+		}
+		if source != "cache" {
+			t.Fatalf("expected cache source for %s, got %q", command, source)
+		}
+	}
+}
+
+func TestLSPLanguageForPathSupportsRequestedLanguages(t *testing.T) {
+	cases := map[string]struct {
+		serverID   string
+		languageID string
+		mode       lspSymbolMode
+	}{
+		"index.html": {serverID: "html", languageID: "html", mode: lspSymbolModeDocument},
+		"style.css":  {serverID: "css", languageID: "css", mode: lspSymbolModeSelector},
+		"theme.scss": {serverID: "css", languageID: "scss", mode: lspSymbolModeSelector},
+		"app.js":     {serverID: "typescript", languageID: "javascript", mode: lspSymbolModeCallable},
+		"app.ts":     {serverID: "typescript", languageID: "typescript", mode: lspSymbolModeCallable},
+		"main.go":    {serverID: "go", languageID: "go", mode: lspSymbolModeCallable},
+		"Main.kt":    {serverID: "kotlin", languageID: "kotlin", mode: lspSymbolModeCallable},
+	}
+	for path, want := range cases {
+		got, ok := lspLanguageForPath(path)
+		if !ok {
+			t.Fatalf("%s should be supported", path)
+		}
+		if got.ServerID != want.serverID || got.LanguageID != want.languageID || got.SymbolMode != want.mode {
+			t.Fatalf("%s mapped to server=%q language=%q mode=%q, want %+v", path, got.ServerID, got.LanguageID, got.SymbolMode, want)
+		}
+	}
+}
+
+func TestRunLSPInstallAutoDryRunDetectsProjectLanguages(t *testing.T) {
+	root := t.TempDir()
+	cache := t.TempDir()
+	writeTestFile(t, root, "src/index.html", "<main id=\"app\"></main>\n")
+	writeTestFile(t, root, "src/style.css", ".app { color: red; }\n")
+	writeTestFile(t, root, "src/theme.scss", "$accent: red;\n")
+	writeTestFile(t, root, "src/app.js", "export function installNeedleJs() {}\n")
+	writeTestFile(t, root, "src/app.ts", "export function installNeedleTs() {}\n")
+	writeTestFile(t, root, "cmd/app/main.go", "package main\n\nfunc installNeedleGo() {}\n")
+	writeTestFile(t, root, "src/Main.kt", "fun installNeedleKotlin() {}\n")
+	t.Setenv(lspCacheEnv, cache)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GOBIN", "")
+	t.Setenv("GOPATH", "")
+	t.Setenv("PATH", "")
+	t.Chdir(root)
+
+	var buf bytes.Buffer
+	if err := runLSPInstall([]string{"auto", "--project", root, "--dry-run", "--json"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	var results []lspInstallResult
+	if err := json.NewDecoder(&buf).Decode(&results); err != nil {
+		t.Fatalf("expected install dry-run JSON: %v\n%s", err, buf.String())
+	}
+	gotIDs := []string{}
+	for _, result := range results {
+		gotIDs = append(gotIDs, result.ID+":"+result.Status)
+	}
+	wantIDs := []string{"css:dry-run", "go:dry-run", "html:dry-run", "kotlin:dry-run", "typescript:dry-run"}
+	if strings.Join(gotIDs, ",") != strings.Join(wantIDs, ",") {
+		t.Fatalf("expected dry-run installs %v, got %+v", wantIDs, results)
+	}
+	for _, result := range results {
+		if result.ID != "kotlin" && (!strings.Contains(result.Message, cache) || result.Message == "") {
+			t.Fatalf("dry-run should include cache install command for %s, got %+v", result.ID, result)
+		}
+	}
+}
+
+func TestRunLSPInstallAliasesDryRun(t *testing.T) {
+	root := t.TempDir()
+	cache := t.TempDir()
+	t.Setenv(lspCacheEnv, cache)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GOBIN", "")
+	t.Setenv("GOPATH", "")
+	t.Setenv("PATH", "")
+	t.Chdir(root)
+
+	cases := map[string]string{
+		"javascript": "typescript",
+		"jsx":        "typescript",
+		"js":         "typescript",
+		"ts":         "typescript",
+		"tsx":        "typescript",
+		"golang":     "go",
+		"scss":       "css",
+		"sass":       "css",
+		"kotlin":     "kotlin",
+		"kt":         "kotlin",
+	}
+	for alias, wantID := range cases {
+		var buf bytes.Buffer
+		if err := runLSPInstall([]string{alias, "--project", root, "--dry-run", "--json"}, &buf); err != nil {
+			t.Fatalf("%s alias should dry-run: %v\n%s", alias, err, buf.String())
+		}
+		var results []lspInstallResult
+		if err := json.NewDecoder(&buf).Decode(&results); err != nil {
+			t.Fatalf("expected JSON for %s: %v\n%s", alias, err, buf.String())
+		}
+		if len(results) != 1 || results[0].ID != wantID || results[0].Status != "dry-run" {
+			t.Fatalf("%s alias resolved to %+v, want %s dry-run", alias, results, wantID)
+		}
+	}
+}
+
+func TestLSPSymbolModesAcceptMarkupAndStyleSymbols(t *testing.T) {
+	html := lspLanguage{SymbolMode: lspSymbolModeDocument}
+	css := lspLanguage{SymbolMode: lspSymbolModeSelector}
+	goLang := lspLanguage{SymbolMode: lspSymbolModeCallable}
+
+	if !lspSymbolIsResultNode(html, lspDocumentSymbol{Name: "main#app", Kind: 8}) {
+		t.Fatal("html document mode should accept named document symbols")
+	}
+	if !lspSymbolIsResultNode(css, lspDocumentSymbol{Name: ".app", Kind: 5}) {
+		t.Fatal("css selector mode should accept selector-like symbols")
+	}
+	if lspSymbolIsResultNode(goLang, lspDocumentSymbol{Name: "notCallable", Kind: 13}) {
+		t.Fatal("callable mode should reject non-callable symbols")
+	}
+}
+
+func TestRunLSPInstallExplicitJSONFailureReturnsError(t *testing.T) {
+	root := t.TempDir()
+	cache := t.TempDir()
+	t.Setenv(lspCacheEnv, cache)
+	t.Setenv("PATH", "")
+	t.Chdir(root)
+
+	var buf bytes.Buffer
+	err := runLSPInstall([]string{"typescript", "--project", root, "--json"}, &buf)
+	if err == nil {
+		t.Fatal("expected explicit install failure to return an error")
+	}
+	var results []lspInstallResult
+	if decodeErr := json.NewDecoder(&buf).Decode(&results); decodeErr != nil {
+		t.Fatalf("expected failure JSON to still be written: %v\n%s", decodeErr, buf.String())
+	}
+	if len(results) != 1 || results[0].ID != "typescript" || results[0].Status != "failed" {
+		t.Fatalf("expected TypeScript failed install result, got %+v", results)
+	}
+}
+
+func TestRunLSPInstallKotlinReturnsManualWhenMissing(t *testing.T) {
+	root := t.TempDir()
+	cache := t.TempDir()
+	t.Setenv(lspCacheEnv, cache)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", "")
+	t.Chdir(root)
+
+	var buf bytes.Buffer
+	err := runLSPInstall([]string{"kotlin", "--project", root, "--json"}, &buf)
+	if err == nil {
+		t.Fatal("expected missing Kotlin LSP to require manual installation")
+	}
+	var results []lspInstallResult
+	if decodeErr := json.NewDecoder(&buf).Decode(&results); decodeErr != nil {
+		t.Fatalf("expected manual install JSON: %v\n%s", decodeErr, buf.String())
+	}
+	if len(results) != 1 || results[0].ID != "kotlin" || results[0].Status != "manual" || !strings.Contains(results[0].Message, "kotlin-lsp") {
+		t.Fatalf("expected Kotlin manual install result, got %+v", results)
+	}
+}
+
 func TestPreviewCodeGraphMissingLSPServerWarnsWithoutFailingSearch(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()

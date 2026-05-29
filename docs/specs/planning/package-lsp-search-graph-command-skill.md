@@ -26,7 +26,7 @@ Ngoài phạm vi của plan này:
 
 - Không viết lại Preview web UI hoặc SearchPanel.
 - Không đổi response contract `/api/search` đang phục vụ frontend.
-- Không auto-install `gopls`, `typescript-language-server` hoặc language server khác.
+- Không auto-install `gopls`, `typescript-language-server` hoặc language server khác trong preview/search HTTP request. CLI setup explicit được xử lý bởi `lsp install` và `graph --ensure-lsp`.
 - Không tạo daemon persistent ngoài preview server/CLI query.
 - Không thay Docs Graph bằng LSP.
 
