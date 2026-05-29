@@ -9,7 +9,7 @@
 
 ## Quy Ước
 
-Source chính của frontend preview nằm trong `internal/preview/preview_ui_src/`. Entry `index.html` mount preview shell đầy đủ, còn `search.html` mount Search standalone cho lệnh `graph`. File generated trong `internal/preview/preview_ui/` được Go embed và phải được cập nhật bằng build, không sửa tay khi thay đổi logic.
+Source chính của frontend preview nằm trong `internal/preview/preview_ui_src/`. Entry `index.html` mount preview shell đầy đủ, còn `search.html` mount Search standalone cho lệnh `search`. File generated trong `internal/preview/preview_ui/` được Go embed và phải được cập nhật bằng build, không sửa tay khi thay đổi logic.
 
 Các lệnh kiểm tra chính:
 

@@ -247,7 +247,7 @@ Kiểm thử thủ công:
 
 - `go run . preview --no-reload --project . --open`, search `buildPreviewSearchResponse`, kỳ vọng Code Graph có symbol từ LSP mà không cần `graphify-out/graph.json`.
 - Tạm thời đổi tên `graphify-out/` nếu có, search vẫn có Code Graph khi LSP binary sẵn sàng.
-- `go run . graph --project . --out /tmp/ns-workspace-graph.html --no-open`, mở Search standalone và xác nhận Code Graph giống preview.
+- `go run . search --project . --out /tmp/ns-workspace-search.html --no-open`, mở Search standalone và xác nhận Code Graph giống preview.
 - Tạo project thiếu `gopls`/`typescript-language-server` trong PATH mô phỏng, `/api/search` trả 200 với warning thay vì lỗi.
 
 ## Tiêu Chí Chấp Nhận
