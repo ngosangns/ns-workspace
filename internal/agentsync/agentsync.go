@@ -150,6 +150,11 @@ type InstallPresetTree struct {
 }
 
 func (op InstallPresetTree) Apply(ctx Context) error {
+	if op.Replace {
+		if err := backupAndRemove(ctx, op.DstRoot); err != nil {
+			return err
+		}
+	}
 	return fs.WalkDir(ctx.Presets, op.SrcRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -198,6 +203,11 @@ type LinkSkillDirs struct {
 }
 
 func (op LinkSkillDirs) Apply(ctx Context) error {
+	if op.Replace {
+		if err := backupAndRemove(ctx, op.DstRoot); err != nil {
+			return err
+		}
+	}
 	if err := ensureDir(ctx, op.DstRoot); err != nil {
 		return err
 	}
@@ -234,10 +244,11 @@ type MergeJSON struct {
 	Dst     string
 	KeyPath []string
 	Values  map[string]any
+	Replace bool
 }
 
 func (op MergeJSON) Apply(ctx Context) error {
-	if len(op.Values) == 0 {
+	if len(op.Values) == 0 && !op.Replace {
 		return nil
 	}
 	obj := map[string]any{}
@@ -248,7 +259,11 @@ func (op MergeJSON) Apply(ctx Context) error {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	mergeJSONAt(obj, op.KeyPath, op.Values)
+	if op.Replace {
+		replaceJSONAt(obj, op.KeyPath, op.Values)
+	} else {
+		mergeJSONAt(obj, op.KeyPath, op.Values)
+	}
 	data, err := json.MarshalIndent(obj, "", "  ")
 	if err != nil {
 		return err
@@ -376,14 +391,14 @@ func (a fileAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 		if err != nil {
 			return nil, err
 		}
-		ops = append(ops, MergeJSON{Dst: a.hooksPath, KeyPath: a.hooksKeyPath, Values: manifest.Hooks})
+		ops = append(ops, MergeJSON{Dst: a.hooksPath, KeyPath: a.hooksKeyPath, Values: manifest.Hooks, Replace: replace})
 	}
 	if !ctx.NoMCP && a.mcpPath != "" && len(a.mcpKeyPath) > 0 {
 		manifest, err := readMCPManifest(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ops = append(ops, MergeJSON{Dst: a.mcpPath, KeyPath: a.mcpKeyPath, Values: manifest.MCPServers})
+		ops = append(ops, MergeJSON{Dst: a.mcpPath, KeyPath: a.mcpKeyPath, Values: manifest.MCPServers, Replace: replace})
 	}
 	return ops, nil
 }
@@ -414,21 +429,27 @@ func (a opencodeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	if err != nil {
 		return nil, err
 	}
+	replace := update || ctx.Force
+	configValues := map[string]any{}
 	if !ctx.NoMCP && a.configPath != "" {
 		manifest, err := readMCPManifest(ctx)
 		if err != nil {
 			return nil, err
 		}
 		manifest = opencodeMCPManifest(manifest)
-		ops = append(ops, MergeJSON{Dst: a.configPath, KeyPath: []string{"mcp"}, Values: manifest.MCPServers})
+		configValues["mcp"] = manifest.MCPServers
 	}
 	configManifest, err := readOpenCodeConfigManifest(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if configManifest.Permission != nil {
-		permission := map[string]any{"permission": configManifest.Permission}
-		ops = append(ops, MergeJSON{Dst: a.configPath, KeyPath: []string{}, Values: permission})
+		configValues["permission"] = configManifest.Permission
+	}
+	if len(configValues) > 0 {
+		// update rewrites the managed OpenCode config object so removed preset keys
+		// do not survive indefinitely in the native config file.
+		ops = append(ops, MergeJSON{Dst: a.configPath, KeyPath: []string{}, Values: configValues, Replace: replace && !ctx.NoMCP})
 	}
 	return ops, nil
 }
@@ -1231,6 +1252,32 @@ func mergeJSONAt(obj map[string]any, keyPath []string, values map[string]any) {
 	for name, value := range values {
 		cursor[name] = value
 	}
+}
+
+func replaceJSONAt(obj map[string]any, keyPath []string, values map[string]any) {
+	if len(keyPath) == 0 {
+		for name := range obj {
+			delete(obj, name)
+		}
+		for name, value := range values {
+			obj[name] = value
+		}
+		return
+	}
+	cursor := obj
+	for _, key := range keyPath[:len(keyPath)-1] {
+		next, _ := cursor[key].(map[string]any)
+		if next == nil {
+			next = map[string]any{}
+			cursor[key] = next
+		}
+		cursor = next
+	}
+	leaf := map[string]any{}
+	for name, value := range values {
+		leaf[name] = value
+	}
+	cursor[keyPath[len(keyPath)-1]] = leaf
 }
 
 func replaceManagedBlock(current, begin, end, block string) string {

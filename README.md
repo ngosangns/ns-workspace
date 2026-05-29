@@ -83,19 +83,19 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 
 ## Lệnh Chính
 
-| Lệnh       | Mục đích                                                                                                       |
-| ---------- | -------------------------------------------------------------------------------------------------------------- |
-| `init`     | Tạo cấu hình shared và link/copy sang adapter native. Mặc định bỏ qua file đã tồn tại, trừ khi dùng `--force`. |
-| `update`   | Thay thế các phần config do tool quản lý bằng preset embedded và tạo backup timestamp trước khi ghi.           |
-| `status`   | Hiển thị path đã cài, path thiếu và link hiện có.                                                              |
-| `doctor`   | Validate JSON config và report các local agent CLI.                                                            |
-| `registry` | Cài các skill lấy từ registry.                                                                                 |
-| `agents`   | Liệt kê adapter được hỗ trợ, support tier và artifact support.                                                 |
-| `catalog`  | Alias của `agents`.                                                                                            |
-| `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                     |
-| `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                        |
-| `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                   |
-| `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                       |
+| Lệnh       | Mục đích                                                                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`     | Tạo cấu hình shared và link/copy sang adapter native. Mặc định bỏ qua file đã tồn tại, trừ khi dùng `--force`.                                 |
+| `update`   | Rewrite các phần config do tool quản lý từ preset embedded, tạo backup timestamp trước khi ghi và xóa nội dung managed không còn trong preset. |
+| `status`   | Hiển thị path đã cài, path thiếu và link hiện có.                                                                                              |
+| `doctor`   | Validate JSON config và report các local agent CLI.                                                                                            |
+| `registry` | Cài các skill lấy từ registry.                                                                                                                 |
+| `agents`   | Liệt kê adapter được hỗ trợ, support tier và artifact support.                                                                                 |
+| `catalog`  | Alias của `agents`.                                                                                                                            |
+| `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                                                     |
+| `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                                                        |
+| `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                                                   |
+| `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                                                       |
 
 ## Flag Hay Dùng
 

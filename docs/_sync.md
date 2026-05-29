@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 889d48fd2e4eb94546dd21f7ba905351cd1bd5e0
+- **Last Synced Commit**: 05533aba5038ee2043d123bafd2cf13d5078364e
 - **Branch**: current worktree
-- **Sync Date**: 2026-05-29T06:13:26Z
-- **Scope**: README, preview feature/module/architecture docs, planning notes, sync state and `lsp-code-graph` skill workflow for default LSP auto-ensure in `graph --query`, including opt-out `--no-ensure-lsp`.
-- **Known Unsynced**: Current worktree contains the auto-ensure graph query changes for this sync snapshot until they are committed.
+- **Sync Date**: 2026-05-29T08:39:46Z
+- **Scope**: README and architecture docs for `update` rewriting managed preset content, plus sync state.
+- **Known Unsynced**: Current worktree contains the `update` rewrite behavior changes until they are committed.
