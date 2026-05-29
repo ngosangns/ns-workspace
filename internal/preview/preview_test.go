@@ -251,10 +251,10 @@ Hello **docs**.
 	}
 }
 
-func TestGraphLauncherWritesRedirectHTML(t *testing.T) {
+func TestSearchLauncherWritesRedirectHTML(t *testing.T) {
 	root := t.TempDir()
-	out := filepath.Join(root, "graph.html")
-	if err := writeGraphLauncher(out, "http://localhost:12345/search.html", root, filepath.Join(root, "docs")); err != nil {
+	out := filepath.Join(root, "search.html")
+	if err := writeSearchLauncher(out, "http://localhost:12345/search.html", root, filepath.Join(root, "docs")); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(out)
@@ -263,13 +263,20 @@ func TestGraphLauncherWritesRedirectHTML(t *testing.T) {
 	}
 	text := string(data)
 	if !strings.Contains(text, "http://localhost:12345/search.html") || !strings.Contains(text, root) {
-		t.Fatalf("graph launcher did not include app URL and project metadata: %s", string(data))
+		t.Fatalf("search launcher did not include app URL and project metadata: %s", string(data))
 	}
 	if strings.Contains(text, `\"http://localhost:12345/search.html\"`) {
-		t.Fatalf("graph launcher should not add literal quotes to the redirect URL: %s", text)
+		t.Fatalf("search launcher should not add literal quotes to the redirect URL: %s", text)
 	}
 	if !strings.Contains(text, `window.location.replace("http:\/\/localhost:12345\/search.html")`) {
-		t.Fatalf("graph launcher should emit a valid JavaScript redirect string: %s", text)
+		t.Fatalf("search launcher should emit a valid JavaScript redirect string: %s", text)
+	}
+}
+
+func TestGraphRequiresQuery(t *testing.T) {
+	err := RunGraph([]string{"--project", t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "graph requires --query") {
+		t.Fatalf("graph without --query should fail with a focused message, got %v", err)
 	}
 }
 

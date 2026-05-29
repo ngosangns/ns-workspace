@@ -2,9 +2,9 @@
 
 ## Bối Cảnh
 
-Preview web hiện đã có Search tab và Search standalone của lệnh `graph`. Cả hai dùng chung backend trong `internal/preview`: `/api/search` gọi `buildPreviewSearchResponse()`, Docs Graph lấy từ docs graph, còn Code Graph lấy từ `previewLSPCodeGraphProvider`. Provider này index symbol từ language server trên file code tracked bởi Git và mở rộng caller/callee bằng call hierarchy hoặc fallback references khi language server hỗ trợ.
+Preview web hiện đã có Search tab và Search standalone của lệnh `search`. Search UI dùng chung backend trong `internal/preview`: `/api/search` gọi `buildPreviewSearchResponse()`, Docs Graph lấy từ docs graph, còn Code Graph lấy từ `previewLSPCodeGraphProvider`. Provider này index symbol từ language server trên file code tracked bởi Git và mở rộng caller/callee bằng call hierarchy hoặc fallback references khi language server hỗ trợ.
 
-Lệnh `graph` hiện là trải nghiệm UI: nó sinh HTML launcher, start local API server, mở `search.html`, rồi giữ process sống để frontend gọi API động. Flow này tốt cho người dùng xem web, nhưng chưa thuận tiện cho agent/skill cần truy vấn LSP Code Graph từ terminal, lấy kết quả có cấu trúc rồi tiếp tục inspect file. Vì vậy các skill hiện chỉ có thể nói chung chung “dùng Preview/Search Code Graph” mà chưa có workflow command-first đủ ổn định để thay thế thói quen search raw files.
+Lệnh `search` giữ trải nghiệm UI: nó sinh HTML launcher, start local API server, mở `search.html`, rồi giữ process sống để frontend gọi API động. Lệnh `graph` giữ workflow command-first cho agent/skill cần truy vấn LSP Code Graph từ terminal, lấy kết quả có cấu trúc rồi tiếp tục inspect file.
 
 Docs `_sync.md` đang ghi synced commit cũ hơn HEAD và worktree hiện chưa có diff tracked trong repo, nên plan này xem docs là bối cảnh cần verify bằng code hiện tại. Code hiện tại xác nhận `graph` đã tồn tại, `newPreviewServer()` đã gắn `newPreviewLSPCodeGraphProvider()`, và tests đã có fake `staticCodeGraphProvider` cho Code Graph search.
 
@@ -146,7 +146,7 @@ Nếu muốn skill mới được cài mặc định vào shared agents home khi
 
 ## Công Việc Cần Làm
 
-1. Refactor `internal/preview/graph.go` để tách UI launcher mode và query mode.
+1. Refactor `internal/preview/graph.go` để lệnh `search` giữ UI launcher mode còn lệnh `graph` chỉ giữ query mode.
 2. Thêm flags `--query`, `--limit`, `--keyword-op`, `--json` cho command `graph`.
 3. Tạo helper output text/JSON và đảm bảo close LSP provider sau query.
 4. Thêm hoặc cập nhật tests trong `internal/preview/preview_test.go`/file test phù hợp cho query mode.
@@ -161,7 +161,7 @@ Nếu muốn skill mới được cài mặc định vào shared agents home khi
 - JSON output nên ổn định vì skill sẽ dựa vào nó. Tránh in log xen vào stdout khi `--json`; warnings thuộc JSON response, còn diagnostic không-JSON nên đi stderr nếu cần.
 - `graph --query` dùng cùng `buildPreviewSearchResponse()` nên có thể trả nhiều panel hơn nhu cầu code graph. Đây là điểm tốt cho skill vì nó có cả docs graph lẫn code graph, nhưng text output phải tránh quá dài.
 - Nếu language server thiếu, command vẫn exit `0` với warnings để agent không hiểu nhầm là lỗi command; chỉ lỗi không thể scan project/docs mới nên non-zero.
-- Cần giữ `graph` UI mode tương thích với flags cũ để không phá workflow launcher hiện có.
+- UI launcher thuộc lệnh `search`; `graph` chỉ nên giữ query mode để tránh lẫn workflow agent với workflow web.
 
 ## Kiểm Chứng
 
@@ -169,5 +169,5 @@ Nếu muốn skill mới được cài mặc định vào shared agents home khi
 - `go test ./...` nếu thay đổi main/usage hoặc agentsync/presets ảnh hưởng rộng.
 - `go run . graph --project . --query buildPreviewSearchResponse --json`
 - `go run . graph --project . --query buildPreviewSearchResponse --limit 3`
-- `go run . graph --project . --out /tmp/ns-workspace-graph.html --no-open` để xác nhận launcher mode vẫn hoạt động.
+- `go run . search --project . --out /tmp/ns-workspace-search.html --no-open` để xác nhận launcher mode vẫn hoạt động.
 - `rg -n "lsp-code-graph|Preview/Search Code Graph|graph --project" presets/skills $HOME/.agents/skills` để xác nhận các skill route đúng.

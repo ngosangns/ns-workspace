@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent có thể nhận cùng một bộ workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph dựa trên LSP khi language server của project có sẵn. Lệnh `graph` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại, hoặc chạy query non-interactive để agent lấy kết quả Search/Code Graph dạng text/JSON.
+Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph dựa trên LSP khi language server của project có sẵn. Lệnh `search` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại, còn lệnh `graph` chạy query non-interactive để agent lấy kết quả Search/Code Graph dạng text/JSON.
 
 ## Trạng Thái
 
@@ -35,7 +35,8 @@ Nếu đang làm trong checkout local:
 go run . status
 go run . doctor
 go run . preview --project . --open
-go run . graph --project .
+go run . search --project .
+go run . graph --project . --query buildPreviewSearchResponse --json
 ```
 
 Khi muốn dùng checkout này để preview một project khác, chạy `go run .` từ thư mục `ns-workspace` và trỏ `--project` sang project cần đọc:
@@ -91,7 +92,8 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 | `agents`   | Liệt kê adapter được hỗ trợ, support tier và artifact support.                                                 |
 | `catalog`  | Alias của `agents`.                                                                                            |
 | `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                     |
-| `graph`    | Mở Search/Code Graph standalone hoặc chạy query terminal bằng cùng backend LSP search.                         |
+| `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                        |
+| `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                   |
 
 ## Flag Hay Dùng
 
@@ -173,15 +175,27 @@ npm run format:preview
 npm run build:preview
 ```
 
-## Graph Search Standalone
+## Search Standalone Và Graph Query
 
-Lệnh `graph` dùng cùng backend search với `preview`, nhưng mở trực tiếp entry Search standalone hoặc chạy query terminal. Khi không có `--query`, command tạo file launcher mặc định `ns-workspace-graph.html` trong thư mục đang chạy, start local API server, rồi mở browser mặc định tới launcher đó. File launcher trỏ tới server đang chạy, nên command cần tiếp tục sống trong terminal để search động hoạt động.
+Lệnh `search` dùng cùng backend search với `preview`, nhưng mở trực tiếp entry Search standalone. Command tạo file launcher mặc định `ns-workspace-search.html` trong thư mục đang chạy, start local API server, rồi mở browser mặc định tới launcher đó. File launcher trỏ tới server đang chạy, nên command cần tiếp tục sống trong terminal để search động hoạt động.
+
+Lệnh `graph` chỉ chạy query terminal: nó không sinh launcher, không mở browser và không giữ server sống. Output dùng cùng response với `/api/search`, gồm `docsSemantic`, `docsGraph`, `codeSemantic`, `codeGraph`, `stats` và `warnings`. Nếu language server thiếu hoặc không hỗ trợ relation expansion, command vẫn trả kết quả fail-open kèm warning để agent có thể fallback sang search code thường.
 
 ```bash
-go run github.com/ngosangns/ns-workspace@latest graph --project ~/path/to/project
-go run . graph --project . --out ./search-graph.html
+go run github.com/ngosangns/ns-workspace@latest search --project ~/path/to/project
+go run . search --project . --out ./search.html
 go run . graph --project . --query buildPreviewSearchResponse --json
 go run . graph --project . --query auth,session --keyword-op difference --limit 5
+```
+
+Search flags:
+
+```bash
+--project PATH
+--docs-dir docs
+--addr 127.0.0.1:0
+--out ./ns-workspace-search.html
+--no-open
 ```
 
 Graph flags:
@@ -189,16 +203,11 @@ Graph flags:
 ```bash
 --project PATH
 --docs-dir docs
---addr 127.0.0.1:0
---out ./ns-workspace-graph.html
---no-open
 --query "symbol-or-concept"
 --limit 8
 --keyword-op sum|difference
 --json
 ```
-
-`--query` chuyển `graph` sang chế độ non-interactive: không sinh launcher, không mở browser và không giữ server sống. Output dùng cùng response với `/api/search`, gồm `docsSemantic`, `docsGraph`, `codeSemantic`, `codeGraph`, `stats` và `warnings`. Nếu language server thiếu hoặc không hỗ trợ relation expansion, command vẫn trả kết quả fail-open kèm warning để agent có thể fallback sang search code thường.
 
 ## Phát Triển
 

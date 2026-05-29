@@ -32,13 +32,16 @@ func run(args []string) error {
 		return nil
 	}
 	switch cmd {
-	case "init", "update", "status", "doctor", "registry", "agents", "catalog", "preview", "graph":
+	case "init", "update", "status", "doctor", "registry", "agents", "catalog", "preview", "search", "graph":
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 	if cmd == "preview" {
 		return preview.Run(args[1:])
+	}
+	if cmd == "search" {
+		return preview.RunSearch(args[1:])
 	}
 	if cmd == "graph" {
 		return preview.RunGraph(args[1:])
@@ -92,6 +95,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest registry [flags]
   go run github.com/ngosangns/ns-workspace@latest agents [flags]
   go run github.com/ngosangns/ns-workspace@latest preview [flags]
+  go run github.com/ngosangns/ns-workspace@latest search [flags]
   go run github.com/ngosangns/ns-workspace@latest graph [flags]
 
 Local checkout usage:
@@ -113,14 +117,18 @@ Preview flags:
   --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
   --open              open browser after the server starts
 
-Graph flags:
+Search flags:
   --project PATH      project root to inspect, default current directory
   --docs-dir PATH     docs directory, default docs
   --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
-  --out PATH          generated launcher HTML path, default ./ns-workspace-graph.html
+  --out PATH          generated launcher HTML path, default ./ns-workspace-search.html
   --no-open           write the launcher without opening the browser
-  --query TEXT        run a non-interactive Search/Code Graph query and exit
-  --limit N           maximum results per search panel in query mode, default 8
+
+Graph flags:
+  --project PATH      project root to inspect, default current directory
+  --docs-dir PATH     docs directory, default docs
+  --query TEXT        run a Search/Code Graph query
+  --limit N           maximum results per search panel, default 8
   --keyword-op OP     keyword operator for comma-separated query terms: sum or difference
   --json              print query results as JSON`)
 }

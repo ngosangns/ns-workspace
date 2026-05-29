@@ -4,7 +4,7 @@
 
 ## Bối Cảnh
 
-Preview Search hiện phục vụ cả Search tab trong `preview` và Search standalone của lệnh `graph`. Backend chính nằm trong `internal/preview/preview_search.go`; entry HTTP là `handleSearch()`, sau đó gọi `ps.load()`, `loadGraphifyGraph()` và `buildPreviewSearchResponse()`.
+Preview Search hiện phục vụ cả Search tab trong `preview` và Search standalone của lệnh `search`. Backend chính nằm trong `internal/preview/preview_search.go`; entry HTTP là `handleSearch()`, sau đó gọi `ps.load()`, `loadGraphifyGraph()` và `buildPreviewSearchResponse()`.
 
 Theo docs hiện tại, Search trả bốn panel: Docs Semantic, Docs Graph, Code Semantic và Code Graph. Docs Semantic đã mở rộng sang toàn bộ file Markdown/HTML trong repo; Code Semantic scan file code tracked bởi Git; Code Graph dùng `graphify-out/graph.json` nếu có. Graphify report của repo cũng chỉ ra `buildPreviewSearchResponse()` là node trung tâm của cụm search.
 

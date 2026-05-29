@@ -15,18 +15,23 @@ import (
 	"time"
 )
 
-const defaultGraphLauncherName = "ns-workspace-graph.html"
+const defaultSearchLauncherName = "ns-workspace-search.html"
 
 type graphOptions struct {
+	projectRoot string
+	docsDir     string
+	query       string
+	limit       int
+	keywordOp   string
+	jsonOutput  bool
+}
+
+type searchOptions struct {
 	projectRoot string
 	docsDir     string
 	addr        string
 	outPath     string
 	openBrowser bool
-	query       string
-	limit       int
-	keywordOp   string
-	jsonOutput  bool
 }
 
 func RunGraph(args []string) error {
@@ -37,22 +42,50 @@ func RunGraph(args []string) error {
 	opt := graphOptions{
 		projectRoot: cwd,
 		docsDir:     "docs",
-		addr:        defaultPreviewAddr,
-		outPath:     filepath.Join(cwd, defaultGraphLauncherName),
-		openBrowser: true,
 		limit:       defaultSearchLimit,
 		keywordOp:   "sum",
 	}
 	fs := flag.NewFlagSet("graph", flag.ContinueOnError)
 	fs.StringVar(&opt.projectRoot, "project", opt.projectRoot, "project root to inspect")
 	fs.StringVar(&opt.docsDir, "docs-dir", opt.docsDir, "docs directory relative to project root, or absolute path")
-	fs.StringVar(&opt.addr, "addr", opt.addr, "local server address")
-	fs.StringVar(&opt.outPath, "out", opt.outPath, "generated launcher HTML path")
-	fs.BoolVar(&opt.openBrowser, "open", true, "open browser after the launcher is written")
-	fs.StringVar(&opt.query, "query", "", "run a non-interactive Search/Code Graph query and exit")
+	fs.StringVar(&opt.query, "query", "", "run a Search/Code Graph query")
 	fs.IntVar(&opt.limit, "limit", defaultSearchLimit, "maximum results per search panel in query mode")
 	fs.StringVar(&opt.keywordOp, "keyword-op", "sum", "keyword operator for comma-separated query terms: sum or difference")
 	fs.BoolVar(&opt.jsonOutput, "json", false, "print query results as JSON")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	opt.projectRoot = normalizePreviewProjectRoot(opt.projectRoot)
+	opt.keywordOp = parseSearchKeywordOperator(opt.keywordOp)
+	opt.limit = normalizeGraphQueryLimit(opt.limit)
+	opt.query = strings.TrimSpace(opt.query)
+	if opt.query == "" {
+		return fmt.Errorf("graph requires --query; use the search command for the standalone HTML launcher")
+	}
+	return runGraphQuery(opt, os.Stdout)
+}
+
+func RunSearch(args []string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	opt := searchOptions{
+		projectRoot: cwd,
+		docsDir:     "docs",
+		addr:        defaultPreviewAddr,
+		outPath:     filepath.Join(cwd, defaultSearchLauncherName),
+		openBrowser: true,
+	}
+	fs := flag.NewFlagSet("search", flag.ContinueOnError)
+	fs.StringVar(&opt.projectRoot, "project", opt.projectRoot, "project root to inspect")
+	fs.StringVar(&opt.docsDir, "docs-dir", opt.docsDir, "docs directory relative to project root, or absolute path")
+	fs.StringVar(&opt.addr, "addr", opt.addr, "local server address")
+	fs.StringVar(&opt.outPath, "out", opt.outPath, "generated launcher HTML path")
+	fs.BoolVar(&opt.openBrowser, "open", true, "open browser after the launcher is written")
 	noOpen := fs.Bool("no-open", false, "write the launcher without opening the browser")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -64,13 +97,7 @@ func RunGraph(args []string) error {
 		opt.openBrowser = false
 	}
 	opt.projectRoot = normalizePreviewProjectRoot(opt.projectRoot)
-	opt.outPath = normalizeGraphOutputPath(cwd, opt.outPath)
-	opt.keywordOp = parseSearchKeywordOperator(opt.keywordOp)
-	opt.limit = normalizeGraphQueryLimit(opt.limit)
-	if strings.TrimSpace(opt.query) != "" {
-		opt.query = strings.TrimSpace(opt.query)
-		return runGraphQuery(opt, os.Stdout)
-	}
+	opt.outPath = normalizeSearchOutputPath(cwd, opt.outPath)
 
 	server := newPreviewServer(previewOptions{projectRoot: opt.projectRoot, docsDir: opt.docsDir, addr: opt.addr})
 	listener, err := net.Listen("tcp", opt.addr)
@@ -83,12 +110,12 @@ func RunGraph(args []string) error {
 		displayURL = "http://localhost:" + portOf(addr)
 	}
 	appURL := displayURL + "/search.html"
-	if err := writeGraphLauncher(opt.outPath, appURL, opt.projectRoot, docsRoot(opt.projectRoot, opt.docsDir)); err != nil {
+	if err := writeSearchLauncher(opt.outPath, appURL, opt.projectRoot, docsRoot(opt.projectRoot, opt.docsDir)); err != nil {
 		_ = listener.Close()
 		return err
 	}
 
-	fmt.Printf("graph search: %s\n", appURL)
+	fmt.Printf("search: %s\n", appURL)
 	fmt.Printf("launcher: %s\n", opt.outPath)
 	fmt.Printf("project: %s\n", opt.projectRoot)
 	fmt.Printf("docs: %s\n", docsRoot(opt.projectRoot, opt.docsDir))
@@ -104,7 +131,7 @@ func RunGraph(args []string) error {
 }
 
 func runGraphQuery(opt graphOptions, out io.Writer) error {
-	server := newPreviewServer(previewOptions{projectRoot: opt.projectRoot, docsDir: opt.docsDir, addr: opt.addr})
+	server := newPreviewServer(previewOptions{projectRoot: opt.projectRoot, docsDir: opt.docsDir, addr: defaultPreviewAddr})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	defer func() {
@@ -267,10 +294,10 @@ func normalizeGraphQueryLimit(limit int) int {
 	return limit
 }
 
-func normalizeGraphOutputPath(cwd, path string) string {
+func normalizeSearchOutputPath(cwd, path string) string {
 	path = expandPath(strings.TrimSpace(path))
 	if path == "" {
-		path = defaultGraphLauncherName
+		path = defaultSearchLauncherName
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(cwd, path)
@@ -281,7 +308,7 @@ func normalizeGraphOutputPath(cwd, path string) string {
 	return path
 }
 
-func writeGraphLauncher(path, appURL, projectRoot, docsRoot string) error {
+func writeSearchLauncher(path, appURL, projectRoot, docsRoot string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -292,7 +319,7 @@ func writeGraphLauncher(path, appURL, projectRoot, docsRoot string) error {
 		return err
 	}
 	defer file.Close()
-	return graphLauncherTemplate.Execute(file, struct {
+	return searchLauncherTemplate.Execute(file, struct {
 		AppURL      string
 		AppURLJS    template.JSStr
 		ProjectRoot string
@@ -305,13 +332,13 @@ func writeGraphLauncher(path, appURL, projectRoot, docsRoot string) error {
 	})
 }
 
-var graphLauncherTemplate = template.Must(template.New("graph-launcher").Parse(`<!doctype html>
+var searchLauncherTemplate = template.Must(template.New("search-launcher").Parse(`<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="refresh" content="0; url={{ .AppURL }}" />
-    <title>ns-workspace graph search</title>
+    <title>ns-workspace search</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -337,10 +364,10 @@ var graphLauncherTemplate = template.Must(template.New("graph-launcher").Parse(`
   </head>
   <body>
     <main>
-      <h1>Opening graph search...</h1>
+      <h1>Opening search...</h1>
       <p>Project: <code>{{ .ProjectRoot }}</code></p>
       <p>Docs: <code>{{ .DocsRoot }}</code></p>
-      <p><a href="{{ .AppURL }}">Open graph search</a></p>
+      <p><a href="{{ .AppURL }}">Open search</a></p>
     </main>
   </body>
 </html>
