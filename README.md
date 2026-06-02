@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent có thể nhận cùng một bộ workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph dựa trên LSP khi language server của project có sẵn. Lệnh `search` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại, lệnh `graph` chạy query non-interactive để agent lấy kết quả Search/Code Graph dạng text/JSON, còn nhóm `lsp` quản lý language server dùng cho Code Graph.
+Repo cũng có lệnh `preview` để chạy web dashboard local cho thư mục `docs/` của một project, bao gồm Markdown/HTML preview, docs graph, search và code graph dựa trên LSP khi language server của project có sẵn. Lệnh `search` mở riêng trải nghiệm Search/Code Graph standalone bằng một file HTML launcher sinh tại thư mục hiện tại, lệnh `graph` chạy query non-interactive để agent lấy kết quả Search/Code Graph dạng text/JSON, còn nhóm `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
 
 ## Trạng Thái
 
@@ -223,7 +223,7 @@ lsp list [--project PATH] [--docs-dir docs] [--json]
 lsp install <language|auto> [--project PATH] [--docs-dir docs] [--force] [--dry-run] [--json]
 ```
 
-`lsp` hỗ trợ HTML, CSS, SCSS/Sass, JavaScript, TypeScript, Go/Golang và Kotlin. `lsp install` cài vào cache user của `ns-workspace` thay vì sửa project được inspect. Mặc định dùng `os.UserCacheDir()/ns-workspace/lsp`; có thể override bằng `NS_WORKSPACE_LSP_CACHE`. Resolver vẫn ưu tiên binary có sẵn trong `PATH`, Go bin dirs và `node_modules/.bin` của project/checkout trước khi dùng cache. Kotlin dùng `kotlin-lsp`; do upstream chưa có artifact release ổn định kèm checksum để tải tự động an toàn, `lsp install kotlin` trả hướng dẫn cài thủ công thay vì tự tải archive.
+`lsp` hỗ trợ HTML, CSS, SCSS/Sass, JavaScript, TypeScript, Go/Golang và Kotlin. `lsp install` cài vào cache user của `ns-workspace` thay vì sửa project được inspect. Mặc định dùng `os.UserCacheDir()/ns-workspace/lsp`; có thể override bằng `NS_WORKSPACE_LSP_CACHE`. Resolver vẫn ưu tiên binary có sẵn trong `PATH`, Go bin dirs và `node_modules/.bin` của project/checkout trước khi dùng cache. Kotlin dùng `kotlin-lsp`; `lsp install kotlin` tải JetBrains Kotlin LSP standalone archive theo OS/arch, verify SHA-256 đã pin, extract vào cache versioned và tạo wrapper `<cache>/kotlin/bin/kotlin-lsp`.
 
 ## Phát Triển
 

@@ -68,23 +68,31 @@ Lý do chọn hướng đi:
 
 ### Coverage mục tiêu
 
-| User-facing language | Extensions                    | LSP server                    | Install source đề xuất                                  | Ghi chú                                                                            |
-| -------------------- | ----------------------------- | ----------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `html`               | `.html`, `.htm`               | `vscode-html-language-server` | npm package `vscode-langservers-extracted`              | Chạy `--stdio`; Code Graph dùng symbol/reference, không caller/callee.             |
-| `css`                | `.css`                        | `vscode-css-language-server`  | npm package `vscode-langservers-extracted`              | Chạy `--stdio`; có thể dùng chung server package với HTML.                         |
-| `scss`               | `.scss`, `.sass`              | `vscode-css-language-server`  | npm package `vscode-langservers-extracted`              | Language ID gửi LSP là `scss` hoặc `sass`; install alias về CSS server.            |
-| `javascript`         | `.js`, `.jsx`, `.cjs`, `.mjs` | `typescript-language-server`  | npm package `typescript-language-server` + `typescript` | Cùng server với TypeScript; cần alias install riêng.                               |
-| `typescript`         | `.ts`, `.tsx`                 | `typescript-language-server`  | npm package `typescript-language-server` + `typescript` | Giữ behavior hiện tại.                                                             |
-| `go`/`golang`        | `.go`                         | `gopls`                       | `go install golang.org/x/tools/gopls@latest`            | Giữ behavior hiện tại, thêm alias `golang`.                                        |
-| `kotlin`             | `.kt`, `.kts`                 | `kotlin-lsp`                  | manual install guide                                    | Resolver hỗ trợ `kotlin-lsp --stdio`; `lsp install kotlin` trả hướng dẫn thủ công. |
+| User-facing language | Extensions                    | LSP server                    | Install source đề xuất                                  | Ghi chú                                                                                                                   |
+| -------------------- | ----------------------------- | ----------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `html`               | `.html`, `.htm`               | `vscode-html-language-server` | npm package `vscode-langservers-extracted`              | Chạy `--stdio`; Code Graph dùng symbol/reference, không caller/callee.                                                    |
+| `css`                | `.css`                        | `vscode-css-language-server`  | npm package `vscode-langservers-extracted`              | Chạy `--stdio`; có thể dùng chung server package với HTML.                                                                |
+| `scss`               | `.scss`, `.sass`              | `vscode-css-language-server`  | npm package `vscode-langservers-extracted`              | Language ID gửi LSP là `scss` hoặc `sass`; install alias về CSS server.                                                   |
+| `javascript`         | `.js`, `.jsx`, `.cjs`, `.mjs` | `typescript-language-server`  | npm package `typescript-language-server` + `typescript` | Cùng server với TypeScript; cần alias install riêng.                                                                      |
+| `typescript`         | `.ts`, `.tsx`                 | `typescript-language-server`  | npm package `typescript-language-server` + `typescript` | Giữ behavior hiện tại.                                                                                                    |
+| `go`/`golang`        | `.go`                         | `gopls`                       | `go install golang.org/x/tools/gopls@latest`            | Giữ behavior hiện tại, thêm alias `golang`.                                                                               |
+| `kotlin`             | `.kt`, `.kts`                 | `kotlin-lsp`                  | JetBrains standalone archive pinned theo checksum       | Resolver hỗ trợ `kotlin-lsp --stdio`; `lsp install kotlin` tải archive theo OS/arch, verify SHA-256 và ghi wrapper cache. |
 
-Kotlin là phần rủi ro nhất. Implementation đã chọn official `kotlin-lsp` và không bật auto-download archive vì release assets/checksum chưa đủ ổn định để tải tự động an toàn. Thay vào đó, tool hỗ trợ detect/resolver/warning/install guide; khi user cài `kotlin-lsp` vào `PATH` hoặc cache, Code Graph dùng được Kotlin như các language khác.
+Kotlin là phần rủi ro nhất vì installer tải archive lớn và layout launcher thay đổi theo release. Implementation dùng official JetBrains standalone archive, pin version/checksum theo OS/arch, extract archive vào cache versioned và ghi wrapper `<cache>/kotlin/bin/kotlin-lsp` trỏ tới launcher trong archive để resolver dùng Kotlin như các language khác.
 
-### Tách language spec khỏi install/server spec
+### Tách language spec khỏi implementation server
 
-Implementation tách language detection khỏi server/install bằng `lspLanguageSpec` và `lspInstallSpec` server-oriented:
+Implementation tách language detection khỏi server/install bằng `lspLanguageSpec`, `lspInstallSpec` server-oriented và interface `lspImplementation`:
 
 ```go
+type lspImplementation interface {
+  installSpec() lspInstallSpec
+  languageSpecs() []lspLanguageSpec
+  cacheCommandDirs() []string
+  installCommand() string
+  install(context.Context) (string, error)
+}
+
 type lspLanguageSpec struct {
   ID         string
   Name       string
@@ -111,9 +119,10 @@ type lspInstallSpec struct {
 Trong đó:
 
 - Language spec quyết định `lspLanguageForPath()`, language ID gửi qua LSP và symbol filter.
-- Install spec quyết định process lifecycle, resolver, install command và cache path cho server tương ứng.
+- Install spec mô tả metadata chung của server; implementation riêng quyết định cache path, command hiển thị và routine cài đặt.
 - `lsp install <arg>` resolve arg qua language ID, alias hoặc server ID rồi map về server spec.
 - `lsp install auto` dedupe theo `ServerID`, để project có cả `.ts` và `.js` chỉ cài TypeScript server một lần; `.css` và `.scss` chỉ cài CSS server một lần.
+- Các server LSP không dồn logic vào một file registry lớn: Go, TypeScript/JavaScript, HTML, CSS/SCSS/Sass và Kotlin có implementation riêng, còn helper npm/archive chỉ chứa logic dùng chung.
 
 ### Symbol modes
 
@@ -164,13 +173,13 @@ flowchart LR
 
 ### 1. Chuẩn hóa registry language/server
 
-Refactor nhỏ trong `internal/preview/preview_lsp_setup.go` và `preview_lsp.go`:
+Refactor nhỏ trong `internal/graphquery` và adapter `internal/preview/preview_lsp_setup.go`:
 
-- Tạo danh sách `lspLanguageSpecs()`.
-- Tạo danh sách `lspServerSpecs()` hoặc đổi `lspInstallSpecs()` thành server-oriented.
-- `lspLanguageForPath()` lookup từ language specs thay vì switch hardcoded.
-- `detectedLSPInstallSpecs()` đổi thành detect language specs rồi dedupe server specs.
-- `lspInstallSpecByID()` nhận alias language/server.
+- Tạo danh sách `graphquery.LanguageSpecs()`.
+- Tạo danh sách `graphquery.InstallSpecs()` server-oriented.
+- `lspLanguageForPath()` trong preview lookup từ language specs của graphquery thay vì switch hardcoded.
+- Adapter `GraphQueryLSPDetector` detect language specs rồi dedupe server specs cho auto install.
+- `graphquery.InstallSpecByID()` nhận alias language/server.
 - Usage hiển thị supported install aliases rõ hơn.
 
 Giữ behavior cũ:
@@ -224,12 +233,12 @@ Language spec:
 - Args: `--stdio`
 - Symbol mode: `callable`.
 
-Installer Kotlin dùng hướng resolver + install guide:
+Installer Kotlin dùng archive đã pin:
 
-- `lsp list` phát hiện Kotlin và báo missing kèm install guide.
-- `lsp install kotlin` trả status `manual` nếu binary thiếu.
-- `graph --query` không fail cả query, warning nêu rõ Kotlin cần cài thủ công.
-- Khi official release có artifact/checksum đủ ổn định, có thể thêm archive installer sau mà không đổi language spec.
+- `lsp list` phát hiện Kotlin và báo missing kèm command `go run . lsp install kotlin`.
+- `lsp install kotlin` tải archive JetBrains theo OS/arch, verify SHA-256, extract vào cache versioned và ghi wrapper `kotlin-lsp`.
+- `graph --query` auto-ensure Kotlin giống các server khác; nếu download, checksum, extract hoặc binary check fail thì query vẫn fail-open với warning.
+- Archive installer không tải URL động không kiểm chứng; version và checksum nằm trong registry.
 
 ### 6. Thêm language-aware symbol filtering
 
@@ -301,15 +310,15 @@ Cập nhật:
 - `docs/modules/preview.md`: coverage table hiện tại.
 - `docs/features/preview-web.md`: nhắc web request vẫn fail-open, CLI setup mới cover các language này.
 - `docs/specs/planning/auto-install-lsp-for-graph.md`: hoặc link sang plan này, hoặc cập nhật coverage nếu implementation xong.
-- `presets/skills/lsp-code-graph/SKILL.md` và bản local `~/.agents/skills/lsp-code-graph/SKILL.md`: nói rõ supported languages và Kotlin caveat nếu auto installer chưa bật.
+- `presets/skills/lsp-code-graph/SKILL.md` và bản local `~/.agents/skills/lsp-code-graph/SKILL.md`: nói rõ supported languages và workflow `graph --query` auto-ensure.
 
 ## Công Việc Đã Thực Hiện
 
-1. Refactor registry thành language specs + install/server specs.
+1. Refactor registry thành language specs + install/server specs qua interface `lspImplementation`.
 2. Thêm alias install cho `javascript`, `js`, `golang`, `kt`, `scss`, `sass`, `ts`, `tsx`, `jsx`.
 3. Thêm `html` language/server spec và npm install qua `vscode-langservers-extracted`.
 4. Thêm `css`/`scss` language specs và server spec dùng `vscode-css-language-server`.
-5. Thêm Kotlin language spec dùng `kotlin-lsp --stdio` với manual install strategy.
+5. Thêm Kotlin language spec dùng `kotlin-lsp --stdio` với archive install strategy pinned theo version/checksum.
 6. Mở rộng `lspLanguageForPath()` để lookup theo registry, gồm `.html`, `.htm`, `.css`, `.scss`, `.sass`, `.kt`, `.kts`.
 7. Mở rộng `lsp list/install auto` để detect và dedupe server theo language specs.
 8. Refactor warning missing LSP để dùng user-facing server/language và tránh duplicate server warnings.
@@ -322,7 +331,7 @@ Cập nhật:
 
 ## Rủi Ro Và Ràng Buộc
 
-- Kotlin auto-install có thể cần archive downloader, version pin và checksum. Không nên tải binary từ URL động nếu chưa xác minh.
+- Kotlin auto-install tải archive lớn; installer phải giữ version/checksum pinned, reject checksum mismatch và chỉ hỗ trợ OS/arch có artifact đã khai báo.
 - HTML/CSS/SCSS server có thể không support call hierarchy. Code Graph phải degrade sang symbols/references và không gắn nhãn caller/callee sai.
 - CSS/SCSS symbols có thể rất nhiều. Cần giới hạn result nodes bằng symbol mode và score/evidence để search không nhiễu.
 - `vscode-langservers-extracted` cài một package sinh nhiều binary. Nếu cache tách theo html/css, npm install bị duplicate nhưng dễ kiểm soát; nếu cache shared, resolver phức tạp hơn.
@@ -360,4 +369,4 @@ Acceptance:
 - `lsp install auto --dry-run --json` dedupe đúng server: HTML, CSS, TypeScript, Go, Kotlin.
 - `lsp install javascript`, `lsp install typescript`, `lsp install golang`, `lsp install scss` đều resolve đúng server.
 - Code Graph có node từ fake LSP cho từng language trong fixture.
-- `graph --query --json` không làm hỏng JSON stdout và vẫn fail-open khi Kotlin installer chưa có prerequisite hoặc chưa bật auto-download an toàn.
+- `graph --query --json` không làm hỏng JSON stdout và vẫn fail-open khi Kotlin installer download/checksum/extract/check binary thất bại.
