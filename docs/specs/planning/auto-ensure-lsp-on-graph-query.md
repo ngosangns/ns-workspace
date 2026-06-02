@@ -5,11 +5,11 @@
 - **Status**: implemented
 - **Description**: Kế hoạch đổi `graph --query` thành workflow tự chuẩn bị LSP mặc định, để agent không phải nhớ thêm `--ensure-lsp` khi cần Code Graph.
 - **Compliance**: current-state
-- **Links**: [Tự động cài LSP cho Graph Query](./auto-install-lsp-for-graph.md), [Mở rộng LSP coverage](./expand-lsp-language-coverage.md), [LSP Code Graph Search](./lsp-code-graph-search.md), [Module preview](../../modules/preview.md), [Preview web](../../features/preview-web.md)
+- **Links**: [Tự động cài LSP cho Graph Query](./auto-install-lsp-for-graph.md), [Mở rộng LSP coverage](./expand-lsp-language-coverage.md), [LSP Code Graph Search](./lsp-code-graph-search.md), [Module graph query](../../modules/graphquery.md), [Module preview](../../modules/preview.md), [Preview web](../../features/preview-web.md)
 
 ## Bối Cảnh
 
-Flow hiện tại đã có registry LSP, cache `NS_WORKSPACE_LSP_CACHE`, lệnh `lsp list/install`, resolver cache và auto-ensure mặc định trong `graph --query`. Code Graph hiện hỗ trợ HTML, CSS/SCSS/Sass, JavaScript/TypeScript, Go/Golang và Kotlin. Kotlin dùng `kotlin-lsp` với manual install guide; các server Go/npm có installer cache.
+Flow hiện tại đã có registry LSP trong `internal/graphquery`, cache `NS_WORKSPACE_LSP_CACHE`, lệnh `lsp list/install`, resolver cache và auto-ensure mặc định trong `graph --query`. Code Graph hiện hỗ trợ HTML, CSS/SCSS/Sass, JavaScript/TypeScript, Go/Golang và Kotlin. Kotlin dùng `kotlin-lsp` với archive installer pinned theo version/checksum; các server Go/npm dùng installer cache.
 
 Trước thay đổi này, contract CLI vẫn là opt-in:
 
@@ -19,8 +19,6 @@ Trước thay đổi này, contract CLI vẫn là opt-in:
 - Warning missing LSP vẫn nhắc "one-shot" bằng `graph --ensure-lsp`.
 
 Yêu cầu mới là đảm bảo tự động cài LSP khi query graph. Vì `graph` là command terminal/agent-first, không phải HTTP request, có thể đổi default của CLI query path để tự ensure LSP trước khi chạy search. Preview/Search UI vẫn phải giữ fail-open, không tự cài package trong request web.
-
-Ghi chú sync: `docs/_sync.md` đang ghi `Last Synced Commit` cũ hơn HEAD, nên tài liệu được dùng làm bối cảnh và đã được verify lại bằng code hiện tại. Code path hiện tại xác nhận `RunGraph()` chỉ gọi `ensureProjectLSP()` khi `opt.ensureLSP` được bật bởi flag.
 
 ## Nguyên Nhân Và Lý Do Thiết Kế
 
@@ -48,14 +46,13 @@ Lý do chọn hướng đi:
 Phạm vi nằm trong CLI graph và docs/skill:
 
 - `internal/preview/graph.go`: parse option, default ensure, opt-out, warning behavior.
-- `internal/preview/preview_lsp_setup.go`: có thể cần message warning mới nếu default ensure đã chạy mà vẫn thiếu server.
+- `internal/graphquery`: ensure/install/status và message warning dùng chung cho CLI graph, CLI lsp và preview adapter.
 - `internal/preview/preview_test.go`: thêm coverage cho default auto-ensure và opt-out.
 - `README.md`, docs feature/module/planning và `presets/skills/lsp-code-graph/SKILL.md`: cập nhật command examples và warning text.
 
 Ngoài phạm vi:
 
 - Không tự cài LSP trong HTTP `/api/search`, `preview`, `search` UI hoặc Search standalone server request.
-- Không thay đổi installer Kotlin thành auto-download archive.
 - Không mutate target project, không thêm dependency vào repo được inspect.
 - Không thêm UI, không đổi output schema của `/api/search`.
 
@@ -117,9 +114,9 @@ Khi default auto-ensure đã chạy mà vẫn thiếu server, warning "Or one-sh
 - Với default `graph --query`, warning nói:
   - install đã fail hoặc server vẫn missing;
   - command explicit để sửa là `go run . lsp install <language>`;
-  - Kotlin cần manual install nếu applicable.
+  - nếu archive/prerequisite không hỗ trợ môi trường hiện tại, warning giữ nguyên lỗi installer để user biết cần xử lý thủ công.
 
-Implementation dùng `lspUnavailableWarning()` chung để tránh thêm contract mới cho HTTP và CLI; helper này không còn gợi ý chạy lại bằng `--ensure-lsp`.
+Implementation dùng `graphquery.UnavailableWarning()` chung, preview gọi qua adapter `lspUnavailableWarning()` để tránh thêm contract mới cho HTTP và CLI; helper này không còn gợi ý chạy lại bằng `--ensure-lsp`.
 
 ### Side effect và cache
 
@@ -158,7 +155,7 @@ Nếu install warnings phát sinh, tiếp tục append vào `response.Warnings` 
 
 Docs/skill không còn hướng dẫn "mặc định dùng `--ensure-lsp`", và warning code đã được chỉnh để không gợi ý chạy lại bằng flag đó:
 
-- `lspUnavailableWarning()` tiếp tục gợi ý `lsp install`.
+- `graphquery.UnavailableWarning()` tiếp tục gợi ý `lsp install` và được preview adapter gọi qua `lspUnavailableWarning()`.
 - Text warning nhắc `graph --query` auto-ensure LSP mặc định và chỉ dùng `--no-ensure-lsp` khi cần bỏ qua side effect.
 
 Helper warning chung được giữ để tránh thêm contract riêng cho HTTP và CLI, nhưng nội dung không còn stale.
@@ -209,7 +206,7 @@ Cập nhật các nơi sau:
 - Một query graph đầu tiên có thể tạo cache user. Đây là side effect chấp nhận được cho CLI graph nhưng phải ghi rõ trong docs.
 - CI hoặc môi trường read-only có thể không muốn install. `--no-ensure-lsp` và `NS_WORKSPACE_LSP_CACHE` nên được document.
 - `go install @latest` và npm install không pin version; đây là rủi ro đã tồn tại trong installer hiện tại.
-- Kotlin vẫn manual; auto ensure chỉ có thể emit warning manual install, không tải `kotlin-lsp`.
+- Kotlin archive installer có artifact lớn và chỉ hỗ trợ OS/arch đã khai báo checksum; auto ensure phải fail-open nếu môi trường không được hỗ trợ hoặc checksum/extract/binary check thất bại.
 - Nếu nhiều graph process chạy song song, guard hiện tại chỉ process-local; cross-process lock vẫn ngoài scope.
 
 ## Kiểm Chứng

@@ -1,8 +1,11 @@
 package preview
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ngosangns/ns-workspace/internal/graphquery"
 )
 
 func previewUIText(t *testing.T) string {
@@ -1316,7 +1321,7 @@ func TestRunLSPInstallAutoDryRunDetectsProjectLanguages(t *testing.T) {
 		t.Fatalf("expected dry-run installs %v, got %+v", wantIDs, results)
 	}
 	for _, result := range results {
-		if result.ID != "kotlin" && (!strings.Contains(result.Message, cache) || result.Message == "") {
+		if !strings.Contains(result.Message, cache) || result.Message == "" {
 			t.Fatalf("dry-run should include cache install command for %s, got %+v", result.ID, result)
 		}
 	}
@@ -1396,7 +1401,7 @@ func TestRunLSPInstallExplicitJSONFailureReturnsError(t *testing.T) {
 	}
 }
 
-func TestRunLSPInstallKotlinReturnsManualWhenMissing(t *testing.T) {
+func TestRunLSPInstallKotlinDownloadsArchiveToCache(t *testing.T) {
 	root := t.TempDir()
 	cache := t.TempDir()
 	t.Setenv(lspCacheEnv, cache)
@@ -1404,18 +1409,67 @@ func TestRunLSPInstallKotlinReturnsManualWhenMissing(t *testing.T) {
 	t.Setenv("PATH", "")
 	t.Chdir(root)
 
+	archive := testZipArchive(t, "kotlin-server-test/bin/intellij-server", "#!/bin/sh\nexit 0\n")
+	sum := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	restoreResolver := graphquery.SetArchiveSourceForTest(func(spec graphquery.InstallSpec) (graphquery.ArchiveSource, error) {
+		return graphquery.ArchiveSource{
+			Version:  "test",
+			FileName: "kotlin-server-test.zip",
+			URL:      server.URL + "/kotlin-server-test.zip",
+			SHA256:   hex.EncodeToString(sum[:]),
+			Format:   "zip",
+		}, nil
+	})
+	t.Cleanup(restoreResolver)
+
 	var buf bytes.Buffer
 	err := runLSPInstall([]string{"kotlin", "--project", root, "--json"}, &buf)
-	if err == nil {
-		t.Fatal("expected missing Kotlin LSP to require manual installation")
+	if err != nil {
+		t.Fatalf("expected Kotlin archive install to succeed: %v\n%s", err, buf.String())
 	}
 	var results []lspInstallResult
 	if decodeErr := json.NewDecoder(&buf).Decode(&results); decodeErr != nil {
-		t.Fatalf("expected manual install JSON: %v\n%s", decodeErr, buf.String())
+		t.Fatalf("expected install JSON: %v\n%s", decodeErr, buf.String())
 	}
-	if len(results) != 1 || results[0].ID != "kotlin" || results[0].Status != "manual" || !strings.Contains(results[0].Message, "kotlin-lsp") {
-		t.Fatalf("expected Kotlin manual install result, got %+v", results)
+	wantPath := filepath.Join(cache, "kotlin", "bin", executableNames("kotlin-lsp")[0])
+	if len(results) != 1 || results[0].ID != "kotlin" || results[0].Status != "installed" || results[0].Path != wantPath {
+		t.Fatalf("expected Kotlin installed result at %s, got %+v", wantPath, results)
 	}
+	if !executableFile(wantPath) {
+		t.Fatalf("expected installed Kotlin wrapper to be executable at %s", wantPath)
+	}
+	manager := newPreviewLSPManager(root)
+	got, source, err := manager.resolveCommandWithSource("kotlin-lsp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != wantPath || source != "cache" {
+		t.Fatalf("expected resolver to find cached Kotlin wrapper, got path=%q source=%q", got, source)
+	}
+}
+
+func testZipArchive(t *testing.T, path, content string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := zip.NewWriter(&buf)
+	header := &zip.FileHeader{Name: path, Method: zip.Deflate}
+	header.SetMode(0o755)
+	entry, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte(content)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func TestPreviewCodeGraphMissingLSPServerWarnsWithoutFailingSearch(t *testing.T) {

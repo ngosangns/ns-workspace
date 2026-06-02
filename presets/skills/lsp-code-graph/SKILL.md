@@ -53,7 +53,7 @@ go run . lsp install go
 go run . lsp install kotlin
 ```
 
-Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/`js` map về TypeScript server, `golang` map về Go server và `kt` map về Kotlin. Kotlin hiện có resolver và warning/install guide, nhưng `lsp install kotlin` không tự tải binary; cài `kotlin-lsp` thủ công rồi chạy lại `lsp list` hoặc `graph --query`.
+Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/`js` map về TypeScript server, `golang` map về Go server và `kt` map về Kotlin. Kotlin dùng archive installer đã pin version/checksum; `lsp install kotlin` tải archive theo OS/arch, verify SHA-256, extract vào cache và tạo wrapper `kotlin-lsp` cho resolver.
 
 ## Flags Hữu Ích
 

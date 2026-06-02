@@ -5,7 +5,7 @@
 - **Status**: active
 - **Description**: Cổng vào knowledge base của `ns-workspace`, hướng dẫn điều hướng các tài liệu hiện hành và quy ước duy trì docs.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](./_index.md), [Kiến trúc tổng quan](./architecture/overview.md), [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md), [Thuật ngữ](./shared/glossary.md)
+- **Links**: [Chỉ mục](./_index.md), [Kiến trúc tổng quan](./architecture/overview.md), [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md), [Module graph query](./modules/graphquery.md), [Thuật ngữ](./shared/glossary.md)
 
 ## Tổng Quan
 
@@ -18,6 +18,7 @@ Knowledge base trong thư mục `docs/` mô tả trạng thái hiện tại củ
 - Bắt đầu với [Chỉ mục](./_index.md) để xem toàn bộ tài liệu đã được nối graph.
 - Đọc [Kiến trúc tổng quan](./architecture/overview.md) để hiểu CLI, adapter sync và preview web.
 - Đọc [Preview web](./features/preview-web.md) và [Module preview](./modules/preview.md) khi làm việc với `go run . preview`.
+- Đọc [Module graph query](./modules/graphquery.md) khi làm việc với `go run . graph`, `go run . lsp` hoặc LSP installer/cache.
 - Khi cần triển khai thay đổi lớn, tạo plan mới trong `docs/specs/planning/` trước rồi link plan đó vào chỉ mục sau khi file tồn tại.
 
 ## Quy Ước

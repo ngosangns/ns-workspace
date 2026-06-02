@@ -1,0 +1,320 @@
+package graphquery
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type ArchiveSource struct {
+	Version  string
+	FileName string
+	URL      string
+	SHA256   string
+	Format   string
+}
+
+func installArchiveLSP(ctx context.Context, spec InstallSpec, source ArchiveSource, executableCandidates []string) (string, error) {
+	cacheDir := filepath.Join(CacheRoot(), spec.ID)
+	tmpParent := filepath.Join(cacheDir, "tmp")
+	if err := os.MkdirAll(tmpParent, 0o755); err != nil {
+		return "", err
+	}
+	tmpDir, err := os.MkdirTemp(tmpParent, "install-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	archivePath := filepath.Join(tmpDir, source.FileName)
+	if err := downloadArchive(ctx, source, archivePath); err != nil {
+		return "", err
+	}
+	extractDir := filepath.Join(tmpDir, "extract")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		return "", err
+	}
+	switch source.Format {
+	case "zip":
+		err = extractZipArchive(archivePath, extractDir)
+	case "tar.gz":
+		err = extractTarGzArchive(archivePath, extractDir)
+	default:
+		err = fmt.Errorf("unsupported archive format %q", source.Format)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	launcher, err := findArchiveExecutable(extractDir, executableCandidates)
+	if err != nil {
+		return "", err
+	}
+	launcherRel, err := filepath.Rel(extractDir, launcher)
+	if err != nil {
+		return "", err
+	}
+
+	versionsDir := filepath.Join(cacheDir, "versions")
+	installDir := filepath.Join(versionsDir, source.Version)
+	if err := os.MkdirAll(versionsDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := os.RemoveAll(installDir); err != nil {
+		return "", err
+	}
+	if err := os.Rename(extractDir, installDir); err != nil {
+		return "", err
+	}
+
+	launcherPath := filepath.Join(installDir, launcherRel)
+	if err := os.Chmod(launcherPath, 0o755); err != nil {
+		return "", err
+	}
+	binDir := filepath.Join(cacheDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		return "", err
+	}
+	// Keep resolver paths stable when upstream archives change launcher names.
+	wrapperPath := filepath.Join(binDir, executableNames(spec.Command)[0])
+	if err := writeExecutableWrapper(wrapperPath, launcherPath); err != nil {
+		return "", err
+	}
+	return wrapperPath, nil
+}
+
+func downloadArchive(ctx context.Context, source ArchiveSource, dest string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("download failed: %s", resp.Status)
+	}
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(io.MultiWriter(out, hash), resp.Body)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	got := hex.EncodeToString(hash.Sum(nil))
+	if !strings.EqualFold(got, strings.TrimSpace(source.SHA256)) {
+		return fmt.Errorf("download checksum mismatch for %s: got %s, want %s", source.FileName, got, source.SHA256)
+	}
+	return nil
+}
+
+func extractZipArchive(archivePath, dest string) error {
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	for _, entry := range reader.File {
+		target, err := safeArchiveTarget(dest, entry.Name)
+		if err != nil {
+			return err
+		}
+		mode := entry.Mode()
+		if entry.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		rc, err := entry.Open()
+		if err != nil {
+			return err
+		}
+		if mode&os.ModeSymlink != 0 {
+			linkTarget, readErr := io.ReadAll(rc)
+			closeErr := rc.Close()
+			if readErr != nil {
+				return readErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			if err := createSafeArchiveSymlink(dest, string(linkTarget), target); err != nil {
+				return err
+			}
+			continue
+		}
+		perm := mode.Perm()
+		if perm == 0 {
+			perm = 0o644
+		}
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+		if err != nil {
+			_ = rc.Close()
+			return err
+		}
+		_, copyErr := io.Copy(out, rc)
+		closeOutErr := out.Close()
+		closeReadErr := rc.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeOutErr != nil {
+			return closeOutErr
+		}
+		if closeReadErr != nil {
+			return closeReadErr
+		}
+	}
+	return nil
+}
+
+func extractTarGzArchive(archivePath, dest string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer gzipReader.Close()
+	tarReader := tar.NewReader(gzipReader)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		target, err := safeArchiveTarget(dest, header.Name)
+		if err != nil {
+			return err
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			perm := os.FileMode(header.Mode).Perm()
+			if perm == 0 {
+				perm = 0o644
+			}
+			out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+			if err != nil {
+				return err
+			}
+			_, copyErr := io.Copy(out, tarReader)
+			closeErr := out.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+		case tar.TypeSymlink:
+			if err := createSafeArchiveSymlink(dest, header.Linkname, target); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func safeArchiveTarget(dest, name string) (string, error) {
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("archive entry uses absolute path: %s", name)
+	}
+	clean := filepath.Clean(name)
+	if clean == "." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || clean == ".." {
+		return "", fmt.Errorf("archive entry escapes target directory: %s", name)
+	}
+	target := filepath.Join(dest, clean)
+	destClean := filepath.Clean(dest)
+	if !strings.HasPrefix(filepath.Clean(target), destClean+string(os.PathSeparator)) && filepath.Clean(target) != destClean {
+		return "", fmt.Errorf("archive entry escapes target directory: %s", name)
+	}
+	return target, nil
+}
+
+func createSafeArchiveSymlink(dest, linkTarget, target string) error {
+	if filepath.IsAbs(linkTarget) {
+		return fmt.Errorf("archive symlink uses absolute target: %s", linkTarget)
+	}
+	resolved := filepath.Clean(filepath.Join(filepath.Dir(target), linkTarget))
+	destClean := filepath.Clean(dest)
+	if !strings.HasPrefix(resolved, destClean+string(os.PathSeparator)) && resolved != destClean {
+		return fmt.Errorf("archive symlink escapes target directory: %s", linkTarget)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	return os.Symlink(linkTarget, target)
+}
+
+func findArchiveExecutable(root string, candidates []string) (string, error) {
+	for _, candidate := range candidates {
+		path := filepath.Join(root, candidate)
+		if executableFile(path) {
+			return path, nil
+		}
+	}
+	var found string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || found != "" || entry.IsDir() {
+			return err
+		}
+		name := entry.Name()
+		for _, candidate := range candidates {
+			if name == filepath.Base(candidate) && executableFile(path) {
+				found = path
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("archive does not contain executable candidate %s", strings.Join(candidates, ", "))
+	}
+	return found, nil
+}
+
+func writeExecutableWrapper(wrapperPath, launcherPath string) error {
+	if err := os.MkdirAll(filepath.Dir(wrapperPath), 0o755); err != nil {
+		return err
+	}
+	content := "#!/bin/sh\nexec " + shellQuote(launcherPath) + " \"$@\"\n"
+	if err := os.WriteFile(wrapperPath, []byte(content), 0o755); err != nil {
+		return err
+	}
+	return os.Chmod(wrapperPath, 0o755)
+}

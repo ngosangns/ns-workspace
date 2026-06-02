@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/ngosangns/ns-workspace/internal/agentsync"
+	"github.com/ngosangns/ns-workspace/internal/graphquery"
 	"github.com/ngosangns/ns-workspace/internal/preview"
 )
 
@@ -47,7 +48,7 @@ func run(args []string) error {
 		return preview.RunGraph(args[1:])
 	}
 	if cmd == "lsp" {
-		return preview.RunLSP(args[1:])
+		return graphquery.RunLSP(args[1:], preview.GraphQueryLSPDetector{})
 	}
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)

@@ -5,7 +5,7 @@
 - **Status**: active
 - **Description**: Tổng quan kiến trúc hiện tại của `ns-workspace`, bao gồm CLI, adapter sync, preview web và các quan hệ tài liệu cốt lõi.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Module preview](../modules/preview.md), [Preview web](../features/preview-web.md), [Thuật ngữ](../shared/glossary.md)
+- **Links**: [Chỉ mục](../_index.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md), [Preview web](../features/preview-web.md), [Thuật ngữ](../shared/glossary.md)
 
 ## Tổng Quan
 
@@ -16,7 +16,7 @@
 - CLI Go trong `main.go` xử lý các lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`, `preview`, `search`, `graph` và `lsp`.
 - Package `internal/agentsync` gom logic adapter và operation sync cho các agent. Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf và Aider.
 - Lệnh `update` rewrite artifact do `internal/agentsync` quản lý từ preset hiện tại. File, tree và JSON key managed được backup trước khi ghi; entry hoặc key đã bị xóa khỏi preset sẽ không được giữ lại trong output hiện tại.
-- Package `internal/preview` scan docs, parse metadata, dựng graph, phục vụ API, chạy preview server, sinh launcher cho Search standalone, query LSP Code Graph và cài language server vào cache user khi CLI `lsp` hoặc `graph --query` cần chuẩn bị LSP; `graph --no-ensure-lsp` bỏ qua bước cài tự động.
+- Package `internal/preview` scan docs, parse metadata, dựng graph, phục vụ API, chạy preview server, sinh launcher cho Search standalone và query LSP Code Graph. Package `internal/graphquery` sở hữu registry/setup/cache LSP cho Code Graph, chạy CLI `lsp`, và được `graph --query`/preview adapter dùng lại khi cần chuẩn bị language server; `graph --no-ensure-lsp` bỏ qua bước cài tự động.
 - Frontend preview dùng TypeScript source trong `internal/preview/preview_ui_src/`, build ra static assets trong `internal/preview/preview_ui/`, gồm SPA preview chính và entry `search.html` cho lệnh `search`.
 - Preset agent instruction trong `presets/agents/AGENTS.md` nhận trigger skill dạng `//<tag>` cho pipeline research, search docs, plan, execution, fix, update-docs và commit. Trigger riêng `/s` gọi skill `spawn-opencode` để spawn OpenCode process như sub-agent.
 
@@ -26,4 +26,4 @@ Preview đọc `docs/_index.md` và `docs/_sync.md` khi có, đồng thời scan
 
 ## Quyết Định Liên Quan
 
-Thiết kế preview hiện tại được mô tả ở [Module preview](../modules/preview.md). Thiết kế adapter hiện tại nằm trong package `internal/agentsync` và các preset trong `presets/`.
+Thiết kế preview hiện tại được mô tả ở [Module preview](../modules/preview.md). Thiết kế setup/cache LSP cho graph query nằm trong [Module graph query](../modules/graphquery.md). Thiết kế adapter hiện tại nằm trong package `internal/agentsync` và các preset trong `presets/`.
