@@ -1,6 +1,6 @@
 ---
 name: update-docs
-description: Giữ docs/specs của dự án đồng bộ với codebase hiện tại. Dùng khi user yêu cầu cập nhật tài liệu, sync specs, làm mới tài liệu kiến trúc, ghi lại implementation đã hoàn thành, tạo hoặc cập nhật docs/specs/features/research/learnings, hoặc khi thay đổi code cần được phản ánh vào knowledge base và trạng thái sync của repo.
+description: Giữ docs/specs của dự án đồng bộ với codebase hiện tại. Dùng khi user yêu cầu cập nhật tài liệu, sync specs, làm mới tài liệu kiến trúc, ghi lại implementation đã hoàn thành, tạo hoặc cập nhật docs/specs/features/research/learnings, cập nhật requirements.md của feature/module folder, hoặc khi thay đổi code cần được phản ánh vào knowledge base và trạng thái sync của repo.
 ---
 
 # Cập Nhật Tài Liệu
@@ -11,6 +11,7 @@ Dùng skill này để cập nhật knowledge base của repo sau nghiên cứu 
 
 - **Chỉ mô tả trạng thái hiện tại:** Không lưu lịch sử sync, incremental history, changelog, bảng commit history hoặc version snapshot trong docs/specs. Docs/specs phải mô tả trạng thái/thiết kế hiện tại; `docs/_sync.md` chỉ giữ metadata sync hiện tại.
 - **Root docs cố định:** Luôn tạo, sửa, move hoặc xóa tài liệu dự án bên trong `./docs` tính từ project root hiện tại. Không ghi docs vào `./specs`, thư mục docs ngoài repo, package-local docs hoặc bất kỳ docs root nào khác, kể cả khi repo hoặc user prompt gợi ý nơi khác.
+- **Requirements theo feature/module:** Mỗi feature folder hoặc module folder nên có `requirements.md` chứa các critical requirements phải luôn follow cho phạm vi đó. Khi user yêu cầu cập nhật requirements, critical rules, constraints, acceptance criteria hoặc always-follow rules cho feature/module, phải tạo hoặc cập nhật file `requirements.md` tương ứng.
 - **Báo cáo cô đọng:** Giao tiếp thẳng thắn, đi vào trọng tâm, nêu rõ docs nào đã đổi và validation nào đã chạy.
 - **Cập nhật tinh gọn:** Khi cập nhật specs, nội dung phải phản ánh thiết kế/logic mới nhất. Bắt buộc xóa nội dung cũ không còn chính xác, không giữ lại rồi thêm correction bên cạnh.
 
@@ -74,11 +75,15 @@ docs/
 ├── specs/
 │   └── planning/
 ├── features/
+│   └── <feature>/
+│       └── requirements.md
 ├── architecture/
 │   ├── overview.md
 │   ├── decisions/
 │   └── patterns/
 ├── modules/
+│   └── <module>/
+│       └── requirements.md
 ├── shared/
 ├── development/
 │   └── conventions/
@@ -90,6 +95,7 @@ docs/
 ## Quy Tắc Đặt File
 
 - Đặt requirements trước implementation, acceptance criteria, scenarios và technical plans trong `docs/specs/`.
+- Đặt critical requirements của từng feature/module folder trong `docs/features/<feature>/requirements.md` hoặc `docs/modules/<module>/requirements.md`.
 - Đặt plan task lớn cần user phê duyệt trong `docs/specs/planning/`.
 - Đặt tài liệu cho hành vi đã implement hoặc shipped trong `docs/features/`.
 - Đặt thiết kế module hiện tại, APIs, quan hệ, ràng buộc và business rules trong `docs/modules/`.
@@ -101,6 +107,25 @@ docs/
 - Đặt báo cáo orphan-code hoặc design-compliance trong `docs/compliance/`.
 
 Quy tắc nhanh: trước khi code thì ghi vào `docs/specs/`; sau khi code shipped thì ghi vào `docs/features/`; investigation chưa chắc chắn thì ghi vào `docs/research/`.
+
+## Requirements Theo Feature/Module
+
+`requirements.md` là file critical cho từng feature folder hoặc module folder. File này không thay thế feature/module docs đầy đủ; nó giữ các yêu cầu phải luôn được agent và người implement bám theo khi sửa phạm vi đó.
+
+Áp dụng khi:
+
+- User yêu cầu cập nhật requirements, critical rules, constraints, acceptance criteria, invariant, guardrail hoặc always-follow rule cho một feature/module.
+- Implementation hoặc docs update làm thay đổi business rule, security/compliance rule, API contract, data invariant, failure mode hoặc acceptance criteria của feature/module.
+- Tạo feature/module folder mới trong `docs/features/<feature>/` hoặc `docs/modules/<module>/`.
+
+Quy tắc:
+
+- Nếu folder feature/module đã tồn tại, đảm bảo có `requirements.md` trong folder đó.
+- Nếu feature/module hiện đang là flat doc như `docs/features/foo.md` hoặc `docs/modules/bar.md`, chỉ migrate sang folder khi task yêu cầu hoặc khi cần để đặt `requirements.md` mà không tạo duplicate khó hiểu. Khi migrate, cập nhật `_index.md`, links hai chiều và references liên quan.
+- `requirements.md` chỉ ghi yêu cầu hiện tại. Không ghi lịch sử thay đổi, migration note, commit note hoặc timeline.
+- Requirements phải cụ thể và kiểm chứng được: mỗi item nên mô tả constraint, expected behavior, acceptance criteria hoặc failure mode rõ ràng.
+- Khi requirements thay đổi, cập nhật các feature/module/spec docs liên quan nếu chúng chứa statement cũ hoặc cần link tới requirements mới.
+- Khi user yêu cầu "update requirements" mà không nêu rõ folder, tự tìm feature/module liên quan từ docs/code context trước; chỉ hỏi lại nếu vẫn không xác định được phạm vi an toàn.
 
 ## Quy Tắc Quan Hệ
 
@@ -187,12 +212,13 @@ Không thêm field nếu không có giá trị thật. Không tạo bảng metad
 5. Đọc `./docs/overview.md` và `./docs/specs` bị chạm bởi các module đã đổi. Khi cần code graph context để hiểu symbol, caller/callee hoặc references, dùng skill `lsp-code-graph`; nếu command báo thiếu language server hoặc không đủ kết quả, ghi rõ fallback sang diff và code inspection. Đồng thời đọc các code path đã đổi vừa đủ để hiểu final behavior tại target commit.
 6. Quyết định tập docs nhỏ nhất cần cập nhật từ commit walk và final diff. Tránh rewrite rộng và duplicate docs.
 7. Cập nhật docs để mô tả thiết kế hiện tại tại target commit, không mô tả chuỗi commit đã dẫn tới trạng thái đó. Xóa statement stale thay vì thêm correction bên cạnh.
-8. Duy trì link hai chiều khi document relationships. Dùng Markdown link tương đối thật tới file `.md`.
-9. Cập nhật `./docs/_index.md` khi thêm, move hoặc xóa docs có ý nghĩa.
-10. Cập nhật `./docs/_sync.md` như snapshot sync cuối cùng sau khi docs đã phản ánh target commit.
-11. Chạy formatter cho Markdown/HTML docs đã sửa khi repo có script, ưu tiên `npm run format:docs`. Nếu worktree có thay đổi ngoài scope và formatter toàn repo sẽ rewrite file không liên quan, không chạy write-mode toàn repo; dùng `npm run format:docs:check` để báo rõ file nào chưa format.
-12. Chạy lint docs khi repo có script, ưu tiên `npm run lint:docs` hoặc các script hẹp hơn như `npm run lint:docs:markdown` và `npm run lint:docs:html`.
-13. Chạy `git diff --check` cho docs đã sửa. Nếu repo có doc validation khác, chạy nó trừ khi user yêu cầu không chạy.
+8. Khi scope là feature/module và có requirements critical, tạo hoặc cập nhật `requirements.md` trong folder feature/module tương ứng, nhất là khi user yêu cầu trực tiếp.
+9. Duy trì link hai chiều khi document relationships. Dùng Markdown link tương đối thật tới file `.md`.
+10. Cập nhật `./docs/_index.md` khi thêm, move hoặc xóa docs có ý nghĩa.
+11. Cập nhật `./docs/_sync.md` như snapshot sync cuối cùng sau khi docs đã phản ánh target commit.
+12. Chạy formatter cho Markdown/HTML docs đã sửa khi repo có script, ưu tiên `npm run format:docs`. Nếu worktree có thay đổi ngoài scope và formatter toàn repo sẽ rewrite file không liên quan, không chạy write-mode toàn repo; dùng `npm run format:docs:check` để báo rõ file nào chưa format.
+13. Chạy lint docs khi repo có script, ưu tiên `npm run lint:docs` hoặc các script hẹp hơn như `npm run lint:docs:markdown` và `npm run lint:docs:html`.
+14. Chạy `git diff --check` cho docs đã sửa. Nếu repo có doc validation khác, chạy nó trừ khi user yêu cầu không chạy.
 
 ## Sync State
 
@@ -266,6 +292,38 @@ THEN [kết quả mong đợi]
 ## Tham Chiếu
 
 ## Ghi Chú
+```
+
+## Mẫu Requirements Doc
+
+Dùng cấu trúc này cho `docs/features/<feature>/requirements.md` hoặc `docs/modules/<module>/requirements.md`:
+
+```markdown
+---
+title: "[Feature/Module] Requirements"
+description: "Critical requirements that must always be followed for [feature/module]."
+type: feature | module
+status: active
+tags: ["requirements", "[domain]"]
+related:
+  - "./overview.md"
+---
+
+# [Feature/Module] Requirements
+
+## Meta
+
+- Trạng thái: active
+- Phạm vi: [feature/module boundary]
+- Links: [Overview](./overview.md)
+
+## Critical Requirements
+
+### REQ-1: [Requirement]
+
+- Acceptance criteria: [observable outcome]
+- Applies to: [workflow/API/module area]
+- Failure mode: [what must not happen]
 ```
 
 ## Mẫu Module Doc

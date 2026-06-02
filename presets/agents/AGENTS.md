@@ -33,7 +33,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | `//s`   | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
 | `//p`   | `plan`             | Tạo hoặc cập nhật file planning cho task lớn và chờ user duyệt trước khi sửa source.                         |
 | `//e`   | `execution`        | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo.                      |
-| `//u`   | `update-docs`      | Cập nhật docs/specs để phản ánh trạng thái hiện tại của codebase.                                            |
+| `//u`   | `update-docs`      | Cập nhật docs/specs, gồm cả `requirements.md` của feature/module folder khi user yêu cầu.                    |
 | `/s`    | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
 
 ## Trigger Ghép
