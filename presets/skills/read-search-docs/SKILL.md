@@ -17,7 +17,13 @@ Dùng skill này cho các công việc chỉ đọc trên knowledge base của d
 - Ưu tiên hướng dẫn của chính repo trước: đọc `AGENTS.md` hoặc `presets/agents/AGENTS.md` khi có.
 - Ưu tiên docs trước code đối với architecture, hành vi feature, quan hệ module, phạm vi dự án và câu hỏi về spec.
 - Chỉ fallback sang code khi docs bị thiếu, stale, mơ hồ hoặc mâu thuẫn với implementation.
-- Khi cần code graph context, dùng skill `lsp-code-graph` trước để query Search/Code Graph dựa trên LSP; nếu command báo thiếu language server hoặc không đủ kết quả, nói rõ fallback sang `rg`/code inspection.
+- Khi cần code graph context, chạy Graph Query CLI/script bằng module path mới nhất theo README để query Search/Code Graph dựa trên LSP trước khi inspect raw files:
+
+  ```sh
+  go run github.com/ngosangns/ns-workspace@latest graph --project /path/to/project --query "<symbol-or-concept>" --json
+  ```
+
+  `graph --query` tự ensure/cài language server còn thiếu theo mặc định vào cache user của `ns-workspace`; chỉ dùng `--no-ensure-lsp` khi workflow bắt buộc read-only hoặc cần cấm network/install side effect. Đọc `warnings` trước. Nếu install/prerequisite/relation expansion fail hoặc Code Graph không đủ kết quả, nói rõ fallback sang `rg`/code inspection.
 
 ## Quy Trình
 
@@ -33,7 +39,7 @@ Dùng skill này cho các công việc chỉ đọc trên knowledge base của d
    - Dùng filter folder theo ý định: `docs/specs` cho hành vi dự kiến, `docs/features` cho hành vi đã shipped, `docs/modules` cho thiết kế module, `docs/architecture` cho boundary và pattern hệ thống.
 4. Theo các Markdown link thật đến file `.md` liên quan. Khi đã tìm được doc liên quan, ưu tiên docs được link hơn là search rộng.
 5. Nếu docs reference code paths, chỉ inspect các code path đó vừa đủ để verify hoặc làm rõ.
-6. Với code path có quan hệ symbol/call phức tạp, dùng `lsp-code-graph` để kiểm tra symbol, caller/callee hoặc references trước khi kết luận.
+6. Với code path có quan hệ symbol/call phức tạp, chạy `go run github.com/ngosangns/ns-workspace@latest graph --project <repo> --query "<symbol-or-concept>" --json` và ưu tiên `panels.codeGraph` để kiểm tra symbol, caller/callee hoặc references trước khi kết luận; dùng `panels.docsGraph` khi cần quan hệ tài liệu/spec/module.
 7. Trả lời kèm file references và nói rõ câu trả lời dựa trên docs, LSP Code Graph, code, hay suy luận từ các nguồn đó.
 
 ## Mẫu Tìm Kiếm
