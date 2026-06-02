@@ -15,6 +15,7 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 
 - **Tái hiện trước:** Cố gắng tái hiện lỗi bằng test, command, log hoặc đọc code path cụ thể trước khi sửa.
 - **Sửa nguyên nhân gốc với góc nhìn tổng quát:** Trước khi sửa, phải phân biệt triệu chứng, nguyên nhân trực tiếp và nguyên nhân gốc rễ trong bối cảnh hệ thống. Nhìn đủ rộng để hiểu module boundary, contract và luồng dữ liệu liên quan, rồi thu hẹp vào fix nhỏ nhất đúng nguyên nhân.
+- **Tuân thủ requirements của feature/module liên quan:** Trước khi sửa lỗi, phải xác định các feature/module docs liên quan trong `docs/features/` và `docs/modules/`. Nếu có `requirements.md` trong các folder thuộc phạm vi ảnh hưởng, phải đọc toàn bộ và đảm bảo fix tuân thủ đủ các critical requirements đó.
 - **Thay đổi nhỏ nhưng trọn vẹn:** Giữ diff nhỏ nhất có thể, nhưng vẫn sạch, đúng kiến trúc hiện tại và không tạo workaround khó bảo trì.
 - **Chặn regression:** Khi phù hợp, thêm hoặc cập nhật test để lỗi không quay lại.
 - **Validation mục tiêu:** Chạy validation sát với lỗi đã sửa; không cần full build nếu repo guidance không yêu cầu.
@@ -29,16 +30,18 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 1. Đọc bug report, failing output hoặc triệu chứng user đưa.
 2. Kiểm tra git status để nhận diện thay đổi đang có và tránh đè việc của user.
 3. Xác định code path liên quan bằng `rg`, test hiện có, docs/specs hoặc call site gần nhất. Khi lỗi phụ thuộc vào quan hệ symbol/caller/callee/reference, dùng skill `lsp-code-graph` trước; nếu command báo thiếu language server hoặc không đủ kết quả, ghi rõ fallback sang `rg` và code inspection.
-4. Dựng giả thuyết nguyên nhân gốc rễ: vì sao lỗi phát sinh, contract hoặc invariant nào bị phá, dữ liệu đi qua đâu, và khu vực nào không nên chạm.
-5. Tái hiện lỗi bằng command nhỏ nhất có thể, hoặc ghi rõ nếu không tái hiện được nhưng đã có bằng chứng đủ từ code/log.
-6. Sửa nguyên nhân gốc theo pattern hiện có của repo.
-7. Thêm hoặc cập nhật test/regression guard nếu bug có bề mặt test hợp lý.
-8. Sau mỗi lượt sửa file, review toàn bộ diff mình vừa tạo: kiểm tra scope, imports, naming, duplication, test coverage, dead code, debug output và docs/comment bị lệch.
-9. Cleanup ngay những phần thừa hoặc kém tối ưu; ưu tiên fix nhỏ, trực tiếp, đọc được và phù hợp với kiến trúc hiện tại.
-10. Rà comment trong vùng code vừa chạm; bổ sung hoặc chuyển sang tiếng Anh nếu fix phụ thuộc vào edge case, invariant hoặc ràng buộc khó thấy từ code.
-11. Chạy lại command tái hiện lỗi và validation mục tiêu.
-12. Review diff lần cuối, cleanup các thay đổi thừa, rồi báo nguyên nhân gốc rễ, cách sửa, cách đã xác minh và ý nghĩa thực tế của từng nhóm thay đổi sau fix.
-13. Nếu bug chưa được xử lý hoặc xác minh hết, liệt kê rõ các công việc còn lại chưa hoàn thành, trạng thái hiện tại và bước tiếp theo được đề xuất.
+4. Tìm các docs feature/module liên quan đến phạm vi lỗi. Đọc toàn bộ `requirements.md` tương ứng nếu tồn tại trong `docs/features/**/requirements.md` hoặc `docs/modules/**/requirements.md`; coi chúng là acceptance constraints bắt buộc cho fix.
+5. Nếu requirements liên quan mâu thuẫn với bug report, yêu cầu của user hoặc trạng thái code hiện tại, dừng lại và báo rõ mâu thuẫn thay vì sửa âm thầm theo một phía.
+6. Dựng giả thuyết nguyên nhân gốc rễ: vì sao lỗi phát sinh, contract hoặc invariant nào bị phá, dữ liệu đi qua đâu, requirements nào bị ảnh hưởng và khu vực nào không nên chạm.
+7. Tái hiện lỗi bằng command nhỏ nhất có thể, hoặc ghi rõ nếu không tái hiện được nhưng đã có bằng chứng đủ từ code/log.
+8. Sửa nguyên nhân gốc theo pattern hiện có của repo và toàn bộ requirements liên quan đã đọc.
+9. Thêm hoặc cập nhật test/regression guard nếu bug có bề mặt test hợp lý.
+10. Sau mỗi lượt sửa file, review toàn bộ diff mình vừa tạo: kiểm tra scope, imports, naming, duplication, test coverage, dead code, debug output và docs/comment bị lệch.
+11. Cleanup ngay những phần thừa hoặc kém tối ưu; ưu tiên fix nhỏ, trực tiếp, đọc được và phù hợp với kiến trúc hiện tại.
+12. Rà comment trong vùng code vừa chạm; bổ sung hoặc chuyển sang tiếng Anh nếu fix phụ thuộc vào edge case, invariant hoặc ràng buộc khó thấy từ code.
+13. Chạy lại command tái hiện lỗi và validation mục tiêu.
+14. Review diff lần cuối, cleanup các thay đổi thừa, rồi báo nguyên nhân gốc rễ, cách sửa, requirements liên quan nào đã được tuân thủ, cách đã xác minh và ý nghĩa thực tế của từng nhóm thay đổi sau fix.
+15. Nếu bug chưa được xử lý hoặc xác minh hết, liệt kê rõ các công việc còn lại chưa hoàn thành, trạng thái hiện tại và bước tiếp theo được đề xuất.
 
 ## Ràng Buộc
 
@@ -46,5 +49,6 @@ business rule, kiến trúc hoặc docs/specs liên quan, dùng `update-docs` sa
 - Không đổi hành vi public ngoài phần cần sửa, trừ khi bug fix bắt buộc phải đổi và cần nêu rõ.
 - Không dùng browser tools trừ khi bug chỉ có thể xác minh qua UI hoặc user yêu cầu rõ.
 - Không chạy build rộng chỉ để kết thúc task.
+- Không bỏ qua `requirements.md` của feature/module liên quan khi sửa lỗi trong phạm vi đó.
 - Không để lại comment tiếng Việt trong code mới hoặc code vừa chạm nếu comment đó thuộc phần mình sửa.
 - Không thêm comment verbose, sai sự thật hoặc mô tả lại code hiển nhiên.
