@@ -28,6 +28,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | Trigger | Skill              | Khi Dùng                                                                                                     |
 | ------- | ------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `//c`   | `commit`           | Chuẩn bị và tạo git commit an toàn cho thay đổi hiện tại, với phạm vi staged rõ ràng và message súc tích.    |
+| `//d`   | `cleanup`          | Quét diff/work đã triển khai/branch/commit, đọc docs và lập plan cleanup dead code, dead flows, dead docs.   |
 | `//f`   | `fix`              | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể.                    |
 | `//i`   | `init`             | Khởi tạo knowledge base: quét codebase, lập aspect inventory markdown cho người mới, rồi cập nhật docs.      |
 | `//r`   | `read-search-docs` | Search/đọc docs và specs, không sửa file.                                                                    |

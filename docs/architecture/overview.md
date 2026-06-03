@@ -19,7 +19,7 @@
 - Lệnh `update` rewrite artifact do `internal/agentsync` quản lý từ preset hiện tại. File, tree và JSON key managed được backup trước khi ghi; entry hoặc key đã bị xóa khỏi preset sẽ không được giữ lại trong output hiện tại.
 - Package `internal/preview` scan docs, parse metadata, dựng graph, phục vụ API, chạy preview server, sinh launcher cho Search standalone và query LSP Code Graph. Package `internal/graphquery` sở hữu registry/setup/cache LSP cho Code Graph, chạy CLI `lsp`, và được `graph --query`/preview adapter dùng lại khi cần chuẩn bị language server; `graph --no-ensure-lsp` bỏ qua bước cài tự động.
 - Frontend preview dùng TypeScript source trong `internal/preview/preview_ui_src/`, build ra static assets trong `internal/preview/preview_ui/`, gồm SPA preview chính và entry `search.html` cho lệnh `search`.
-- Preset agent instruction trong `presets/agents/AGENTS.md` nhận trigger skill dạng `//<tag>` cho pipeline research, search docs, init knowledge base, plan, execution, fix, update-docs và commit. Trigger riêng `/s` gọi skill `spawn-opencode` để spawn OpenCode process như sub-agent.
+- Preset agent instruction trong `presets/agents/AGENTS.md` nhận trigger skill dạng `//<tag>` cho pipeline research, search docs, init knowledge base, plan, execution, fix, cleanup audit, update-docs và commit. Trigger riêng `/s` gọi skill `spawn-opencode` để spawn OpenCode process như sub-agent.
 
 ## Quan Hệ
 
