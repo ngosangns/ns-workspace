@@ -5,7 +5,7 @@
 - **Status**: active
 - **Description**: Chỉ mục điều hướng của knowledge base, liệt kê tài liệu chính, trạng thái hiện tại và quan hệ graph giữa các docs.
 - **Compliance**: current-state
-- **Links**: [Tài liệu dự án](./README.md), [Trạng thái sync](./_sync.md), [Kiến trúc tổng quan](./architecture/overview.md), [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md), [Module graph query](./modules/graphquery.md), [Thuật ngữ](./shared/glossary.md), [LSP Code Graph Search](./specs/planning/lsp-code-graph-search.md), [LSP Search Graph Command Và Skill](./specs/planning/package-lsp-search-graph-command-skill.md), [Tự động cài LSP cho Graph Query](./specs/planning/auto-install-lsp-for-graph.md), [Mở rộng LSP coverage](./specs/planning/expand-lsp-language-coverage.md), [Tự động ensure LSP khi query graph](./specs/planning/auto-ensure-lsp-on-graph-query.md)
+- **Links**: [Tài liệu dự án](./README.md), [Trạng thái sync](./_sync.md), [Kiến trúc tổng quan](./architecture/overview.md), [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md), [Module graph query](./modules/graphquery.md), [Thuật ngữ](./shared/glossary.md), [LSP Code Graph Search](./specs/planning/lsp-code-graph-search.md), [LSP Search Graph Command Và Skill](./specs/planning/package-lsp-search-graph-command-skill.md), [Tự động cài LSP cho Graph Query](./specs/planning/auto-install-lsp-for-graph.md), [Mở rộng LSP coverage](./specs/planning/expand-lsp-language-coverage.md), [Tự động ensure LSP khi query graph](./specs/planning/auto-ensure-lsp-on-graph-query.md), [Sửa timeout LSP Code Graph](./specs/planning/fix-lsp-graph-timeout-partial-index.md)
 
 ## Modules
 
@@ -25,10 +25,11 @@
 | LSP auto install      | [specs/planning/auto-install-lsp-for-graph.md](./specs/planning/auto-install-lsp-for-graph.md)                         | active  | current | planning      | P1       |
 | LSP coverage          | [specs/planning/expand-lsp-language-coverage.md](./specs/planning/expand-lsp-language-coverage.md)                     | active  | current | planning      | P1       |
 | LSP graph auto ensure | [specs/planning/auto-ensure-lsp-on-graph-query.md](./specs/planning/auto-ensure-lsp-on-graph-query.md)                 | active  | current | planning      | P1       |
+| LSP graph timeout     | [specs/planning/fix-lsp-graph-timeout-partial-index.md](./specs/planning/fix-lsp-graph-timeout-partial-index.md)       | active  | current | planning      | P1       |
 
 ## Specs Và Planning
 
-Planning/spec hiện có: [Tách Search Page Thành Frontend Standalone Và Thêm Lệnh Graph](./specs/planning/standalone-search-graph-command.md), [Thay Code Graph Graphify Bằng LSP](./specs/planning/lsp-code-graph-search.md), [Đóng Gói LSP Search Graph Thành Command Và Skill](./specs/planning/package-lsp-search-graph-command-skill.md), [Tự Động Cài LSP Cho Graph Query](./specs/planning/auto-install-lsp-for-graph.md), [Mở Rộng LSP Coverage](./specs/planning/expand-lsp-language-coverage.md) và [Tự Động Ensure LSP Khi Query Graph](./specs/planning/auto-ensure-lsp-on-graph-query.md). Hành vi đã shipped được mô tả trực tiếp trong [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md), [Module graph query](./modules/graphquery.md) và [Kiến trúc tổng quan](./architecture/overview.md).
+Planning/spec hiện có: [Tách Search Page Thành Frontend Standalone Và Thêm Lệnh Graph](./specs/planning/standalone-search-graph-command.md), [Thay Code Graph Graphify Bằng LSP](./specs/planning/lsp-code-graph-search.md), [Đóng Gói LSP Search Graph Thành Command Và Skill](./specs/planning/package-lsp-search-graph-command-skill.md), [Tự Động Cài LSP Cho Graph Query](./specs/planning/auto-install-lsp-for-graph.md), [Mở Rộng LSP Coverage](./specs/planning/expand-lsp-language-coverage.md), [Tự Động Ensure LSP Khi Query Graph](./specs/planning/auto-ensure-lsp-on-graph-query.md) và [Sửa Timeout Làm LSP Code Graph Trả Thiếu Kết Quả](./specs/planning/fix-lsp-graph-timeout-partial-index.md). Hành vi đã shipped được mô tả trực tiếp trong [Preview web](./features/preview-web.md), [Module preview](./modules/preview.md), [Module graph query](./modules/graphquery.md) và [Kiến trúc tổng quan](./architecture/overview.md).
 
 ## Dependency Graph
 
@@ -48,5 +49,6 @@ flowchart LR
   "modules/graphquery.md" --> "specs/planning/auto-install-lsp-for-graph.md"
   "modules/graphquery.md" --> "specs/planning/expand-lsp-language-coverage.md"
   "modules/graphquery.md" --> "specs/planning/auto-ensure-lsp-on-graph-query.md"
+  "modules/preview.md" --> "specs/planning/fix-lsp-graph-timeout-partial-index.md"
   "shared/glossary.md" --> "architecture/overview.md"
 ```

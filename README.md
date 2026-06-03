@@ -106,7 +106,7 @@ Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<a
 
 ## Preview, Search Và Graph
 
-`preview` chạy localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph index symbol từ LSP trên file code tracked bởi Git, rồi mở rộng caller/callee hoặc references khi language server hỗ trợ.
+`preview` chạy localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph index symbol từ LSP trên file code tracked bởi Git, bỏ qua generated preview UI artifacts của repo, rồi mở rộng caller/callee hoặc references khi language server hỗ trợ.
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project ~/path/to/project --open

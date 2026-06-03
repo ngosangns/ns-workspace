@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -420,6 +421,37 @@ func replaceGraphEnsureHook(hook func(context.Context, string, string, lspEnsure
 	return func() {
 		ensureProjectLSPForGraph = previous
 	}
+}
+
+func restoreLSPRuntimeHooks(t *testing.T) {
+	t.Helper()
+	previousServerForLanguage := lspServerForLanguage
+	previousServerByID := lspServerByID
+	previousStartServer := lspStartServer
+	previousDocumentSymbols := lspDocumentSymbols
+	previousPrepareCallHierarchy := lspPrepareCallHierarchy
+	previousIncomingCalls := lspIncomingCalls
+	previousOutgoingCalls := lspOutgoingCalls
+	previousReferences := lspReferences
+	t.Cleanup(func() {
+		lspServerForLanguage = previousServerForLanguage
+		lspServerByID = previousServerByID
+		lspStartServer = previousStartServer
+		lspDocumentSymbols = previousDocumentSymbols
+		lspPrepareCallHierarchy = previousPrepareCallHierarchy
+		lspIncomingCalls = previousIncomingCalls
+		lspOutgoingCalls = previousOutgoingCalls
+		lspReferences = previousReferences
+	})
+}
+
+func warningsContain(warnings []string, needle string) bool {
+	for _, warning := range warnings {
+		if strings.Contains(warning, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func captureStdout(t *testing.T, run func() error) (string, error) {
@@ -886,6 +918,104 @@ func TestLSPSourceFilesUseOnlyGitTrackedCode(t *testing.T) {
 	}
 }
 
+func TestLSPSourceFilesSkipsGeneratedPreviewUIButKeepsPreviewUISource(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "internal/preview/preview_ui/index.html", "<div id=\"app\"></div>\n")
+	writeTestFile(t, root, "internal/preview/preview_ui/style.css", ".generated { color: red; }\n")
+	writeTestFile(t, root, "internal/preview/preview_ui_src/index.html", "<div id=\"app\"></div>\n")
+	writeTestFile(t, root, "internal/preview/preview_ui_src/app.ts", "export function sourceNeedle() {}\n")
+	initGitRepo(t, root,
+		"docs/_index.md",
+		"internal/preview/preview_ui/index.html",
+		"internal/preview/preview_ui/style.css",
+		"internal/preview/preview_ui_src/index.html",
+		"internal/preview/preview_ui_src/app.ts",
+	)
+
+	_, files, warnings := lspSourceFiles(root, filepath.Join(root, "docs"))
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected source scan warnings: %+v", warnings)
+	}
+	got := []string{}
+	for _, file := range files {
+		got = append(got, file.Rel)
+	}
+	for _, forbidden := range []string{"internal/preview/preview_ui/index.html", "internal/preview/preview_ui/style.css"} {
+		if containsString(got, forbidden) {
+			t.Fatalf("generated preview UI artifact %s should not be indexed by LSP: %+v", forbidden, got)
+		}
+	}
+	for _, want := range []string{"internal/preview/preview_ui_src/index.html", "internal/preview/preview_ui_src/app.ts"} {
+		if !containsString(got, want) {
+			t.Fatalf("preview UI source %s should remain in LSP source files: %+v", want, got)
+		}
+	}
+}
+
+func TestLSPIndexContinuesAfterFileSymbolTimeout(t *testing.T) {
+	restoreLSPRuntimeHooks(t)
+	lspServerForLanguage = func(manager *previewLSPManager, lang lspLanguage) (*previewLSPServer, error) {
+		return &previewLSPServer{lang: lang}, nil
+	}
+	lspStartServer = func(ctx context.Context, srv *previewLSPServer) error {
+		return nil
+	}
+	lspDocumentSymbols = func(ctx context.Context, srv *previewLSPServer, path, languageID string) ([]lspDocumentSymbol, error) {
+		if strings.HasSuffix(path, "slow.html") {
+			return nil, context.DeadlineExceeded
+		}
+		return []lspDocumentSymbol{{
+			Name:           "Needle",
+			Kind:           12,
+			Range:          lspRange{Start: lspPosition{Line: 2}, End: lspPosition{Line: 4}},
+			SelectionRange: lspRange{Start: lspPosition{Line: 2, Character: 5}},
+		}}, nil
+	}
+
+	root := t.TempDir()
+	provider := newPreviewLSPCodeGraphProvider(root, filepath.Join(root, "docs"))
+	files := []lspSourceFile{
+		{Rel: "slow.html", Abs: filepath.Join(root, "slow.html"), Language: lspLanguage{ServerID: "html", LanguageID: "html", Name: "HTML"}},
+		{Rel: "needle.go", Abs: filepath.Join(root, "needle.go"), Language: lspLanguage{ServerID: "go", LanguageID: "go", Name: "Go"}},
+	}
+
+	index := provider.buildIndex(context.Background(), files)
+	if index.TimedOut {
+		t.Fatalf("per-file symbol timeout should not mark the whole index as total timeout: %+v", index)
+	}
+	if index.IndexedFiles != 1 || index.TimedOutFiles != 1 {
+		t.Fatalf("expected one indexed file and one timed out file, got indexed=%d timedOut=%d warnings=%+v", index.IndexedFiles, index.TimedOutFiles, index.Warnings)
+	}
+	if len(index.Nodes) != 1 {
+		t.Fatalf("index should keep symbols from files after a timeout, got %+v", index.Nodes)
+	}
+	if !warningsContain(index.Warnings, "slow.html") || !warningsContain(index.Warnings, "symbol timeout") {
+		t.Fatalf("expected focused file timeout warning, got %+v", index.Warnings)
+	}
+}
+
+func TestLSPIndexDoesNotCacheTotalTimeoutAsComplete(t *testing.T) {
+	root := t.TempDir()
+	provider := newPreviewLSPCodeGraphProvider(root, filepath.Join(root, "docs"))
+	partial := lspCodeGraphIndex{
+		Nodes:    map[string]lspCodeNode{"needle": {ID: "needle", Name: "Needle"}},
+		ByPath:   map[string][]string{"needle.go": {"needle"}},
+		TimedOut: true,
+	}
+	provider.cacheIndexIfStable("partial", partial)
+	if provider.token != "" {
+		t.Fatalf("total-timeout index should not be cached as stable, got token %q", provider.token)
+	}
+
+	stable := partial
+	stable.TimedOut = false
+	provider.cacheIndexIfStable("stable", stable)
+	if provider.token != "stable" {
+		t.Fatalf("stable index should be cached, got token %q", provider.token)
+	}
+}
+
 func TestLSPCodeGraphSearchUsesSymbolOwnersAndDeterministicSorting(t *testing.T) {
 	root := t.TempDir()
 	provider := newPreviewLSPCodeGraphProvider(root, filepath.Join(root, "docs"))
@@ -1149,6 +1279,105 @@ func TestSearchLSPCodeGraphExclusionAndRelationWarnings(t *testing.T) {
 	}
 	if !warned {
 		t.Fatalf("expected relation warning for missing server, got %+v", warnings)
+	}
+}
+
+func TestLSPRelationFallsBackToReferencesAfterCallHierarchyTimeout(t *testing.T) {
+	restoreLSPRuntimeHooks(t)
+	root := t.TempDir()
+	anchorPath := filepath.Join(root, "needle.go")
+	callerPath := filepath.Join(root, "caller.go")
+	provider := newPreviewLSPCodeGraphProvider(root, filepath.Join(root, "docs"))
+	index := lspCodeGraphIndex{
+		Nodes: map[string]lspCodeNode{
+			"needle": {
+				ID:             "needle",
+				Name:           "Needle",
+				FullName:       "Needle",
+				Kind:           12,
+				KindLabel:      "function",
+				ServerID:       "go",
+				LanguageID:     "go",
+				Path:           "needle.go",
+				AbsPath:        anchorPath,
+				Range:          lspRange{Start: lspPosition{Line: 1}, End: lspPosition{Line: 4}},
+				SelectionRange: lspRange{Start: lspPosition{Line: 1, Character: 5}},
+			},
+			"caller": {
+				ID:             "caller",
+				Name:           "Caller",
+				FullName:       "Caller",
+				Kind:           12,
+				KindLabel:      "function",
+				ServerID:       "go",
+				LanguageID:     "go",
+				Path:           "caller.go",
+				AbsPath:        callerPath,
+				Range:          lspRange{Start: lspPosition{Line: 1}, End: lspPosition{Line: 8}},
+				SelectionRange: lspRange{Start: lspPosition{Line: 1, Character: 5}},
+			},
+		},
+		ByPath: map[string][]string{
+			"needle.go": {"needle"},
+			"caller.go": {"caller"},
+		},
+	}
+
+	lspServerByID = func(manager *previewLSPManager, serverID string) (*previewLSPServer, error) {
+		return &previewLSPServer{}, nil
+	}
+	lspPrepareCallHierarchy = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspCallHierarchyItem, error) {
+		return nil, context.DeadlineExceeded
+	}
+	lspReferences = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspLocation, error) {
+		return []lspLocation{{URI: fileURI(callerPath), Range: lspRange{Start: lspPosition{Line: 3, Character: 2}}}}, nil
+	}
+
+	edges, warnings := provider.relationsForNode(context.Background(), index, index.Nodes["needle"])
+	if len(edges) != 1 || edges[0].Source != "caller" || edges[0].Target != "needle" || edges[0].Relation != "references" {
+		t.Fatalf("references should provide fallback relation edge after call hierarchy timeout, edges=%+v warnings=%+v", edges, warnings)
+	}
+	if !warningsContain(warnings, "fell back to references after call hierarchy timeout") {
+		t.Fatalf("expected fallback warning, got %+v", warnings)
+	}
+}
+
+func TestLSPRelationWarningsIncludeIncomingOutgoingTimeout(t *testing.T) {
+	restoreLSPRuntimeHooks(t)
+	root := t.TempDir()
+	provider := newPreviewLSPCodeGraphProvider(root, filepath.Join(root, "docs"))
+	index := lspCodeGraphIndex{Nodes: map[string]lspCodeNode{
+		"needle": {
+			ID:             "needle",
+			Name:           "Needle",
+			FullName:       "Needle",
+			Kind:           12,
+			KindLabel:      "function",
+			ServerID:       "go",
+			LanguageID:     "go",
+			Path:           "needle.go",
+			AbsPath:        filepath.Join(root, "needle.go"),
+			Range:          lspRange{Start: lspPosition{Line: 1}, End: lspPosition{Line: 4}},
+			SelectionRange: lspRange{Start: lspPosition{Line: 1, Character: 5}},
+		},
+	}}
+
+	lspPrepareCallHierarchy = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspCallHierarchyItem, error) {
+		return []lspCallHierarchyItem{{Name: "Needle", URI: fileURI(filepath.Join(root, "needle.go"))}}, nil
+	}
+	lspIncomingCalls = func(ctx context.Context, srv *previewLSPServer, item lspCallHierarchyItem) ([]lspIncomingCall, error) {
+		return nil, context.DeadlineExceeded
+	}
+	lspOutgoingCalls = func(ctx context.Context, srv *previewLSPServer, item lspCallHierarchyItem) ([]lspOutgoingCall, error) {
+		return nil, context.DeadlineExceeded
+	}
+
+	_, warnings, err := provider.callHierarchyEdges(context.Background(), &previewLSPServer{}, index, index.Nodes["needle"])
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected timeout error from call hierarchy expansion, got %v", err)
+	}
+	if !warningsContain(warnings, "incoming call expansion") || !warningsContain(warnings, "outgoing call expansion") {
+		t.Fatalf("incoming/outgoing timeout warnings should be preserved, got %+v", warnings)
 	}
 }
 
