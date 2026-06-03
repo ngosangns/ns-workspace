@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -36,6 +37,15 @@ type previewServer struct {
 	opt       previewOptions
 	srv       *http.Server
 	codeGraph previewCodeGraphProvider
+
+	projectMu    sync.RWMutex
+	projectToken string
+	project      specProject
+	projectErr   error
+
+	searchMu    sync.RWMutex
+	searchToken string
+	search      previewSearchSnapshot
 }
 
 func Run(args []string) error {
@@ -394,7 +404,7 @@ func previewSourceFileKind(rel, path, uiSourceRoot string) (previewSourceKind, b
 		return previewSourceBackend, true
 	}
 	switch rel {
-	case "package.json", "package-lock.json", "tsconfig.preview.json", "tsconfig.vue.json", "vite.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore":
+	case "package.json", "package-lock.json", "biome.json", "tsconfig.preview.json", "tsconfig.vue.json", "vite.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore":
 		return previewSourceFrontend, true
 	}
 	if strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator)) {
@@ -472,7 +482,23 @@ func (ps *previewServer) shutdown(ctx context.Context) error {
 }
 
 func (ps *previewServer) load() (specProject, error) {
-	return scanSpecProject(ps.opt.projectRoot, ps.opt.docsDir)
+	token := ps.changeToken()
+	ps.projectMu.RLock()
+	if token == ps.projectToken {
+		project := ps.project
+		err := ps.projectErr
+		ps.projectMu.RUnlock()
+		return project, err
+	}
+	ps.projectMu.RUnlock()
+
+	project, err := scanSpecProject(ps.opt.projectRoot, ps.opt.docsDir)
+	ps.projectMu.Lock()
+	ps.projectToken = token
+	ps.project = project
+	ps.projectErr = err
+	ps.projectMu.Unlock()
+	return project, err
 }
 
 func (ps *previewServer) changeToken() string {
