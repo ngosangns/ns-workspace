@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 5c9fdb74f5428dab192e1a0ab34bea64c65ad194
+- **Last Synced Commit**: a6beaf5a37d08b02feaf7310b3aaeee939c281f9
 - **Branch**: current worktree
-- **Sync Date**: 2026-06-03T10:03:20Z
-- **Scope**: Current worktree docs sync for knowledge-base bootstrap inventory, agentsync `SyncPlan`, adapter spec/plugin model and CLI boundary, docs index coverage, adapter/preset glossary, LSP Code Graph timeout/corpus behavior, preset `init` skill trigger documentation, implemented Preview Web cleanup behavior and Preview Web lint/hook toolchain.
-- **Known Unsynced**: Current worktree contains uncommitted agentsync refactor changes, registry preset changes under `presets/registry/skills.json`, knowledge-base docs and Preview Web changes under `internal/preview/`.
+- **Sync Date**: 2026-06-03T10:11:31Z
+- **Scope**: Current worktree docs sync for agent preset trigger surface, local skill inventory, agentsync preset materialization behavior, Preview/Search/LSP Code Graph docs, Preview Web cleanup behavior and docs index coverage.
+- **Known Unsynced**: Current worktree contains uncommitted cleanup skill preset/local changes, trigger instruction updates, tests and architecture docs.
