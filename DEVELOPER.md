@@ -114,6 +114,6 @@ Docs trong `docs/` mô tả trạng thái hiện tại, không giữ changelog d
 - Repo có thể ghi vào user-level config thật; luôn dùng `--dry-run` trước với thay đổi adapter hoặc preset.
 - `--force` thay thế file đã tồn tại trong `init`, nên chỉ dùng khi đã đọc diff/backups.
 - Preview search có thể dùng embedding runtime local nếu được cấu hình; fallback lexical vẫn phải cho kết quả hợp lý khi embedding không khả dụng.
-- Code Graph dựa vào language server cài trong môi trường local hoặc cache `ns-workspace`; resolver kiểm tra `PATH`, Go bin dirs như `GOBIN`/`GOPATH/bin`/`~/go/bin`, local `node_modules/.bin` và cache dirs từ `internal/graphquery`. Khi LSP binary thiếu hoặc không hỗ trợ call hierarchy/references, search phải fail-open bằng warning thay vì làm hỏng preview.
+- Code Graph dựa vào language server cài trong môi trường local hoặc cache `ns-workspace`; resolver kiểm tra `PATH`, Go bin dirs như `GOBIN`/`GOPATH/bin`/`~/go/bin`, local `node_modules/.bin` và cache dirs từ `internal/graphquery`. LSP source scan bỏ generated preview UI artifacts trong `internal/preview/preview_ui/` và giữ source thật trong `internal/preview/preview_ui_src/`; khi LSP binary thiếu, một file symbol timeout hoặc relation expansion thiếu capability, search phải fail-open bằng warning thay vì làm hỏng preview.
 - `graph --query` tự ensure LSP theo mặc định và có thể tải package/archive vào user cache; dùng `--no-ensure-lsp` cho kiểm tra read-only. Preview/Search HTTP không được tự cài LSP trong request.
 - `node_modules/` là dữ liệu local, không phải source of truth.

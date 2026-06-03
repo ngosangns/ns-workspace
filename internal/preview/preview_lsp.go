@@ -24,9 +24,40 @@ import (
 )
 
 const (
-	lspRequestTimeout      = 6 * time.Second
-	lspRelationTimeout     = 3 * time.Second
-	lspMaxIndexedFileBytes = maxSearchFileBytes
+	lspIndexTimeout         = 20 * time.Second
+	lspServerStartTimeout   = 6 * time.Second
+	lspSymbolFileTimeout    = 3 * time.Second
+	lspRelationTimeout      = 3 * time.Second
+	lspRelationPhaseTimeout = 1500 * time.Millisecond
+	lspMaxIndexedFileBytes  = maxSearchFileBytes
+)
+
+var (
+	// These hooks keep timeout and fallback tests fast without starting real language servers.
+	lspServerForLanguage = func(manager *previewLSPManager, lang lspLanguage) (*previewLSPServer, error) {
+		return manager.ServerFor(lang)
+	}
+	lspServerByID = func(manager *previewLSPManager, serverID string) (*previewLSPServer, error) {
+		return manager.ServerByID(serverID)
+	}
+	lspStartServer = func(ctx context.Context, srv *previewLSPServer) error {
+		return srv.Start(ctx)
+	}
+	lspDocumentSymbols = func(ctx context.Context, srv *previewLSPServer, path, languageID string) ([]lspDocumentSymbol, error) {
+		return srv.DocumentSymbols(ctx, path, languageID)
+	}
+	lspPrepareCallHierarchy = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspCallHierarchyItem, error) {
+		return srv.PrepareCallHierarchy(ctx, path, languageID, pos)
+	}
+	lspIncomingCalls = func(ctx context.Context, srv *previewLSPServer, item lspCallHierarchyItem) ([]lspIncomingCall, error) {
+		return srv.IncomingCalls(ctx, item)
+	}
+	lspOutgoingCalls = func(ctx context.Context, srv *previewLSPServer, item lspCallHierarchyItem) ([]lspOutgoingCall, error) {
+		return srv.OutgoingCalls(ctx, item)
+	}
+	lspReferences = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspLocation, error) {
+		return srv.References(ctx, path, languageID, pos)
+	}
 )
 
 type previewLSPCodeGraphProvider struct {
@@ -44,6 +75,10 @@ type lspCodeGraphIndex struct {
 	ByPath    map[string][]string
 	Warnings  []string
 	Supported bool
+	TimedOut  bool
+
+	IndexedFiles  int
+	TimedOutFiles int
 }
 
 type lspCodeNode struct {
@@ -198,18 +233,23 @@ func (p *previewLSPCodeGraphProvider) cachedIndex(ctx context.Context) (lspCodeG
 	}
 	p.mu.Unlock()
 
-	buildCtx, cancel := context.WithTimeout(ctx, lspRequestTimeout)
+	buildCtx, cancel := context.WithTimeout(ctx, lspIndexTimeout)
 	defer cancel()
 	index := p.buildIndex(buildCtx, files)
 	index.Warnings = append(index.Warnings, warnings...)
 
-	if len(index.Nodes) > 0 {
-		p.mu.Lock()
-		p.token = token
-		p.index = index
-		p.mu.Unlock()
-	}
+	p.cacheIndexIfStable(token, index)
 	return index, index.Warnings
+}
+
+func (p *previewLSPCodeGraphProvider) cacheIndexIfStable(token string, index lspCodeGraphIndex) {
+	if p == nil || token == "" || len(index.Nodes) == 0 || index.TimedOut {
+		return
+	}
+	p.mu.Lock()
+	p.token = token
+	p.index = index
+	p.mu.Unlock()
 }
 
 func (p *previewLSPCodeGraphProvider) buildIndex(ctx context.Context, files []lspSourceFile) lspCodeGraphIndex {
@@ -222,12 +262,14 @@ func (p *previewLSPCodeGraphProvider) buildIndex(ctx context.Context, files []ls
 		Language lspLanguage
 		Err      string
 	}{}
+	started := map[string]bool{}
 	for _, file := range files {
 		if ctx.Err() != nil {
-			index.Warnings = append(index.Warnings, "Code Graph LSP indexing timed out; showing partial results.")
+			index.TimedOut = true
+			index.Warnings = append(index.Warnings, fmt.Sprintf("Code Graph LSP indexing timed out after %s; showing partial results.", lspIndexTimeout))
 			break
 		}
-		srv, err := p.manager.ServerFor(file.Language)
+		srv, err := lspServerForLanguage(p.manager, file.Language)
 		if err != nil {
 			missing[file.Language.ServerID] = struct {
 				Language lspLanguage
@@ -235,11 +277,30 @@ func (p *previewLSPCodeGraphProvider) buildIndex(ctx context.Context, files []ls
 			}{Language: file.Language, Err: err.Error()}
 			continue
 		}
-		symbols, err := srv.DocumentSymbols(ctx, file.Abs, file.Language.LanguageID)
+		if !started[file.Language.ServerID] {
+			startCtx, cancel := context.WithTimeout(ctx, lspServerStartTimeout)
+			err := lspStartServer(startCtx, srv)
+			cancel()
+			if err != nil {
+				index.Warnings = append(index.Warnings, fmt.Sprintf("Code Graph could not start %s LSP server: %v", file.Language.Name, err))
+				continue
+			}
+			started[file.Language.ServerID] = true
+		}
+		fileCtx, cancel := context.WithTimeout(ctx, lspSymbolFileTimeout)
+		symbols, err := lspDocumentSymbols(fileCtx, srv, file.Abs, file.Language.LanguageID)
+		fileTimedOut := contextTimedOut(fileCtx, err)
+		cancel()
 		if err != nil {
+			if fileTimedOut {
+				index.TimedOutFiles++
+				index.Warnings = append(index.Warnings, fmt.Sprintf("Code Graph skipped %s after %s symbol timeout.", file.Rel, lspSymbolFileTimeout))
+				continue
+			}
 			index.Warnings = append(index.Warnings, fmt.Sprintf("Code Graph could not read symbols from %s: %v", file.Rel, err))
 			continue
 		}
+		index.IndexedFiles++
 		flattenLSPSymbols(&index, file, symbols, nil)
 	}
 	if len(missing) > 0 {
@@ -252,6 +313,9 @@ func (p *previewLSPCodeGraphProvider) buildIndex(ctx context.Context, files []ls
 			entry := missing[serverID]
 			index.Warnings = append(index.Warnings, lspUnavailableWarning(entry.Language, entry.Err))
 		}
+	}
+	if index.TimedOutFiles > 0 {
+		index.Warnings = append(index.Warnings, fmt.Sprintf("Code Graph indexed %d/%d LSP source files; skipped %d file(s) after symbol timeout.", index.IndexedFiles, len(files), index.TimedOutFiles))
 	}
 	index.Supported = len(index.Nodes) > 0
 	return index
@@ -390,49 +454,85 @@ func (p *previewLSPCodeGraphProvider) expandLSPCodeGraphCallFlow(ctx context.Con
 }
 
 func (p *previewLSPCodeGraphProvider) relationsForNode(ctx context.Context, index lspCodeGraphIndex, node lspCodeNode) ([]lspCodeEdge, []string) {
-	srv, err := p.manager.ServerByID(node.ServerID)
+	srv, err := lspServerByID(p.manager, node.ServerID)
 	if err != nil {
 		return nil, []string{"Code Graph relation expansion is unavailable: " + err.Error()}
 	}
-	edges, err := p.callHierarchyEdges(ctx, srv, index, node)
-	if err == nil && len(edges) > 0 {
-		return edges, nil
+	warnings := []string{}
+	callCtx, cancel := context.WithTimeout(ctx, lspRelationPhaseTimeout)
+	edges, callWarnings, callErr := p.callHierarchyEdges(callCtx, srv, index, node)
+	callTimedOut := contextTimedOut(callCtx, callErr)
+	cancel()
+	warnings = append(warnings, callWarnings...)
+	if len(edges) > 0 {
+		return edges, uniqueStrings(warnings)
 	}
-	refEdges, refErr := p.referenceEdges(ctx, srv, index, node)
-	if refErr == nil && len(refEdges) > 0 {
-		return refEdges, nil
+	if ctx.Err() != nil {
+		return nil, uniqueStrings(append(warnings, fmt.Sprintf("Code Graph relation expansion for %s timed out before references fallback.", lspCodeNodeTitle(node))))
 	}
-	if err != nil && refErr != nil {
-		return nil, []string{"Code Graph relation expansion is unavailable for this language server."}
+
+	refCtx, cancel := context.WithTimeout(ctx, lspRelationPhaseTimeout)
+	refEdges, refErr := p.referenceEdges(refCtx, srv, index, node)
+	refTimedOut := contextTimedOut(refCtx, refErr)
+	cancel()
+	if len(refEdges) > 0 {
+		if callTimedOut {
+			warnings = append(warnings, fmt.Sprintf("Code Graph relation expansion for %s fell back to references after call hierarchy timeout.", lspCodeNodeTitle(node)))
+		}
+		return refEdges, uniqueStrings(warnings)
 	}
-	return nil, nil
+	if refErr != nil && refTimedOut {
+		warnings = append(warnings, fmt.Sprintf("Code Graph references fallback for %s timed out.", lspCodeNodeTitle(node)))
+	}
+	if callErr != nil && refErr != nil && len(warnings) == 0 {
+		warnings = append(warnings, "Code Graph relation expansion is unavailable for this language server.")
+	}
+	return nil, uniqueStrings(warnings)
 }
 
-func (p *previewLSPCodeGraphProvider) callHierarchyEdges(ctx context.Context, srv *previewLSPServer, index lspCodeGraphIndex, node lspCodeNode) ([]lspCodeEdge, error) {
-	items, err := srv.PrepareCallHierarchy(ctx, node.AbsPath, node.LanguageID, node.SelectionRange.Start)
+func (p *previewLSPCodeGraphProvider) callHierarchyEdges(ctx context.Context, srv *previewLSPServer, index lspCodeGraphIndex, node lspCodeNode) ([]lspCodeEdge, []string, error) {
+	items, err := lspPrepareCallHierarchy(ctx, srv, node.AbsPath, node.LanguageID, node.SelectionRange.Start)
 	if err != nil || len(items) == 0 {
-		return nil, err
+		return nil, nil, err
 	}
 	edges := []lspCodeEdge{}
+	warnings := []string{}
+	var firstErr error
 	for _, item := range items {
-		incoming, _ := srv.IncomingCalls(ctx, item)
+		incoming, err := lspIncomingCalls(ctx, srv, item)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			if contextTimedOut(ctx, err) {
+				warnings = append(warnings, fmt.Sprintf("Code Graph incoming call expansion for %s timed out.", lspCodeNodeTitle(node)))
+			}
+		}
 		for _, call := range incoming {
 			if callerID := index.nodeIDForLocation(p.projectRoot, call.From.URI, call.From.SelectionRange.Start); callerID != "" && callerID != node.ID {
 				edges = append(edges, lspCodeEdge{Source: callerID, Target: node.ID, Relation: "calls", SourceID: callerID, TargetID: node.ID})
 			}
 		}
-		outgoing, _ := srv.OutgoingCalls(ctx, item)
+		outgoing, err := lspOutgoingCalls(ctx, srv, item)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			if contextTimedOut(ctx, err) {
+				warnings = append(warnings, fmt.Sprintf("Code Graph outgoing call expansion for %s timed out.", lspCodeNodeTitle(node)))
+			}
+		}
 		for _, call := range outgoing {
 			if calleeID := index.nodeIDForLocation(p.projectRoot, call.To.URI, call.To.SelectionRange.Start); calleeID != "" && calleeID != node.ID {
 				edges = append(edges, lspCodeEdge{Source: node.ID, Target: calleeID, Relation: "calls", SourceID: node.ID, TargetID: calleeID})
 			}
 		}
 	}
-	return dedupeLSPCodeEdges(edges), nil
+	return dedupeLSPCodeEdges(edges), uniqueStrings(warnings), firstErr
 }
 
 func (p *previewLSPCodeGraphProvider) referenceEdges(ctx context.Context, srv *previewLSPServer, index lspCodeGraphIndex, node lspCodeNode) ([]lspCodeEdge, error) {
-	refs, err := srv.References(ctx, node.AbsPath, node.LanguageID, node.SelectionRange.Start)
+	refs, err := lspReferences(ctx, srv, node.AbsPath, node.LanguageID, node.SelectionRange.Start)
 	if err != nil {
 		return nil, err
 	}
@@ -611,6 +711,10 @@ func positionInLSPRange(pos lspPosition, rng lspRange) bool {
 	return true
 }
 
+func contextTimedOut(ctx context.Context, err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.Canceled)
+}
+
 func dedupeLSPCodeEdges(edges []lspCodeEdge) []lspCodeEdge {
 	seen := map[string]bool{}
 	out := []lspCodeEdge{}
@@ -647,7 +751,7 @@ func lspSourceFiles(projectRoot, docsRoot string) (string, []lspSourceFile, []st
 	warnings := []string{}
 	addFile := func(rel string) {
 		rel = cleanRelPath(rel)
-		if rel == "" || shouldSkipGitSearchPath(rel) || pathIsUnderDocsRoot(projectRoot, docsRoot, rel) {
+		if rel == "" || shouldSkipLSPSourcePath(rel) || pathIsUnderDocsRoot(projectRoot, docsRoot, rel) {
 			return
 		}
 		abs := filepath.Join(projectRoot, filepath.FromSlash(rel))
@@ -694,6 +798,16 @@ func lspSourceFiles(projectRoot, docsRoot string) (string, []lspSourceFile, []st
 	sort.Slice(files, func(i, j int) bool { return files[i].Rel < files[j].Rel })
 	token := lspSourceToken(files)
 	return token, files, warnings
+}
+
+func shouldSkipLSPSourcePath(rel string) bool {
+	rel = filepath.ToSlash(strings.TrimSpace(rel))
+	if rel == "" || shouldSkipGitSearchPath(rel) {
+		return true
+	}
+	// The embedded preview UI is generated from preview_ui_src and tracked only so Go can serve it.
+	// Indexing it through LSP spends graph budget on duplicate artifacts instead of source symbols.
+	return rel == "internal/preview/preview_ui" || strings.HasPrefix(rel, "internal/preview/preview_ui/")
 }
 
 func lspSourceToken(files []lspSourceFile) string {

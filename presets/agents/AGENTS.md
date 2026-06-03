@@ -29,6 +29,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | ------- | ------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `//c`   | `commit`           | Chuẩn bị và tạo git commit an toàn cho thay đổi hiện tại, với phạm vi staged rõ ràng và message súc tích.    |
 | `//f`   | `fix`              | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể.                    |
+| `//i`   | `init`             | Khởi tạo knowledge base: quét codebase, lập aspect inventory markdown cho người mới, rồi cập nhật docs.      |
 | `//r`   | `read-search-docs` | Search/đọc docs và specs, không sửa file.                                                                    |
 | `//s`   | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
 | `//p`   | `plan`             | Tạo hoặc cập nhật file planning cho task lớn và chờ user duyệt trước khi sửa source.                         |
@@ -48,6 +49,7 @@ Các trigger ghép thường dùng:
 | `//sf`  | Spawn OpenCode sub-agent, rồi fix khi đã đủ bối cảnh.                                                             |
 | `//fu`  | Fix lỗi, rồi update docs nếu behavior, architecture, business rules hoặc quan hệ module thay đổi.                 |
 | `//rp`  | Search docs, rồi tạo plan.                                                                                        |
+| `//ru`  | Search docs, rồi cập nhật docs/specs theo phạm vi đã xác định.                                                    |
 | `//rpe` | Search docs, tạo plan, rồi execution sau khi được duyệt nếu task cần.                                             |
 | `//re`  | Search docs, rồi execution cho thay đổi nhỏ đã rõ.                                                                |
 | `//spe` | Spawn OpenCode sub-agent, tạo plan, rồi execution sau khi được duyệt nếu task cần.                                |
