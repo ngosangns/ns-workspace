@@ -107,6 +107,7 @@ type codeSearchDoc struct {
 	Title   string
 	Path    string
 	Content string
+	Symbols []string
 }
 
 type searchEvidence struct {
@@ -119,9 +120,16 @@ type docsSearchDoc struct {
 	Title       string
 	Path        string
 	Content     string
+	Headings    []string
 	Description string
 	SpecID      string
 	Kind        string
+}
+
+type previewSearchSnapshot struct {
+	Docs     []docsSearchDoc
+	Code     []codeSearchDoc
+	Warnings []string
 }
 
 type previewEmbeddingConfig struct {
@@ -197,9 +205,34 @@ func (ps *previewServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 	mode := "hybrid"
 	keywordOperator := parseSearchKeywordOperator(r.URL.Query().Get("keywordOp"))
 	limit := parseSearchLimit(r.URL.Query().Get("limit"))
-	response := buildPreviewSearchResponse(r.Context(), project, ps.codeGraph, ps.opt.projectRoot, query, mode, keywordOperator, limit)
+	snapshot := ps.searchSnapshot(project)
+	response := buildPreviewSearchResponseFromCorpus(r.Context(), project, ps.codeGraph, query, mode, keywordOperator, limit, snapshot.Docs, snapshot.Code, snapshot.Warnings)
 	response.Warnings = append(warnings, response.Warnings...)
 	writeJSON(w, response)
+}
+
+func (ps *previewServer) searchSnapshot(project specProject) previewSearchSnapshot {
+	token := searchSnapshotToken(ps.opt.projectRoot, project.Summary.DocsRoot)
+	ps.searchMu.RLock()
+	if token != "" && token == ps.searchToken {
+		snapshot := ps.search
+		ps.searchMu.RUnlock()
+		return snapshot
+	}
+	ps.searchMu.RUnlock()
+
+	docsDocs, docsWarnings := scanDocsSearchDocs(ps.opt.projectRoot, project.Summary.DocsRoot, project.Documents)
+	codeDocs, codeWarnings := scanCodeSearchDocs(ps.opt.projectRoot, project.Summary.DocsRoot)
+	snapshot := previewSearchSnapshot{
+		Docs:     docsDocs,
+		Code:     codeDocs,
+		Warnings: append(docsWarnings, codeWarnings...),
+	}
+	ps.searchMu.Lock()
+	ps.searchToken = token
+	ps.search = snapshot
+	ps.searchMu.Unlock()
+	return snapshot
 }
 
 func emptySearchProject(projectRoot, docsDir string) specProject {
@@ -220,11 +253,18 @@ func emptySearchProject(projectRoot, docsDir string) specProject {
 }
 
 func buildPreviewSearchResponse(ctx context.Context, project specProject, codeGraph previewCodeGraphProvider, projectRoot, query, mode, keywordOperator string, limit int) previewSearchResponse {
+	docsDocs, docsWarnings := scanDocsSearchDocs(projectRoot, project.Summary.DocsRoot, project.Documents)
+	codeDocs, codeWarnings := scanCodeSearchDocs(projectRoot, project.Summary.DocsRoot)
+	return buildPreviewSearchResponseFromCorpus(ctx, project, codeGraph, query, mode, keywordOperator, limit, docsDocs, codeDocs, append(docsWarnings, codeWarnings...))
+}
+
+func buildPreviewSearchResponseFromCorpus(ctx context.Context, project specProject, codeGraph previewCodeGraphProvider, query, mode, keywordOperator string, limit int, docsDocs []docsSearchDoc, codeDocs []codeSearchDoc, corpusWarnings []string) previewSearchResponse {
 	response := previewSearchResponse{
 		Query:           query,
 		Mode:            mode,
 		KeywordOperator: keywordOperator,
 		Stats:           map[string]int{},
+		Warnings:        append([]string{}, corpusWarnings...),
 	}
 	if query == "" {
 		response.Warnings = append(response.Warnings, "Enter a query to search docs and code.")
@@ -239,15 +279,11 @@ func buildPreviewSearchResponse(ctx context.Context, project specProject, codeGr
 	exclusionTokens := searchTokens(exclusionQuery)
 
 	if mode != "graph" {
-		docsDocs, docsWarnings := scanDocsSearchDocs(projectRoot, project.Summary.DocsRoot, project.Documents)
-		response.Warnings = append(response.Warnings, docsWarnings...)
 		docsDocs = filterDocsSearchDocs(docsDocs, exclusionQuery, exclusionTokens)
-		codeDocs, warnings := scanCodeSearchDocs(projectRoot, project.Summary.DocsRoot)
-		response.Warnings = append(response.Warnings, warnings...)
 		codeDocs = filterCodeSearchDocs(codeDocs, exclusionQuery, exclusionTokens)
 		var embedSearch *previewEmbeddingSearch
 		if mode == "semantic" || mode == "hybrid" {
-			embedSearch, _ = loadPreviewEmbeddingSearch(projectRoot, docsDocs, codeDocs)
+			embedSearch, _ = loadPreviewEmbeddingSearch(project.Summary.ProjectRoot, docsDocs, codeDocs)
 		}
 		if embedSearch != nil {
 			docKeyword := searchDocsSemantic(docsDocs, searchQuery, tokens, "keyword", limit*2)
@@ -355,7 +391,11 @@ func searchDocsSemantic(docs []docsSearchDoc, query string, tokens []string, mod
 			continue
 		}
 		keyword := keywordScore(query, tokens, doc.Title, doc.Path, doc.Content)
-		semantic := semanticScore(tokens, doc.Title, doc.Path, headingsFromMarkdown(doc.Content), doc.Content)
+		headings := doc.Headings
+		if len(headings) == 0 {
+			headings = headingsFromMarkdown(doc.Content)
+		}
+		semantic := semanticScore(tokens, doc.Title, doc.Path, headings, doc.Content)
 		score, matchedBy := combineSearchScores(keyword, semantic, mode)
 		if score <= 0 {
 			continue
@@ -380,7 +420,10 @@ func searchDocsSemantic(docs []docsSearchDoc, query string, tokens []string, mod
 func searchCodeSemantic(codeDocs []codeSearchDoc, query string, tokens []string, mode string, limit int) []previewSearchResult {
 	results := []previewSearchResult{}
 	for _, doc := range codeDocs {
-		symbols := codeSymbols(doc.Content)
+		symbols := doc.Symbols
+		if len(symbols) == 0 {
+			symbols = codeSymbols(doc.Content)
+		}
 		keyword := codeKeywordEvidence(query, tokens, doc.Title, doc.Path, symbols, doc.Content).Score
 		if keyword <= 0 {
 			continue
@@ -427,7 +470,11 @@ func buildPreviewEmbeddingChunks(docs []docsSearchDoc, codeDocs []codeSearchDoc)
 		if doc.SpecID != "" && isSpecControlFile(doc.SpecID) {
 			continue
 		}
-		content := strings.TrimSpace(strings.Join([]string{doc.Title, doc.Path, strings.Join(headingsFromMarkdown(doc.Content), "\n"), doc.Content}, "\n\n"))
+		headings := doc.Headings
+		if len(headings) == 0 {
+			headings = headingsFromMarkdown(doc.Content)
+		}
+		content := strings.TrimSpace(strings.Join([]string{doc.Title, doc.Path, strings.Join(headings, "\n"), doc.Content}, "\n\n"))
 		if content == "" {
 			continue
 		}
@@ -443,7 +490,11 @@ func buildPreviewEmbeddingChunks(docs []docsSearchDoc, codeDocs []codeSearchDoc)
 		})
 	}
 	for _, doc := range codeDocs {
-		content := strings.TrimSpace(strings.Join([]string{doc.Title, doc.Path, strings.Join(codeSymbols(doc.Content), "\n"), doc.Content}, "\n\n"))
+		symbols := doc.Symbols
+		if len(symbols) == 0 {
+			symbols = codeSymbols(doc.Content)
+		}
+		content := strings.TrimSpace(strings.Join([]string{doc.Title, doc.Path, strings.Join(symbols, "\n"), doc.Content}, "\n\n"))
 		if content == "" {
 			continue
 		}
@@ -1459,6 +1510,7 @@ func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]d
 			Title:       doc.Title,
 			Path:        doc.Path,
 			Content:     firstNonEmpty(doc.SearchText, doc.Raw),
+			Headings:    headingsFromMarkdown(firstNonEmpty(doc.SearchText, doc.Raw)),
 			Description: doc.Description,
 			SpecID:      doc.ID,
 			Kind:        "doc",
@@ -1494,6 +1546,9 @@ func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]d
 			}
 			name := d.Name()
 			if d.IsDir() {
+				if isGeneratedPreviewUIPath(relPath(projectRoot, path)) {
+					return filepath.SkipDir
+				}
 				if shouldSkipSearchDir(name) {
 					return filepath.SkipDir
 				}
@@ -1531,11 +1586,12 @@ func readDocsSearchFile(projectRoot, path, projectRel string) (docsSearchDoc, bo
 		return docsSearchDoc{}, false
 	}
 	return docsSearchDoc{
-		ID:      projectRel,
-		Title:   filepath.Base(path),
-		Path:    projectRel,
-		Content: string(data),
-		Kind:    "file",
+		ID:       projectRel,
+		Title:    filepath.Base(path),
+		Path:     projectRel,
+		Content:  string(data),
+		Headings: headingsFromMarkdown(string(data)),
+		Kind:     "file",
 	}, true
 }
 
@@ -1569,6 +1625,7 @@ func scanCodeSearchDocs(projectRoot, docsRoot string) ([]codeSearchDoc, []string
 				Title:   filepath.Base(path),
 				Path:    rel,
 				Content: string(data),
+				Symbols: codeSymbols(string(data)),
 			})
 		}
 		return docs, warnings
@@ -1579,6 +1636,9 @@ func scanCodeSearchDocs(projectRoot, docsRoot string) ([]codeSearchDoc, []string
 		}
 		name := d.Name()
 		if d.IsDir() {
+			if isGeneratedPreviewUIPath(relPath(projectRoot, path)) {
+				return filepath.SkipDir
+			}
 			if sameCleanPath(path, docsRoot) && !sameCleanPath(path, projectRoot) {
 				return filepath.SkipDir
 			}
@@ -1604,6 +1664,7 @@ func scanCodeSearchDocs(projectRoot, docsRoot string) ([]codeSearchDoc, []string
 			Title:   filepath.Base(path),
 			Path:    rel,
 			Content: string(data),
+			Symbols: codeSymbols(string(data)),
 		})
 		return nil
 	})
@@ -1633,12 +1694,74 @@ func gitTrackedFiles(projectRoot string) (map[string]bool, bool) {
 
 func shouldSkipGitSearchPath(rel string) bool {
 	rel = filepath.ToSlash(rel)
+	if isGeneratedPreviewUIPath(rel) {
+		return true
+	}
 	for _, part := range strings.Split(rel, "/") {
 		if shouldSkipSearchDir(part) {
 			return true
 		}
 	}
 	return false
+}
+
+func isGeneratedPreviewUIPath(rel string) bool {
+	rel = strings.Trim(strings.TrimPrefix(filepath.ToSlash(rel), "./"), "/")
+	return rel == "internal/preview/preview_ui" || strings.HasPrefix(rel, "internal/preview/preview_ui/")
+}
+
+func searchSnapshotToken(projectRoot, docsRoot string) string {
+	gitFiles, gitFilesKnown := gitTrackedFiles(projectRoot)
+	h := sha256.New()
+	_, _ = io.WriteString(h, relPath(projectRoot, docsRoot))
+	_, _ = io.WriteString(h, "\ndocs:"+newestModToken(docsRoot))
+	if gitFilesKnown {
+		rels := make([]string, 0, len(gitFiles))
+		for rel := range gitFiles {
+			if shouldSkipGitSearchPath(rel) || pathIsUnderDocsRoot(projectRoot, docsRoot, rel) {
+				continue
+			}
+			rels = append(rels, rel)
+		}
+		sort.Strings(rels)
+		for _, rel := range rels {
+			path := filepath.Join(projectRoot, filepath.FromSlash(rel))
+			info, err := os.Stat(path)
+			if err != nil || info.IsDir() || info.Size() > maxSearchFileBytes {
+				continue
+			}
+			_, _ = io.WriteString(h, fmt.Sprintf("\n%s:%d:%d", rel, info.Size(), info.ModTime().UnixNano()))
+		}
+		return hex.EncodeToString(h.Sum(nil))
+	}
+	_ = filepath.WalkDir(projectRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if isGeneratedPreviewUIPath(relPath(projectRoot, path)) {
+				return filepath.SkipDir
+			}
+			if sameCleanPath(path, docsRoot) && !sameCleanPath(path, projectRoot) {
+				return filepath.SkipDir
+			}
+			if shouldSkipSearchDir(name) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !isSearchableCodePath(path) && !isSearchableDocsPath(path) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() > maxSearchFileBytes {
+			return nil
+		}
+		_, _ = io.WriteString(h, fmt.Sprintf("\n%s:%d:%d", relPath(projectRoot, path), info.Size(), info.ModTime().UnixNano()))
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func pathIsUnderDocsRoot(projectRoot, docsRoot, rel string) bool {

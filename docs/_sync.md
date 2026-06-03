@@ -9,8 +9,8 @@
 
 ## Current Sync
 
-- **Last Synced Commit**: 6e96d0ceae8b87d2bc335c306a23ecf5a3597cb4
+- **Last Synced Commit**: 5c9fdb74f5428dab192e1a0ab34bea64c65ad194
 - **Branch**: current worktree
-- **Sync Date**: 2026-06-03T09:21:15Z
-- **Scope**: Current worktree docs sync for LSP Code Graph timeout/corpus behavior and preset agent skills, including generated preview UI artifact filtering, per-file symbol timeout, total-timeout cache guard, relation fallback timeout behavior, current-state cleanup of the implemented timeout plan, the new `init` knowledge-base skill and the `//i`/`//ru` trigger documentation.
-- **Known Unsynced**: Current worktree contains uncommitted code, preset skill and docs changes described by this sync snapshot until they are committed.
+- **Sync Date**: 2026-06-03T10:03:20Z
+- **Scope**: Current worktree docs sync for knowledge-base bootstrap inventory, agentsync `SyncPlan`, adapter spec/plugin model and CLI boundary, docs index coverage, adapter/preset glossary, LSP Code Graph timeout/corpus behavior, preset `init` skill trigger documentation, implemented Preview Web cleanup behavior and Preview Web lint/hook toolchain.
+- **Known Unsynced**: Current worktree contains uncommitted agentsync refactor changes, registry preset changes under `presets/registry/skills.json`, knowledge-base docs and Preview Web changes under `internal/preview/`.

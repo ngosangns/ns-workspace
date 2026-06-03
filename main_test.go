@@ -149,9 +149,16 @@ func TestRegistryCommandBootstrapsCustomAgentsHome(t *testing.T) {
 	if !strings.Contains(script, "AGENTS_HOME="+agentsHome) || strings.Contains(script, "~/.agents") {
 		t.Fatalf("registry install script did not use custom agents home: %s", script)
 	}
+	if !strings.Contains(script, "--agent universal") || strings.Contains(script, "--agent '*'") {
+		t.Fatalf("registry install script should target universal skills only: %s", script)
+	}
 	npxEnv := mustRead(t, filepath.Join(home, "npx-agents-home.log"))
 	if !strings.Contains(npxEnv, agentsHome) {
 		t.Fatalf("registry install did not pass custom agents home to npx: %s", npxEnv)
+	}
+	npxArgs := mustRead(t, filepath.Join(home, "npx-args.log"))
+	if !strings.Contains(npxArgs, "--agent universal") || strings.Contains(npxArgs, "--agent *") {
+		t.Fatalf("registry install should pass universal agent target to npx: %s", npxArgs)
 	}
 	mustExist(t, filepath.Join(agentsHome, "registry", "skills.json"))
 }
@@ -176,10 +183,10 @@ func writeFakeNpx(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	name := "npx"
-	data := []byte("#!/usr/bin/env sh\nprintf '%s\\n' \"$AGENTS_HOME\" >> \"$HOME/npx-agents-home.log\"\nexit 0\n")
+	data := []byte("#!/usr/bin/env sh\nprintf '%s\\n' \"$AGENTS_HOME\" >> \"$HOME/npx-agents-home.log\"\nprintf '%s\\n' \"$*\" >> \"$HOME/npx-args.log\"\nexit 0\n")
 	if runtime.GOOS == "windows" {
 		name = "npx.bat"
-		data = []byte("@echo off\r\necho %AGENTS_HOME%>> \"%HOME%\\npx-agents-home.log\"\r\nexit /b 0\r\n")
+		data = []byte("@echo off\r\necho %AGENTS_HOME%>> \"%HOME%\\npx-agents-home.log\"\r\necho %*>> \"%HOME%\\npx-args.log\"\r\nexit /b 0\r\n")
 	}
 	if err := os.WriteFile(filepath.Join(dir, name), data, 0o755); err != nil {
 		t.Fatal(err)

@@ -52,9 +52,12 @@ type RegistrySkill struct {
 	Skill  string `json:"skill"`
 }
 
+const registryAgentTarget = "universal"
+
 type ArtifactKind string
 
 const (
+	ArtifactDirectory    ArtifactKind = "directory"
 	ArtifactInstructions ArtifactKind = "instructions"
 	ArtifactSkills       ArtifactKind = "skills"
 	ArtifactSubagents    ArtifactKind = "subagents"
@@ -97,6 +100,7 @@ type Context struct {
 	XDGConfigHome string
 	Presets       fs.FS
 	Report        StatusReporter
+	Update        bool
 }
 
 type AgentAdapter interface {
@@ -312,126 +316,155 @@ func (op ManualStep) Apply(ctx Context) error {
 func (op ManualStep) Describe(ctx Context) { ctx.Report.Line("manual: %s", op.Dst) }
 func (op ManualStep) Path() string         { return op.Dst }
 
-type fileAdapter struct {
-	name         string
-	aliases      []string
-	tier         SupportTier
-	docs         []string
-	notes        string
-	exes         []string
-	instruction  string
-	skills       string
-	subagents    string
-	settings     string
-	hooksPath    string
-	hooksKeyPath []string
-	mcpPath      string
-	mcpKeyPath   []string
-	manual       bool
+type AdapterTargets struct {
+	Instruction  string
+	Skills       string
+	Subagents    string
+	Settings     string
+	HooksPath    string
+	HooksKeyPath []string
+	MCPPath      string
+	MCPKeyPath   []string
 }
 
-func (a fileAdapter) Name() string { return a.name }
+type AdapterSpec struct {
+	ID          string
+	Aliases     []string
+	Tier        SupportTier
+	Docs        []string
+	Notes       string
+	Executables []string
+	Targets     AdapterTargets
+	Manual      bool
+}
 
-func (a fileAdapter) Aliases() []string { return a.aliases }
+type AdapterPlugin any
 
-func (a fileAdapter) Capabilities() AgentCapabilities {
+type specAdapter struct {
+	spec   AdapterSpec
+	plugin AdapterPlugin
+}
+
+func (a specAdapter) Name() string { return a.spec.ID }
+
+func (a specAdapter) Aliases() []string { return a.spec.Aliases }
+
+func (a specAdapter) Capabilities() AgentCapabilities {
 	artifacts := []ArtifactKind{}
-	if a.instruction != "" {
+	targets := a.spec.Targets
+	if targets.Instruction != "" {
 		artifacts = append(artifacts, ArtifactInstructions)
 	}
-	if a.skills != "" {
+	if targets.Skills != "" {
 		artifacts = append(artifacts, ArtifactSkills)
 	}
-	if a.subagents != "" {
+	if targets.Subagents != "" {
 		artifacts = append(artifacts, ArtifactSubagents)
 	}
-	if a.settings != "" {
+	if targets.Settings != "" {
 		artifacts = append(artifacts, ArtifactSettings)
 	}
-	if a.settings != "" || a.hooksPath != "" {
+	if targets.Settings != "" || targets.HooksPath != "" {
 		artifacts = append(artifacts, ArtifactHooks)
 	}
-	if a.mcpPath != "" {
+	if targets.MCPPath != "" {
 		artifacts = append(artifacts, ArtifactMCP)
 	}
-	if a.manual {
+	if a.spec.Manual {
 		artifacts = append(artifacts, ArtifactRules, ArtifactCommands)
 	}
-	return AgentCapabilities{Tier: a.tier, DocsURL: a.docs, Artifacts: artifacts, Notes: a.notes}
+	caps := AgentCapabilities{Tier: a.spec.Tier, DocsURL: a.spec.Docs, Artifacts: artifacts, Notes: a.spec.Notes}
+	if plugin, ok := a.plugin.(interface {
+		ExtendCapabilities(AdapterSpec, AgentCapabilities) AgentCapabilities
+	}); ok {
+		caps = plugin.ExtendCapabilities(a.spec, caps)
+	}
+	return caps
 }
 
-func (a fileAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
+func (a specAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	replace := update || ctx.Force
-	if a.manual {
-		return []Operation{ManualStep{
-			Agent: a.name,
-			Dst:   filepath.Join(ctx.Options.AgentsDir, "generated", a.name, "README.md"),
-			Text:  manualReadme(a),
-		}}, nil
+	ops := []Operation{}
+	if a.spec.Manual {
+		ops = append(ops, ManualStep{
+			Agent: a.spec.ID,
+			Dst:   filepath.Join(ctx.Options.AgentsDir, "generated", a.spec.ID, "README.md"),
+			Text:  manualReadme(a.spec),
+		})
+		return ops, nil
 	}
 
 	sourceAgents := filepath.Join(ctx.Options.AgentsDir, "AGENTS.md")
 	sourceSkills := filepath.Join(ctx.Options.AgentsDir, "skills")
 	sourceSubagents := filepath.Join(ctx.Options.AgentsDir, "agents")
-	ops := []Operation{}
-	if a.instruction != "" {
-		ops = append(ops, LinkOrCopy{Src: sourceAgents, Dst: a.instruction, Replace: replace})
+	targets := a.spec.Targets
+	if targets.Instruction != "" {
+		ops = append(ops, LinkOrCopy{Src: sourceAgents, Dst: targets.Instruction, Replace: replace})
 	}
-	if a.skills != "" {
-		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSkills, DstRoot: a.skills, Replace: replace})
+	if targets.Skills != "" {
+		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSkills, DstRoot: targets.Skills, Replace: replace})
 	}
-	if a.subagents != "" {
-		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSubagents, DstRoot: a.subagents, Replace: replace})
+	if targets.Subagents != "" {
+		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSubagents, DstRoot: targets.Subagents, Replace: replace})
 	}
-	if a.settings != "" {
-		ops = append(ops, LinkOrCopy{Src: filepath.Join(ctx.Options.AgentsDir, "settings.json"), Dst: a.settings, Replace: replace})
+	if targets.Settings != "" {
+		ops = append(ops, LinkOrCopy{Src: filepath.Join(ctx.Options.AgentsDir, "settings.json"), Dst: targets.Settings, Replace: replace})
 	}
-	if a.hooksPath != "" && len(a.hooksKeyPath) > 0 {
+	if targets.HooksPath != "" && len(targets.HooksKeyPath) > 0 {
 		manifest, err := readSettingsManifest(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ops = append(ops, MergeJSON{Dst: a.hooksPath, KeyPath: a.hooksKeyPath, Values: manifest.Hooks, Replace: replace})
+		ops = append(ops, MergeJSON{Dst: targets.HooksPath, KeyPath: targets.HooksKeyPath, Values: manifest.Hooks, Replace: replace})
 	}
-	if !ctx.NoMCP && a.mcpPath != "" && len(a.mcpKeyPath) > 0 {
+	if !ctx.NoMCP && targets.MCPPath != "" && len(targets.MCPKeyPath) > 0 {
 		manifest, err := readMCPManifest(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ops = append(ops, MergeJSON{Dst: a.mcpPath, KeyPath: a.mcpKeyPath, Values: manifest.MCPServers, Replace: replace})
+		ops = append(ops, MergeJSON{Dst: targets.MCPPath, KeyPath: targets.MCPKeyPath, Values: manifest.MCPServers, Replace: replace})
+	}
+	if plugin, ok := a.plugin.(interface {
+		ExtraOperations(Context, AdapterSpec, bool) ([]Operation, error)
+	}); ok {
+		extraOps, err := plugin.ExtraOperations(ctx, a.spec, update)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, extraOps...)
 	}
 	return ops, nil
 }
 
-func (a fileAdapter) StatusPaths(ctx Context) []string {
-	paths := []string{a.instruction, a.skills, a.subagents, a.settings, a.hooksPath, a.mcpPath}
-	if a.manual {
-		paths = append(paths, filepath.Join(ctx.Options.AgentsDir, "generated", a.name, "README.md"))
+func (a specAdapter) StatusPaths(ctx Context) []string {
+	targets := a.spec.Targets
+	paths := []string{targets.Instruction, targets.Skills, targets.Subagents, targets.Settings, targets.HooksPath, targets.MCPPath}
+	if a.spec.Manual {
+		paths = append(paths, filepath.Join(ctx.Options.AgentsDir, "generated", a.spec.ID, "README.md"))
+	}
+	if plugin, ok := a.plugin.(interface {
+		ExtraStatusPaths(Context, AdapterSpec) []string
+	}); ok {
+		paths = append(paths, plugin.ExtraStatusPaths(ctx, a.spec)...)
 	}
 	return compact(paths)
 }
 
-func (a fileAdapter) DoctorExecutables() []string { return a.exes }
+func (a specAdapter) DoctorExecutables() []string { return a.spec.Executables }
 
-type opencodeAdapter struct {
-	fileAdapter
-	configPath string
+type opencodePlugin struct {
+	ConfigPath string
 }
 
-func (a opencodeAdapter) Capabilities() AgentCapabilities {
-	caps := a.fileAdapter.Capabilities()
+func (p opencodePlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
 	caps.Artifacts = append(caps.Artifacts, ArtifactMCP)
 	return caps
 }
 
-func (a opencodeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
-	ops, err := a.fileAdapter.Plan(ctx, update)
-	if err != nil {
-		return nil, err
-	}
+func (p opencodePlugin) ExtraOperations(ctx Context, _ AdapterSpec, update bool) ([]Operation, error) {
 	replace := update || ctx.Force
 	configValues := map[string]any{}
-	if !ctx.NoMCP && a.configPath != "" {
+	if !ctx.NoMCP && p.ConfigPath != "" {
 		manifest, err := readMCPManifest(ctx)
 		if err != nil {
 			return nil, err
@@ -447,30 +480,25 @@ func (a opencodeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 		configValues["permission"] = configManifest.Permission
 	}
 	if len(configValues) > 0 {
-		// update rewrites the managed OpenCode config object so removed preset keys
+		// Update rewrites the managed OpenCode config object so removed preset keys
 		// do not survive indefinitely in the native config file.
-		ops = append(ops, MergeJSON{Dst: a.configPath, KeyPath: []string{}, Values: configValues, Replace: replace && !ctx.NoMCP})
+		return []Operation{MergeJSON{Dst: p.ConfigPath, KeyPath: []string{}, Values: configValues, Replace: replace && !ctx.NoMCP}}, nil
 	}
-	return ops, nil
+	return nil, nil
 }
 
-func (a opencodeAdapter) StatusPaths(ctx Context) []string {
-	paths := a.fileAdapter.StatusPaths(ctx)
-	if a.configPath != "" {
-		paths = append(paths, a.configPath)
+func (p opencodePlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string {
+	if p.ConfigPath == "" {
+		return nil
 	}
-	return compact(paths)
+	return []string{p.ConfigPath}
 }
 
-type claudeAdapter struct{ fileAdapter }
+type claudePlugin struct{}
 
-func (a claudeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
-	ops, err := a.fileAdapter.Plan(ctx, update)
-	if err != nil {
-		return nil, err
-	}
+func (p claudePlugin) ExtraOperations(ctx Context, _ AdapterSpec, update bool) ([]Operation, error) {
 	if ctx.NoMCP {
-		return ops, nil
+		return nil, nil
 	}
 	script, err := mcpCommandScript(ctx, "claude", func(name string, server string) string {
 		return fmt.Sprintf("claude mcp add-json %s '%s' --scope user\n", shellWord(name), shellSingleQuotePayload(server))
@@ -478,61 +506,51 @@ func (a claudeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	if err != nil {
 		return nil, err
 	}
-	ops = append(ops, WriteFile{
+	return []Operation{WriteFile{
 		Dst:     filepath.Join(ctx.Options.AgentsDir, "generated", "claude", "mcp.commands.sh"),
 		Data:    []byte(script),
 		Replace: update || ctx.Force,
-	})
-	return ops, nil
+	}}, nil
 }
 
-type codexAdapter struct{ fileAdapter }
+type codexPlugin struct{}
 
-func (a codexAdapter) Capabilities() AgentCapabilities {
-	caps := a.fileAdapter.Capabilities()
+func (p codexPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
 	caps.Artifacts = append(caps.Artifacts, ArtifactMCP)
 	return caps
 }
 
-func (a codexAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
-	ops, err := a.fileAdapter.Plan(ctx, update)
-	if err != nil {
-		return nil, err
-	}
+func (p codexPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operation, error) {
 	if ctx.NoMCP {
-		return ops, nil
+		return nil, nil
 	}
 	manifest, err := readMCPManifest(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if len(manifest.MCPServers) == 0 {
-		return ops, nil
+		return nil, nil
 	}
-	ops = append(ops, AppendManagedBlock{
+	return []Operation{AppendManagedBlock{
 		Dst:     filepath.Join(ctx.Home, ".codex", "config.toml"),
 		Label:   "mcp",
 		Content: codexMCPBlock(manifest),
 		Replace: true,
-	})
-	return ops, nil
+	}}, nil
 }
 
-func (a codexAdapter) StatusPaths(ctx Context) []string {
-	paths := a.fileAdapter.StatusPaths(ctx)
-	paths = append(paths, filepath.Join(ctx.Home, ".codex", "config.toml"))
-	return compact(paths)
+func (p codexPlugin) ExtraStatusPaths(ctx Context, _ AdapterSpec) []string {
+	return []string{filepath.Join(ctx.Home, ".codex", "config.toml")}
 }
 
-type aiderAdapter struct{ fileAdapter }
+type aiderPlugin struct{}
 
-func (a aiderAdapter) Capabilities() AgentCapabilities {
-	caps := a.fileAdapter.Capabilities()
+func (p aiderPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
 	caps.Artifacts = append(caps.Artifacts, ArtifactSettings, ArtifactRules)
 	return caps
 }
 
-func (a aiderAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
+func (p aiderPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operation, error) {
 	return []Operation{AppendManagedBlock{
 		Dst: filepath.Join(ctx.Home, ".aider.conf.yml"), Label: "conventions",
 		Content: "read: " + filepath.ToSlash(filepath.Join(ctx.Options.AgentsDir, "AGENTS.md")),
@@ -540,7 +558,7 @@ func (a aiderAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	}}, nil
 }
 
-func (a aiderAdapter) StatusPaths(ctx Context) []string {
+func (p aiderPlugin) ExtraStatusPaths(ctx Context, _ AdapterSpec) []string {
 	return []string{filepath.Join(ctx.Home, ".aider.conf.yml")}
 }
 
@@ -583,27 +601,18 @@ func (m Manager) Apply(opt Options, update bool) error {
 	if err != nil {
 		return err
 	}
+	ctx.Update = update
 	mode := "init"
 	if update {
 		mode = "update"
 	}
-	ctx.Report.Line("%s shared agent config at %s", mode, ctx.Options.AgentsDir)
-	if err := m.applyCore(ctx, update); err != nil {
+	plan, err := m.buildPlan(ctx, update)
+	if err != nil {
 		return err
 	}
-	for _, adapter := range m.adapters(ctx) {
-		if !selected(ctx.Options, adapter) {
-			continue
-		}
-		ops, err := adapter.Plan(ctx, update)
-		if err != nil {
-			return fmt.Errorf("%s adapter: %w", adapter.Name(), err)
-		}
-		for _, op := range ops {
-			if err := op.Apply(ctx); err != nil {
-				return fmt.Errorf("%s %s: %w", adapter.Name(), op.Path(), err)
-			}
-		}
+	ctx.Report.Line("%s shared agent config at %s", mode, ctx.Options.AgentsDir)
+	if err := plan.Apply(ctx); err != nil {
+		return err
 	}
 	ctx.Report.Line("done")
 	return nil
@@ -717,50 +726,6 @@ func (m Manager) context(opt Options) (Context, error) {
 	return Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, Report: stdoutReporter{}}, nil
 }
 
-func (m Manager) applyCore(ctx Context, update bool) error {
-	replace := update || ctx.Force
-	coreDirs := []string{
-		ctx.Options.AgentsDir,
-		filepath.Join(ctx.Options.AgentsDir, "skills"),
-		filepath.Join(ctx.Options.AgentsDir, "agents"),
-		filepath.Join(ctx.Options.AgentsDir, "mcp"),
-		filepath.Join(ctx.Options.AgentsDir, "generated"),
-	}
-	for _, dir := range coreDirs {
-		if err := ensureDir(ctx, dir); err != nil {
-			return err
-		}
-	}
-	ops := []Operation{
-		InstallPresetFile{Src: "presets/agents/AGENTS.md", Dst: filepath.Join(ctx.Options.AgentsDir, "AGENTS.md"), Replace: replace},
-		InstallPresetTree{SrcRoot: "presets/skills", DstRoot: filepath.Join(ctx.Options.AgentsDir, "skills"), Replace: replace},
-		InstallPresetTree{SrcRoot: "presets/subagents", DstRoot: filepath.Join(ctx.Options.AgentsDir, "agents"), Replace: replace},
-		InstallPresetFile{Src: "presets/settings/settings.json", Dst: filepath.Join(ctx.Options.AgentsDir, "settings.json"), Replace: replace},
-	}
-	for _, op := range ops {
-		if err := op.Apply(ctx); err != nil {
-			return err
-		}
-	}
-	if err := writeRegistryHelpers(ctx, replace); err != nil {
-		return err
-	}
-	if !ctx.NoRegistry {
-		if err := installRegistrySkills(ctx); err != nil {
-			return err
-		}
-	}
-	if !ctx.NoMCP {
-		if err := (InstallPresetFile{Src: "presets/mcp/servers.json", Dst: filepath.Join(ctx.Options.AgentsDir, "mcp", "servers.json"), Replace: replace}).Apply(ctx); err != nil {
-			return err
-		}
-		if err := writeMCPReadme(ctx, replace); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (m Manager) adapters(ctx Context) []AgentAdapter {
 	home := ctx.Home
 	xdg := ctx.XDGConfigHome
@@ -769,23 +734,23 @@ func (m Manager) adapters(ctx Context) []AgentAdapter {
 		kiroRoot = filepath.Join(home, ".kiro")
 	}
 	return []AgentAdapter{
-		claudeAdapter{fileAdapter{name: "claude", tier: TierStable, exes: []string{"claude"}, instruction: filepath.Join(home, ".claude", "CLAUDE.md"), skills: filepath.Join(home, ".claude", "skills"), subagents: filepath.Join(home, ".claude", "agents"), settings: filepath.Join(home, ".claude", "settings.json"), docs: []string{"https://docs.claude.com/en/docs/claude-code/settings", "https://docs.claude.com/en/docs/claude-code/mcp"}}},
-		opencodeAdapter{fileAdapter: fileAdapter{name: "opencode", tier: TierStable, exes: []string{"opencode"}, instruction: filepath.Join(xdg, "opencode", "AGENTS.md"), skills: filepath.Join(xdg, "opencode", "skill"), subagents: filepath.Join(xdg, "opencode", "agent"), docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"}}, configPath: filepath.Join(xdg, "opencode", "opencode.json")},
-		fileAdapter{name: "grok", tier: TierStable, exes: []string{"grok"}, skills: filepath.Join(home, ".grok", "skills"), docs: []string{"https://docs.x.ai/build/overview", "https://docs.x.ai/build/features/skills-plugins-marketplaces"}, notes: "Grok Build reads AGENTS.md from projects and also discovers ~/.agents/skills; this adapter mirrors shared skills into ~/.grok/skills for native slash-command discovery."},
-		fileAdapter{name: "kimi", tier: TierStable, exes: []string{"kimi"}, instruction: filepath.Join(home, ".kimi", "AGENTS.md"), skills: filepath.Join(home, ".kimi", "skills"), mcpPath: filepath.Join(home, ".kimi", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/data-locations.html"}},
-		fileAdapter{name: "kiro", aliases: []string{"kiro-cli"}, tier: TierStable, exes: []string{"kiro", "kiro-cli"}, instruction: filepath.Join(kiroRoot, "steering", "AGENTS.md"), skills: filepath.Join(kiroRoot, "skills"), mcpPath: filepath.Join(kiroRoot, "settings", "mcp.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/", "https://kiro.dev/docs/cli/skills/"}, notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; skills sync to Kiro global skills; MCP presets sync to the shared Kiro settings path."},
-		fileAdapter{name: "qwen", tier: TierStable, exes: []string{"qwen"}, instruction: filepath.Join(home, ".qwen", "QWEN.md"), skills: filepath.Join(home, ".qwen", "skills"), hooksPath: filepath.Join(home, ".qwen", "settings.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(home, ".qwen", "settings.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://qwenlm.github.io/qwen-code-docs/en/cli/configuration/", "https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/"}},
-		fileAdapter{name: "gemini", tier: TierStable, exes: []string{"gemini"}, instruction: filepath.Join(home, ".gemini", "GEMINI.md"), skills: filepath.Join(home, ".gemini", "skills"), hooksPath: filepath.Join(home, ".gemini", "settings.json"), hooksKeyPath: []string{"hooks"}, mcpPath: filepath.Join(home, ".gemini", "settings.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"}},
-		codexAdapter{fileAdapter{name: "codex", tier: TierStable, exes: []string{"codex"}, instruction: filepath.Join(home, ".codex", "AGENTS.md"), skills: filepath.Join(home, ".codex", "skills"), docs: []string{"https://github.com/openai/codex/blob/main/docs/config.md", "https://github.com/openai/codex/blob/main/docs/agents_md.md"}}},
-		fileAdapter{name: "cline", tier: TierStable, exes: []string{"cline"}, skills: filepath.Join(home, ".cline", "data", "skills"), subagents: filepath.Join(home, ".cline", "data", "agents"), mcpPath: filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"), mcpKeyPath: []string{"mcpServers"}, docs: []string{"https://docs.cline.bot/cline-cli/configuration"}},
-		fileAdapter{name: "windsurf", tier: TierStable, instruction: filepath.Join(home, ".codeium", "windsurf", "memories", "global_rules.md"), docs: []string{"https://docs.windsurf.com/windsurf/cascade/memories"}},
-		aiderAdapter{fileAdapter{name: "aider", tier: TierStable, exes: []string{"aider"}, docs: []string{"https://aider.chat/docs/config/aider_conf.html", "https://aider.chat/docs/usage/conventions.html"}}},
-		fileAdapter{name: "cursor", tier: TierManual, exes: []string{"cursor-agent"}, manual: true, docs: []string{"https://docs.cursor.com/en/context", "https://docs.cursor.com/cli/mcp"}, notes: "Cursor user rules are stored through Cursor settings; generated helper only."},
-		fileAdapter{name: "github-copilot", tier: TierManual, manual: true, docs: []string{"https://code.visualstudio.com/docs/copilot/customization/custom-instructions"}, notes: "Copilot instructions are repo/editor scoped; generated helper only."},
-		fileAdapter{name: "jetbrains", tier: TierManual, manual: true, docs: []string{"https://www.jetbrains.com/help/ai-assistant/mcp.html"}, notes: "JetBrains AI MCP setup is product/version specific."},
-		fileAdapter{name: "antigravity", tier: TierExperimental, manual: true, notes: "No stable official user-level filesystem path confirmed yet."},
-		fileAdapter{name: "trae", tier: TierExperimental, exes: []string{"trae"}, manual: true, notes: "No stable official user-level filesystem path confirmed yet."},
-		fileAdapter{name: "roo", tier: TierExperimental, manual: true, notes: "Roo Code support is guarded because the project status is unstable."},
+		specAdapter{spec: AdapterSpec{ID: "claude", Tier: TierStable, Executables: []string{"claude"}, Targets: AdapterTargets{Instruction: filepath.Join(home, ".claude", "CLAUDE.md"), Skills: filepath.Join(home, ".claude", "skills"), Subagents: filepath.Join(home, ".claude", "agents"), Settings: filepath.Join(home, ".claude", "settings.json")}, Docs: []string{"https://docs.claude.com/en/docs/claude-code/settings", "https://docs.claude.com/en/docs/claude-code/mcp"}}, plugin: claudePlugin{}},
+		specAdapter{spec: AdapterSpec{ID: "opencode", Tier: TierStable, Executables: []string{"opencode"}, Targets: AdapterTargets{Instruction: filepath.Join(xdg, "opencode", "AGENTS.md"), Skills: filepath.Join(xdg, "opencode", "skill"), Subagents: filepath.Join(xdg, "opencode", "agent")}, Docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"}}, plugin: opencodePlugin{ConfigPath: filepath.Join(xdg, "opencode", "opencode.json")}},
+		specAdapter{spec: AdapterSpec{ID: "grok", Tier: TierStable, Executables: []string{"grok"}, Targets: AdapterTargets{Skills: filepath.Join(home, ".grok", "skills")}, Docs: []string{"https://docs.x.ai/build/overview", "https://docs.x.ai/build/features/skills-plugins-marketplaces"}, Notes: "Grok Build reads AGENTS.md from projects and also discovers ~/.agents/skills; this adapter mirrors shared skills into ~/.grok/skills for native slash-command discovery."}},
+		specAdapter{spec: AdapterSpec{ID: "kimi", Tier: TierStable, Executables: []string{"kimi"}, Targets: AdapterTargets{Instruction: filepath.Join(home, ".kimi", "AGENTS.md"), Skills: filepath.Join(home, ".kimi", "skills"), MCPPath: filepath.Join(home, ".kimi", "mcp.json"), MCPKeyPath: []string{"mcpServers"}}, Docs: []string{"https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/data-locations.html"}}},
+		specAdapter{spec: AdapterSpec{ID: "kiro", Aliases: []string{"kiro-cli"}, Tier: TierStable, Executables: []string{"kiro", "kiro-cli"}, Targets: AdapterTargets{Instruction: filepath.Join(kiroRoot, "steering", "AGENTS.md"), Skills: filepath.Join(kiroRoot, "skills"), MCPPath: filepath.Join(kiroRoot, "settings", "mcp.json"), MCPKeyPath: []string{"mcpServers"}}, Docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/", "https://kiro.dev/docs/cli/skills/"}, Notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; skills sync to Kiro global skills; MCP presets sync to the shared Kiro settings path."}},
+		specAdapter{spec: AdapterSpec{ID: "qwen", Tier: TierStable, Executables: []string{"qwen"}, Targets: AdapterTargets{Instruction: filepath.Join(home, ".qwen", "QWEN.md"), Skills: filepath.Join(home, ".qwen", "skills"), HooksPath: filepath.Join(home, ".qwen", "settings.json"), HooksKeyPath: []string{"hooks"}, MCPPath: filepath.Join(home, ".qwen", "settings.json"), MCPKeyPath: []string{"mcpServers"}}, Docs: []string{"https://qwenlm.github.io/qwen-code-docs/en/cli/configuration/", "https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/"}}},
+		specAdapter{spec: AdapterSpec{ID: "gemini", Tier: TierStable, Executables: []string{"gemini"}, Targets: AdapterTargets{Instruction: filepath.Join(home, ".gemini", "GEMINI.md"), Skills: filepath.Join(home, ".gemini", "skills"), HooksPath: filepath.Join(home, ".gemini", "settings.json"), HooksKeyPath: []string{"hooks"}, MCPPath: filepath.Join(home, ".gemini", "settings.json"), MCPKeyPath: []string{"mcpServers"}}, Docs: []string{"https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"}}},
+		specAdapter{spec: AdapterSpec{ID: "codex", Tier: TierStable, Executables: []string{"codex"}, Targets: AdapterTargets{Instruction: filepath.Join(home, ".codex", "AGENTS.md"), Skills: filepath.Join(home, ".codex", "skills")}, Docs: []string{"https://github.com/openai/codex/blob/main/docs/config.md", "https://github.com/openai/codex/blob/main/docs/agents_md.md"}}, plugin: codexPlugin{}},
+		specAdapter{spec: AdapterSpec{ID: "cline", Tier: TierStable, Executables: []string{"cline"}, Targets: AdapterTargets{Skills: filepath.Join(home, ".cline", "data", "skills"), Subagents: filepath.Join(home, ".cline", "data", "agents"), MCPPath: filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"), MCPKeyPath: []string{"mcpServers"}}, Docs: []string{"https://docs.cline.bot/cline-cli/configuration"}}},
+		specAdapter{spec: AdapterSpec{ID: "windsurf", Tier: TierStable, Targets: AdapterTargets{Instruction: filepath.Join(home, ".codeium", "windsurf", "memories", "global_rules.md")}, Docs: []string{"https://docs.windsurf.com/windsurf/cascade/memories"}}},
+		specAdapter{spec: AdapterSpec{ID: "aider", Tier: TierStable, Executables: []string{"aider"}, Docs: []string{"https://aider.chat/docs/config/aider_conf.html", "https://aider.chat/docs/usage/conventions.html"}}, plugin: aiderPlugin{}},
+		specAdapter{spec: AdapterSpec{ID: "cursor", Tier: TierManual, Executables: []string{"cursor-agent"}, Manual: true, Docs: []string{"https://docs.cursor.com/en/context", "https://docs.cursor.com/cli/mcp"}, Notes: "Cursor user rules are stored through Cursor settings; generated helper only."}},
+		specAdapter{spec: AdapterSpec{ID: "github-copilot", Tier: TierManual, Manual: true, Docs: []string{"https://code.visualstudio.com/docs/copilot/customization/custom-instructions"}, Notes: "Copilot instructions are repo/editor scoped; generated helper only."}},
+		specAdapter{spec: AdapterSpec{ID: "jetbrains", Tier: TierManual, Manual: true, Docs: []string{"https://www.jetbrains.com/help/ai-assistant/mcp.html"}, Notes: "JetBrains AI MCP setup is product/version specific."}},
+		specAdapter{spec: AdapterSpec{ID: "antigravity", Tier: TierExperimental, Manual: true, Notes: "No stable official user-level filesystem path confirmed yet."}},
+		specAdapter{spec: AdapterSpec{ID: "trae", Tier: TierExperimental, Executables: []string{"trae"}, Manual: true, Notes: "No stable official user-level filesystem path confirmed yet."}},
+		specAdapter{spec: AdapterSpec{ID: "roo", Tier: TierExperimental, Manual: true, Notes: "Roo Code support is guarded because the project status is unstable."}},
 	}
 }
 
@@ -808,15 +773,21 @@ func selected(opt Options, adapter AgentAdapter) bool {
 func readMCPManifest(ctx Context) (MCPManifest, error) {
 	var manifest MCPManifest
 	path := filepath.Join(ctx.Options.AgentsDir, "mcp", "servers.json")
-	data, err := os.ReadFile(path)
+	if !ctx.Update {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return manifest, err
+			}
+			return manifest, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return manifest, err
+		}
+	}
+	data, err := fs.ReadFile(ctx.Presets, "presets/mcp/servers.json")
 	if err != nil {
-		if !ctx.DryRun {
-			return manifest, err
-		}
-		data, err = fs.ReadFile(ctx.Presets, "presets/mcp/servers.json")
-		if err != nil {
-			return manifest, err
-		}
+		return manifest, err
 	}
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return manifest, err
@@ -861,15 +832,24 @@ func opencodeMCPManifest(manifest MCPManifest) MCPManifest {
 func readSettingsManifest(ctx Context) (SettingsManifest, error) {
 	var manifest SettingsManifest
 	path := filepath.Join(ctx.Options.AgentsDir, "settings.json")
-	data, err := os.ReadFile(path)
+	if !ctx.Update {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return manifest, err
+			}
+			if manifest.Hooks == nil {
+				manifest.Hooks = map[string]any{}
+			}
+			return manifest, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return manifest, err
+		}
+	}
+	data, err := fs.ReadFile(ctx.Presets, "presets/settings/settings.json")
 	if err != nil {
-		if !ctx.DryRun {
-			return manifest, err
-		}
-		data, err = fs.ReadFile(ctx.Presets, "presets/settings/settings.json")
-		if err != nil {
-			return manifest, err
-		}
+		return manifest, err
 	}
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return manifest, err
@@ -942,10 +922,7 @@ func installRegistrySkills(ctx Context) error {
 		return fmt.Errorf("npx is required to install registry skills; rerun with --no-registry or run %s later", installScript)
 	}
 	for _, skill := range manifest.Skills {
-		args := []string{"--yes", "skills", "add", skill.Source, "--skill", skill.Skill, "--global", "--agent", "*", "--yes"}
-		if ctx.CopyMode {
-			args = append(args, "--copy")
-		}
+		args := registryCommandArgs(skill, true, ctx.CopyMode)
 		ctx.Report.Line("registry: %s from %s@%s", skill.Name, skill.Source, skill.Skill)
 		if ctx.DryRun {
 			ctx.Report.Line("run: %s", registryCommand(skill, true, ctx.CopyMode, ctx.Options.AgentsDir))
@@ -966,15 +943,25 @@ func installRegistrySkills(ctx Context) error {
 }
 
 func registryCommand(skill RegistrySkill, global bool, copyMode bool, agentsDir string) string {
-	parts := []string{fmt.Sprintf("AGENTS_HOME=%s", shellWord(agentsDir)), "npx --yes skills add", shellWord(skill.Source), "--skill", shellWord(skill.Skill)}
-	if global {
-		parts = append(parts, "--global")
-	}
-	parts = append(parts, "--agent '*'", "--yes")
-	if copyMode {
-		parts = append(parts, "--copy")
+	args := registryCommandArgs(skill, global, copyMode)
+	parts := []string{fmt.Sprintf("AGENTS_HOME=%s", shellWord(agentsDir)), "npx"}
+	for _, arg := range args {
+		parts = append(parts, shellWord(arg))
 	}
 	return strings.Join(parts, " ")
+}
+
+func registryCommandArgs(skill RegistrySkill, global bool, copyMode bool) []string {
+	args := []string{"--yes", "skills", "add", skill.Source, "--skill", skill.Skill}
+	if global {
+		args = append(args, "--global")
+	}
+	// Install into the shared universal skills home; ns-workspace owns adapter fan-out.
+	args = append(args, "--agent", registryAgentTarget, "--yes")
+	if copyMode {
+		args = append(args, "--copy")
+	}
+	return args
 }
 
 func mcpCommandScript(ctx Context, agent string, line func(name string, server string) string) (string, error) {
@@ -1021,20 +1008,20 @@ func codexMCPBlock(manifest MCPManifest) string {
 	return b.String()
 }
 
-func manualReadme(a fileAdapter) string {
+func manualReadme(a AdapterSpec) string {
 	var b strings.Builder
-	b.WriteString("# " + a.name + " manual setup\n\n")
-	if a.notes != "" {
-		b.WriteString(a.notes + "\n\n")
+	b.WriteString("# " + a.ID + " manual setup\n\n")
+	if a.Notes != "" {
+		b.WriteString(a.Notes + "\n\n")
 	}
 	b.WriteString("Shared source files live in `~/.agents`:\n\n")
 	b.WriteString("- `~/.agents/AGENTS.md`\n")
 	b.WriteString("- `~/.agents/skills/`\n")
 	b.WriteString("- `~/.agents/agents/`\n")
 	b.WriteString("- `~/.agents/mcp/servers.json`\n\n")
-	if len(a.docs) > 0 {
+	if len(a.Docs) > 0 {
 		b.WriteString("Docs:\n\n")
-		for _, url := range a.docs {
+		for _, url := range a.Docs {
 			b.WriteString("- " + url + "\n")
 		}
 	}

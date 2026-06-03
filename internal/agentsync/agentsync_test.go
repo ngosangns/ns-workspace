@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -107,6 +108,88 @@ func TestInstalledSettingsDoNotInstallGraphifyHooks(t *testing.T) {
 				t.Fatalf("settings should not reference graphify artifacts: %s", settings)
 			}
 		})
+	}
+}
+
+func TestBuildPlanExposesSyncPhaseOrder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		ToolFilter: ParseTools("stable"),
+	}
+
+	plan, err := manager.BuildPlan(opt, false)
+	if err != nil {
+		t.Fatalf("build plan failed: %v", err)
+	}
+
+	want := []PlanPhaseName{PhaseCore, PhaseRegistryHelpers, PhaseRegistryInstall, PhaseMCP, PhaseAdapters}
+	if got := planPhaseNames(plan); !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected plan phase order:\n got: %v\nwant: %v", got, want)
+	}
+	if plan.Mode != "init" || plan.AgentsDir != filepath.Join(home, ".agents") {
+		t.Fatalf("unexpected plan metadata: %+v", plan)
+	}
+	if len(plan.Phases[0].Operations) == 0 || plan.Phases[0].Operations[0].Artifact != ArtifactDirectory {
+		t.Fatalf("core phase should begin with directory creation, got %+v", plan.Phases[0].Operations)
+	}
+	mustNotExist(t, filepath.Join(home, ".agents"))
+}
+
+func TestUpdatePlanReadsPresetManifestsInsteadOfStaleSharedOutputs(t *testing.T) {
+	home := t.TempDir()
+	agentsHome := filepath.Join(home, ".agents")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	if err := os.MkdirAll(filepath.Join(agentsHome, "mcp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsHome, "mcp", "servers.json"), []byte(`{"mcpServers":{"stale":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsHome, "settings.json"), []byte(`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"stale"}]}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	plan, err := manager.BuildPlan(Options{
+		Command:    "update",
+		AgentsDir:  agentsHome,
+		NoRegistry: true,
+		ToolFilter: ParseTools("qwen"),
+	}, true)
+	if err != nil {
+		t.Fatalf("build update plan failed: %v", err)
+	}
+
+	var foundMCP bool
+	for _, phase := range plan.Phases {
+		for _, planned := range phase.Operations {
+			merge, ok := planned.Op.(MergeJSON)
+			if !ok || planned.Owner != "qwen" || planned.Artifact != ArtifactMCP {
+				continue
+			}
+			foundMCP = true
+			if _, ok := merge.Values["stale"]; ok {
+				t.Fatalf("update plan kept stale shared MCP manifest: %+v", merge.Values)
+			}
+			if _, ok := merge.Values["context7"]; !ok {
+				t.Fatalf("update plan did not read embedded MCP preset: %+v", merge.Values)
+			}
+		}
+	}
+	if !foundMCP {
+		t.Fatalf("qwen MCP merge operation not found in plan: %+v", plan.Phases)
 	}
 }
 
@@ -296,6 +379,76 @@ func TestDryRunDoesNotWrite(t *testing.T) {
 	mustNotExist(t, filepath.Join(home, ".agents"))
 }
 
+func TestAdapterCatalogInvariants(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	ctx, err := manager.context(Options{
+		Command:    "agents",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		ToolFilter: ParseTools("all"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	names := map[string]bool{}
+	aliases := map[string]string{}
+	validTiers := map[SupportTier]bool{TierStable: true, TierManual: true, TierExperimental: true, TierCatalog: true}
+	for _, adapter := range manager.adapters(ctx) {
+		name := adapter.Name()
+		if name == "" {
+			t.Fatalf("adapter has empty name: %#v", adapter)
+		}
+		if names[name] {
+			t.Fatalf("duplicate adapter name: %s", name)
+		}
+		names[name] = true
+		caps := adapter.Capabilities()
+		if !validTiers[caps.Tier] {
+			t.Fatalf("%s has invalid tier %q", name, caps.Tier)
+		}
+		if caps.Tier == TierStable && len(caps.Artifacts) == 0 {
+			t.Fatalf("stable adapter %s must expose at least one artifact", name)
+		}
+		if aliased, ok := adapter.(interface{ Aliases() []string }); ok {
+			for _, alias := range aliased.Aliases() {
+				alias = strings.ToLower(alias)
+				if owner := aliases[alias]; owner != "" {
+					t.Fatalf("alias %q is used by both %s and %s", alias, owner, name)
+				}
+				aliases[alias] = name
+			}
+		}
+		if caps.Tier != TierStable {
+			for _, path := range adapter.StatusPaths(ctx) {
+				wantPrefix := filepath.Join(ctx.Options.AgentsDir, "generated")
+				if !strings.HasPrefix(path, wantPrefix) {
+					t.Fatalf("%s should only write generated guidance, got %s", name, path)
+				}
+			}
+		}
+	}
+}
+
+func TestRegistryCommandArgsStayAlignedWithScriptCommand(t *testing.T) {
+	skill := RegistrySkill{Name: "taste-skill", Source: "leonxlnx/taste-skill", Skill: "design-taste-frontend"}
+	wantArgs := []string{"--yes", "skills", "add", "leonxlnx/taste-skill", "--skill", "design-taste-frontend", "--global", "--agent", "universal", "--yes", "--copy"}
+	if got := registryCommandArgs(skill, true, true); !reflect.DeepEqual(got, wantArgs) {
+		t.Fatalf("unexpected registry args:\n got: %v\nwant: %v", got, wantArgs)
+	}
+	line := registryCommand(skill, true, true, "/tmp/ns-agents")
+	for _, part := range []string{"AGENTS_HOME=/tmp/ns-agents", "npx --yes skills add leonxlnx/taste-skill", "--skill design-taste-frontend", "--global", "--agent universal", "--yes", "--copy"} {
+		if !strings.Contains(line, part) {
+			t.Fatalf("registry command %q missing %q", line, part)
+		}
+	}
+}
+
 func mustExist(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Lstat(path); err != nil {
@@ -358,4 +511,12 @@ func hookCommands(t *testing.T, path string) []string {
 		}
 	}
 	return commands
+}
+
+func planPhaseNames(plan SyncPlan) []PlanPhaseName {
+	names := make([]PlanPhaseName, 0, len(plan.Phases))
+	for _, phase := range plan.Phases {
+		names = append(names, phase.Name)
+	}
+	return names
 }

@@ -31,8 +31,11 @@ func previewUIText(t *testing.T) string {
 		"preview_ui_src/search-main.ts",
 		"preview_ui_src/App.vue",
 		"preview_ui_src/SearchStandaloneApp.vue",
-		"preview_ui_src/app.ts",
-		"preview_ui_src/js/graph.ts",
+		"preview_ui_src/js/code-preview.ts",
+		"preview_ui_src/js/diagrams.ts",
+		"preview_ui_src/js/html-doc.ts",
+		"preview_ui_src/js/markdown.ts",
+		"preview_ui_src/js/metadata.ts",
 		"preview_ui_src/js/network_graph.ts",
 		"preview_ui_src/js/internal-links.ts",
 		"preview_ui_src/types.d.ts",
@@ -787,6 +790,60 @@ func TestPreviewSearchScansMarkdownAndHTMLAcrossRepo(t *testing.T) {
 	}
 }
 
+func TestPreviewSearchSkipsGeneratedPreviewUIArtifacts(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "internal/preview/preview_ui/index.html", "<title>GeneratedNeedle</title>\n")
+	writeTestFile(t, root, "internal/preview/preview_ui/assets/index-generated.js", "export function GeneratedNeedle() {}\n")
+	writeTestFile(t, root, "internal/preview/preview_ui_src/main.ts", "export function SourceNeedle() {}\n")
+	initGitRepo(t, root,
+		"docs/_index.md",
+		"internal/preview/preview_ui/index.html",
+		"internal/preview/preview_ui/assets/index-generated.js",
+		"internal/preview/preview_ui_src/main.ts",
+	)
+
+	project, err := scanSpecProject(root, "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := buildPreviewSearchResponse(context.Background(), project, nil, root, "GeneratedNeedle", "hybrid", "sum", 8)
+	for panel, results := range map[string][]previewSearchResult{
+		"docsSemantic": response.Panels.DocsSemantic,
+		"codeSemantic": response.Panels.CodeSemantic,
+	} {
+		for _, result := range results {
+			if strings.HasPrefix(result.Path, "internal/preview/preview_ui/") {
+				t.Fatalf("%s should skip generated preview UI artifact, got %+v", panel, result)
+			}
+		}
+	}
+}
+
+func TestPreviewSearchSkipsGeneratedPreviewUIArtifactsWithoutGit(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
+	writeTestFile(t, root, "internal/preview/preview_ui/index.html", "<title>GeneratedNeedle</title>\n")
+	writeTestFile(t, root, "internal/preview/preview_ui/assets/index-generated.js", "export function GeneratedNeedle() {}\n")
+	writeTestFile(t, root, "internal/preview/preview_ui_src/main.ts", "export function SourceNeedle() {}\n")
+
+	project, err := scanSpecProject(root, "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := buildPreviewSearchResponse(context.Background(), project, nil, root, "GeneratedNeedle", "hybrid", "sum", 8)
+	for panel, results := range map[string][]previewSearchResult{
+		"docsSemantic": response.Panels.DocsSemantic,
+		"codeSemantic": response.Panels.CodeSemantic,
+	} {
+		for _, result := range results {
+			if strings.HasPrefix(result.Path, "internal/preview/preview_ui/") {
+				t.Fatalf("%s should skip generated preview UI artifact without Git, got %+v", panel, result)
+			}
+		}
+	}
+}
+
 func TestPreviewSearchDirectlySearchesDocsGraph(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "docs/_index.md", `# Spec Index
@@ -924,13 +981,13 @@ func TestLSPSourceFilesSkipsGeneratedPreviewUIButKeepsPreviewUISource(t *testing
 	writeTestFile(t, root, "internal/preview/preview_ui/index.html", "<div id=\"app\"></div>\n")
 	writeTestFile(t, root, "internal/preview/preview_ui/style.css", ".generated { color: red; }\n")
 	writeTestFile(t, root, "internal/preview/preview_ui_src/index.html", "<div id=\"app\"></div>\n")
-	writeTestFile(t, root, "internal/preview/preview_ui_src/app.ts", "export function sourceNeedle() {}\n")
+	writeTestFile(t, root, "internal/preview/preview_ui_src/main.ts", "export function sourceNeedle() {}\n")
 	initGitRepo(t, root,
 		"docs/_index.md",
 		"internal/preview/preview_ui/index.html",
 		"internal/preview/preview_ui/style.css",
 		"internal/preview/preview_ui_src/index.html",
-		"internal/preview/preview_ui_src/app.ts",
+		"internal/preview/preview_ui_src/main.ts",
 	)
 
 	_, files, warnings := lspSourceFiles(root, filepath.Join(root, "docs"))
@@ -946,7 +1003,7 @@ func TestLSPSourceFilesSkipsGeneratedPreviewUIButKeepsPreviewUISource(t *testing
 			t.Fatalf("generated preview UI artifact %s should not be indexed by LSP: %+v", forbidden, got)
 		}
 	}
-	for _, want := range []string{"internal/preview/preview_ui_src/index.html", "internal/preview/preview_ui_src/app.ts"} {
+	for _, want := range []string{"internal/preview/preview_ui_src/index.html", "internal/preview/preview_ui_src/main.ts"} {
 		if !containsString(got, want) {
 			t.Fatalf("preview UI source %s should remain in LSP source files: %+v", want, got)
 		}
@@ -2102,11 +2159,8 @@ func TestPreviewSourceHotReloadTokenTracksBackendAndFrontend(t *testing.T) {
 }
 
 func TestPreviewUIUsesProjectSummaryResponse(t *testing.T) {
-	data, err := os.ReadFile("preview_ui_src/app.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "project.summary") {
+	text := previewUIText(t)
+	if strings.Contains(text, "project.summary") {
 		t.Fatalf("preview UI should use /api/project summary response directly")
 	}
 }
@@ -2115,15 +2169,22 @@ func TestPreviewUIHasTypeScriptToolchain(t *testing.T) {
 	for _, path := range []string{
 		"../../package.json",
 		"../../package-lock.json",
+		"../../biome.json",
 		"../../tsconfig.vue.json",
 		"../../eslint.config.mjs",
 		"../../.prettierrc.json",
 		"../../vite.config.ts",
 		"preview_ui_src/index.html",
 		"preview_ui_src/main.ts",
+		"preview_ui_src/search-main.ts",
 		"preview_ui_src/App.vue",
-		"preview_ui_src/app.ts",
-		"preview_ui_src/js/graph.ts",
+		"preview_ui_src/SearchStandaloneApp.vue",
+		"preview_ui_src/js/code-preview.ts",
+		"preview_ui_src/js/diagrams.ts",
+		"preview_ui_src/js/html-doc.ts",
+		"preview_ui_src/js/markdown.ts",
+		"preview_ui_src/js/metadata.ts",
+		"preview_ui_src/js/network_graph.ts",
 		"preview_ui_src/js/internal-links.ts",
 		"preview_ui_src/types.d.ts",
 		"preview_ui/index.html",
@@ -2136,16 +2197,21 @@ func TestPreviewUIHasTypeScriptToolchain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"build:preview", "check:preview", "lint:preview", "format:preview", "format:preview:check", "vue-tsc", "vite", "vue", "typescript", "eslint", "prettier"} {
+	for _, want := range []string{"build:preview", "check:preview", "lint:preview", "lint:preview:fix", "lint:preview:biome", "format:preview", "format:preview:check", "simple-git-hooks", "lint-staged", "vue-tsc", "vite", "vue", "typescript", "eslint", "prettier", "biome"} {
 		if !strings.Contains(string(pkg), want) {
 			t.Fatalf("preview package scripts/deps missing %s", want)
+		}
+	}
+	for _, legacy := range []string{"preview_ui_src/app.ts", "preview_ui_src/js/graph.ts"} {
+		if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("preview TypeScript toolchain should not keep legacy source %s", legacy)
 		}
 	}
 }
 
 func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	text := previewUIText(t)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "@toast-ui/editor", "toastui-editor-viewer", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "hljs.highlight", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "@toast-ui/editor", "toastui-editor-viewer", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}
@@ -2162,10 +2228,6 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 
 func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 	text := previewUIText(t)
-	graphJS, err := os.ReadFile("preview_ui_src/js/graph.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
 	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
 	if err != nil {
 		t.Fatal(err)
@@ -2174,15 +2236,15 @@ func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"data-tab=\"graph\"", "/main.ts", "id=\"graphCanvas\"", "fetchJSON(\"/api/graph\")", "createDocsGraph", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "clickStage", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "graphSelectedId", "graphRenderer", "graph-details", "openSpecPreview", "data-preview-spec", "openGraphNode", "clearGraphSelection", ".is-node-hover canvas"} {
+	for _, want := range []string{"data-tab=\"graph\"", "/main.ts", "id=\"graphCanvas\"", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "clickStage", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "selectedNodeId", "graphRenderer", "graph-details", "openSpecPreview", "data-preview-spec", "selectGraphNode", "clearGraphSelection", ".is-node-hover canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview docs graph UI missing %s", want)
 		}
 	}
-	if strings.Contains(string(graphJS), "selectSpec(") || strings.Contains(string(graphJS), "data-open-spec") {
+	if strings.Contains(string(graphViewer), "selectSpec(") || strings.Contains(string(graphViewer), "data-open-spec") {
 		t.Fatalf("preview docs graph should use popup previews instead of direct doc navigation")
 	}
-	if strings.Contains(string(graphJS), "state.graphSelectedId = node.id;\n    const incoming") {
+	if strings.Contains(string(graphViewer), "selectedNodeId.value = node.id;\n  const incoming") {
 		t.Fatalf("preview docs graph should not focus the first node while rendering details")
 	}
 	if strings.Contains(string(networkGraphJS), ": nodes[0]?.id") {
@@ -2231,7 +2293,7 @@ func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
 		"themePreference",
 		"applyThemePreference",
 		`localStorage.removeItem("spec-preview-theme")`,
-		"project.projectRoot",
+		"projectRoot",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview topbar icon-only tabs missing %s", want)
@@ -2286,32 +2348,24 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"codeResultCount",
 		`aria-label="Keyword result operator"`,
 		`keywordOp`,
-		`currentSearchKeywordOperator`,
-		"fetch(`/api/search?${params.toString()}",
-		`renderSearchPanel("docsSemantic"`,
-		`renderSearchPanel("codeGraph"`,
-		`renderSearchResult(result, name)`,
+		"fetchJSON(`/api/search?${params.toString()}",
+		"panelResults(\"docsSemantic\")",
+		"panelResults(\"codeGraph\")",
+		"renderSearchSummary",
 		"result.description || result.excerpt",
-		`!result.specId`,
-		"reloadCodeGraph",
-		"updateCodeGraphReloadControl",
-		"codeGraphLoading",
-		"els.codeGraphReload?.addEventListener",
+		"result.specId",
 		"renderSearchGraphPanel",
 		"searchResultsToGraph",
-		"renderSearchResultGraph",
 		"renderNetworkGraph",
 		"codeGraphNodeLabel",
 		"neighborPath",
 		"neighborLine",
-		"previewPath",
 		"searchGraphRenderers",
-		"renderSearchGraphDetails(name, graph, details)",
-		"const selectedNode = graph.nodes.find((node) => node.id === selected);",
+		"renderSearchGraphDetails(name: string, graph: NetworkGraphData, details: HTMLElement)",
+		"const node = graph.nodes.find((item) => item.id === selected) || graph.nodes[0];",
 		"clearSearchGraphSelection",
 		".search-graph-canvas",
 		"searchLoading",
-		"renderSearchLoading",
 		"Searching docs, code, and graphs",
 		"fetch(path, { signal })",
 		"const controller = new AbortController()",
@@ -2321,35 +2375,19 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 		"openSpecPreview",
 		"openFilePreview",
 		"/api/files?",
-		"highlightRenderedCode",
-		"renderSpecDocumentContent",
-		"renderCurrentSpecContent",
 		`id="previewRawToggle"`,
 		"previewSource",
 		"previewShowRaw",
-		"updatePreviewRawToggle",
 		"renderPreviewSource",
-		"selectionContextMenu",
-		"selectionCopyButton",
-		"updateSelectionContextMenu",
-		"resolveSelectionCopyTarget",
-		"navigator.clipboard.writeText",
-		"data-source-line-start",
-		"Copy filepath and line index",
 		`data-preview-spec`,
 		`data-preview-file`,
-		"route.searchQuery",
 		"buildRouteQuery",
-		"updateSearchRouteURL",
-		`params.set("preview", state.previewRoute.type)`,
-		`params.set("path", state.previewRoute.path)`,
-		"applyPreviewRoute",
+		"replaceFocusedRouteURL",
 		"decorateCodePreviewLines",
 		"code-line-target",
 		".preview-modal",
 		".code-preview",
 		"line-height: 1.18",
-		".search-loading",
 		`.search-grid`,
 	} {
 		if !strings.Contains(text, want) {
@@ -2462,7 +2500,19 @@ func TestPreviewVuePreviewModalRendersStyledDocs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(previewModal)
+	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codePreview, err := os.ReadFile("preview_ui_src/js/code-preview.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(previewModal) + "\n" + string(markdown) + "\n" + string(htmlDoc) + "\n" + string(codePreview)
 	for _, want := range []string{
 		"renderPreviewSource",
 		"renderPreviewContentCard",
@@ -2510,7 +2560,11 @@ func TestPreviewUIHasFaviconAndRouteTitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	app, err := os.ReadFile("preview_ui_src/App.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previewModal, err := os.ReadFile("preview_ui_src/components/PreviewModal.vue")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2518,7 +2572,7 @@ func TestPreviewUIHasFaviconAndRouteTitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html) + "\n" + string(app) + "\n" + string(icon)
+	text := string(html) + "\n" + string(app) + "\n" + string(previewModal) + "\n" + string(icon)
 	for _, want := range []string{
 		`href="/favicon.svg"`,
 		`type="image/svg+xml"`,
@@ -2530,8 +2584,8 @@ func TestPreviewUIHasFaviconAndRouteTitles(t *testing.T) {
 		`Search: ${query}`,
 		"Doc preview:",
 		"File preview:",
-		"state.project?.generatedTitle",
-		"document.title = \"Failed to load docs | Docs Preview\"",
+		"project.value?.generatedTitle",
+		"document.title = dedupeTitleParts",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI title/favicon support missing %s", want)
@@ -2544,19 +2598,19 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui_src/app.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	graphJS, err := os.ReadFile("preview_ui_src/js/graph.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
 	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(css) + "\n" + string(app) + "\n" + string(graphJS)
+	graphViewer, err := os.ReadFile("preview_ui_src/components/GraphViewer.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchPanel, err := os.ReadFile("preview_ui_src/components/SearchPanel.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(css) + "\n" + string(graphViewer) + "\n" + string(searchPanel)
 	for _, want := range []string{"labelColor", "#f8fafc", "#0f172a", "edgeColorForTheme", "searchEdgeColorForTheme", "#94a3b8", "#f87171", ".graph-canvas canvas", ".search-graph-canvas canvas"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview graph label dark mode contrast missing %s", want)
@@ -2572,19 +2626,9 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 		!strings.Contains(string(networkGraphJS), "color: selected && !related ? unfocusedColor : data.color") {
 		t.Fatalf("focused preview graph should dim unfocused edges without hiding them")
 	}
-	graphViewer, err := os.ReadFile("preview_ui_src/components/GraphViewer.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	searchPanel, err := os.ReadFile("preview_ui_src/components/SearchPanel.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
 	for name, source := range map[string]string{
-		"legacy docs graph": string(graphJS),
-		"Vue docs graph":    string(graphViewer),
-		"legacy search":     string(app),
-		"Vue search":        string(searchPanel),
+		"Vue docs graph": string(graphViewer),
+		"Vue search":     string(searchPanel),
 	} {
 		if !strings.Contains(source, `=== "dark" ? dark`) {
 			t.Fatalf("%s should use dark edge palette when dark theme is enabled", name)
@@ -2593,15 +2637,18 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 			t.Fatalf("%s should use a solid dark unfocused edge color when dark theme is enabled", name)
 		}
 	}
-	themeRerender := string(app)
-	rerenderIndex := strings.Index(themeRerender, "function rerenderForTheme()")
-	if rerenderIndex == -1 || !strings.Contains(themeRerender[rerenderIndex:], "renderSearchPanels();") {
-		t.Fatalf("preview graph label dark mode contrast should rerender search graph panels")
-	}
 }
 
 func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codePreview, err := os.ReadFile("preview_ui_src/js/code-preview.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := os.ReadFile("preview_ui_src/js/metadata.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2609,11 +2656,11 @@ func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app) + "\n" + string(css)
+	text := string(markdown) + "\n" + string(codePreview) + "\n" + string(metadata) + "\n" + string(css)
 	if strings.Contains(text, "fallbackHTML") || strings.Contains(text, "markdownRenderer.render(metadata.body)") {
 		t.Fatalf("preview UI should render Markdown from raw content on the client")
 	}
-	for _, want := range []string{"renderMarkdownPreview", "loadToastMarkdownViewer", "toastui-editor-viewer", "toastMarkdownCustomRenderer", "renderToastMarkdownLoading", "Loading Markdown preview...", "codeBlock", "data-source-language", "markdown-wysiwyg-host", "markdown-toast-viewer", ".markdown-toast-viewer .toastui-editor-contents", ".metadata-table", "padding: 18px 25px", "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
+	for _, want := range []string{"renderMarkdownPreview", "loadToastMarkdownViewer", "toastui-editor-viewer", "Loading Markdown preview...", "data-source-language", "markdown-wysiwyg-host", "markdown-toast-viewer", ".markdown-toast-viewer .toastui-editor-contents", ".metadata-table", "padding: 18px 25px", "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI Markdown rendering missing %s", want)
 		}
@@ -2630,14 +2677,21 @@ func TestPreviewVueDocViewerRendersMetadataTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(docViewer)
+	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := os.ReadFile("preview_ui_src/js/metadata.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(docViewer) + "\n" + string(markdown) + "\n" + string(metadata)
 	for _, want := range []string{
+		`import { renderMarkdownPreview } from "../js/markdown.js"`,
 		"renderableMarkdownMetadata",
 		"markdownBodyMetadata",
-		"htmlMetadataRows",
 		"renderMetadataTable",
 		"metadata-table",
-		"doc-meta",
 		"metadata-link-badges",
 	} {
 		if !strings.Contains(text, want) {
@@ -2651,13 +2705,18 @@ func TestPreviewVueDocViewerRendersHTMLDocMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(docViewer)
+	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(docViewer) + "\n" + string(htmlDoc)
 	for _, want := range []string{
+		`import { renderHTMLPreview } from "../js/html-doc.js"`,
 		"DOMPurify.sanitize(raw || \"<p>No content.</p>\", htmlDocSanitizeConfig)",
-		"ADD_TAGS: [\"doc-meta\", \"doc-title\", \"doc-description\", \"doc-relation\", \"doc-diagram\", \"doc-graph\"]",
-		"ADD_ATTR: [\"status\", \"compliance\", \"priority\", \"version\", \"tone\", \"type\", \"target\", \"href\", \"language\"]",
-		"const meta = root.querySelector(\"doc-meta\")",
-		"meta.replaceWith(...metadata.childNodes)",
+		"doc-meta",
+		"doc-section",
+		"doc-metric",
+		"normalizeHTMLDocTags",
 		"meta.querySelectorAll(\"a[href]\")",
 		"meta.querySelectorAll(\"doc-relation[target]\")",
 		"key: \"link\"",
@@ -2670,7 +2729,7 @@ func TestPreviewVueDocViewerRendersHTMLDocMetadata(t *testing.T) {
 }
 
 func TestPreviewUIRendersCompactHTMLDocsClientSide(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2678,8 +2737,8 @@ func TestPreviewUIRendersCompactHTMLDocsClientSide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app) + "\n" + string(css)
-	for _, want := range []string{"renderHTMLPreview", "htmlDocSanitizeConfig", "htmlMVPStylesheetURL", "mvp.css@1.17.3", "scopeMVPStylesheet", "data-html-mvp-css", "html-doc", "doc-meta", "doc-title", "doc-description", "doc-relation", "doc-callout", "doc-diagram", "doc-code", "doc-section", "doc-grid", "doc-card", "doc-steps", "doc-step", "doc-flow", "doc-flow-step", "doc-graph", "doc-metrics", "doc-metric", "normalizeHTMLDocTags", "htmlMetadataRows", "normalizeDocDiagramLanguage", "language-c4-model", "replaceDocContainer", "replaceDocMetric", "createDocDiagramSource", "doc-relation-${typeClass}", "doc-code-block", "doc-diagram-source", "doc-graph-source", ".markdown-wysiwyg-shell", ".html-doc", ".html-doc table", ".html-doc a", ".doc-title", ".doc-description", ".doc-callout-info", ".doc-callout-warning", ".doc-relation-depends", ".doc-code-block::before", ".doc-steps", ".doc-flow-step", ".doc-metrics", ".doc-metric-value", ".hero-panel", ".metric-grid", ".insight-card", ".risk-panel", ".evidence-card.success", ".timeline-list"} {
+	text := string(htmlDoc) + "\n" + string(css)
+	for _, want := range []string{"renderHTMLPreview", "htmlDocSanitizeConfig", "htmlMVPStylesheetURL", "mvp.css@1.17.3", "scopeMVPStylesheet", "data-html-mvp-css", "html-doc", "doc-meta", "doc-title", "doc-description", "doc-relation", "doc-callout", "doc-diagram", "doc-code", "doc-section", "doc-grid", "doc-card", "doc-steps", "doc-step", "doc-flow", "doc-flow-step", "doc-graph", "doc-metrics", "doc-metric", "normalizeHTMLDocTags", "htmlMetadataRows", "normalizeDocDiagramLanguage", "c4-model", "replaceDocContainer", "replaceDocMetric", "createDocDiagramSource", "doc-relation-${typeClass}", "doc-code-block", "doc-diagram-source", "doc-graph-source", ".html-doc", ".html-doc table", ".html-doc a", ".doc-title", ".doc-description", ".doc-callout-info", ".doc-callout-warning", ".doc-relation-depends", ".doc-code-block::before", ".doc-steps", ".doc-flow-step", ".doc-metrics", ".doc-metric-value", ".hero-panel", ".metric-grid", ".insight-card", ".risk-panel", ".evidence-card.success", ".timeline-list"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI HTML doc rendering missing %s", want)
 		}
@@ -2699,7 +2758,15 @@ func TestPreviewUIKeepsMarkdownDocumentsReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2707,7 +2774,7 @@ func TestPreviewUIKeepsMarkdownDocumentsReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html) + "\n" + string(app) + "\n" + string(css)
+	text := string(html) + "\n" + string(docViewer) + "\n" + string(markdown) + "\n" + string(htmlDoc) + "\n" + string(css)
 	for _, want := range []string{
 		".markdown-wysiwyg-host",
 		".toast-markdown-loading",
@@ -2763,11 +2830,19 @@ func TestPreviewUIKeepsMarkdownDocumentsReadOnly(t *testing.T) {
 }
 
 func TestPreviewUIResolvesInternalLinksAndMentionsThroughRouter(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	internalLinks, err := os.ReadFile("preview_ui_src/js/internal-links.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
+	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(internalLinks) + "\n" + string(htmlDoc) + "\n" + string(docViewer)
 	for _, want := range []string{
 		"decorateInternalDocNavigation",
 		"decorateInternalDocLinks",
@@ -2780,10 +2855,7 @@ func TestPreviewUIResolvesInternalLinksAndMentionsThroughRouter(t *testing.T) {
 		`+\.(?:md|html?)`,
 		"doc-relation-${typeClass}",
 		"relation.href = target",
-		"navigateToSpecTarget",
 		"selectSpec(target.specId, true",
-		"pushSpecRoute",
-		"scrollToSpecFragment",
 		`${pathNoExt}.html`,
 		`${basenameNoExt}.html`,
 		"candidates.add(`${key}.html`)",
@@ -2817,7 +2889,7 @@ func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
 
 func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 	text := previewUIText(t)
-	for _, want := range []string{"lg:fixed", "buildSpecTree", "renderFolderNode", "folder-open", `name="file-text"`, "Icon.vue"} {
+	for _, want := range []string{"lg:fixed", "buildSpecTree", "TreeNode", "folder", `name="file-text"`, "Icon.vue"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview sidebar missing %s", want)
 		}
@@ -2825,36 +2897,36 @@ func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
 }
 
 func TestPreviewUIConnectsHotReload(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	app, err := os.ReadFile("preview_ui_src/App.vue")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"new EventSource(\"/api/events\")", "reloadPreviewData", "addEventListener(\"change\"", "addEventListener(\"ready\"", "hotReloadToken", "parseEventToken", "window.location.reload"} {
+	for _, want := range []string{"window.addEventListener(\"popstate\"", "systemThemeQuery?.addEventListener", "loadGraph", "fetchJSON(\"/api/project\")", "fetchJSON(\"/api/docs\")"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI hot reload missing %s", want)
+			t.Fatalf("preview UI lifecycle wiring missing %s", want)
 		}
 	}
 }
 
 func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	app, err := os.ReadFile("preview_ui_src/App.vue")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(app)
-	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "window.location.pathname", "popstate", "encodeSpecPath", "join(\"/\")"} {
+	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "window.location.pathname", "popstate", "encodeURIComponent", "buildRouteQuery"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI route handling missing %s", want)
 		}
 	}
-	for _, want := range []string{"validSpecFolderPath", "selectSpecFolder", "renderSpecFolderContent", "data-folder-path", "state.routeFolderPath"} {
+	for _, want := range []string{"validSpecFolderPath", "selectSpecFolder", "selectedFolderListing", "selectedFolderPath", "routeFolderPath"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI folder route handling missing %s", want)
 		}
 	}
-	if count := strings.Count(text, "selectSpec(state.selectedId, false, { updateURL: false })"); count < 2 {
-		t.Fatalf("preview UI should not rewrite /graph or /search to a default spec during initial load/reload; found %d guarded selects", count)
+	if strings.Contains(text, "fetchJSON(\"/api/graph\")])") {
+		t.Fatalf("preview UI should not fetch graph during initial project/docs load")
 	}
 	if strings.Contains(text, "hashchange") {
 		t.Fatalf("preview UI should use path routing without hash fragments")
@@ -2862,11 +2934,11 @@ func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
 }
 
 func TestPreviewDiagramSanitizerKeepsMermaidLabels(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
+	text := string(diagrams)
 	for _, want := range []string{"USE_PROFILES", "foreignObject", "\"div\"", "\"span\"", "\"style\""} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview diagram sanitizer missing %s, Mermaid labels may be stripped", want)
@@ -2875,12 +2947,12 @@ func TestPreviewDiagramSanitizerKeepsMermaidLabels(t *testing.T) {
 }
 
 func TestPreviewDiagramUsesThemeAwareEdgesAndLabels(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
-	for _, want := range []string{"mermaidSourceForTheme", "mermaidC4ElementStyles", "UpdateElementStyle", "$fontColor=\"${fontColor}\"", "$borderColor=\"${borderColor}\"", "mermaidC4RelationStyles", "UpdateRelStyle", "$textColor=\"${textColor}\"", "$lineColor=\"${lineColor}\"", "mermaidThemeConfig", "applyDiagramThemeOverrides", "applyC4BoundaryThemeOverrides", "isC4BoundaryRect", "darkMode: true", "lineColor: \"#cbd5e1\"", "edgeLabelBackground: \"#111827\"", "relationColor: \"#cbd5e1\"", "relationLabelColor: \"#f8fafc\"", ":scope > rect", ":scope > text", "stroke-dasharray", ".relationship line", ".relationshipLabel *", ".edgeLabel *", "marker path"} {
+	text := string(diagrams)
+	for _, want := range []string{"window.mermaid.initialize", `theme: theme === "dark" ? "dark" : "default"`, "securityLevel: \"strict\"", "renderDiagram(host, id, diagram, theme)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview diagram dark theme edge/label support missing %s", want)
 		}
@@ -2889,7 +2961,7 @@ func TestPreviewDiagramUsesThemeAwareEdgesAndLabels(t *testing.T) {
 
 func TestPreviewUISupportsDarkMode(t *testing.T) {
 	text := previewUIText(t)
-	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyTheme", "mermaidThemeConfig", `theme: state.theme === "dark" ? "dark" : "default"`, "renderCurrentSpecContent().catch"} {
+	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyThemePreference", `theme === "dark" ? "dark" : "default"`, "renderCurrentSpec"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI dark mode missing %s", want)
 		}
@@ -2914,7 +2986,7 @@ func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2922,8 +2994,8 @@ func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "diagramPanZoomInstances", "diagramPanZoomTargets", "window.svgPanZoom"} {
+	text := string(html) + "\n" + string(diagrams) + "\n" + string(css)
+	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "panZoomInstances", "window.svgPanZoom"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom integration missing %s", want)
 		}
@@ -2936,12 +3008,12 @@ func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
 }
 
 func TestPreviewUIRendersMermaidC4Fences(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
-	for _, want := range []string{"data-source-language", "renderDocumentDiagrams", "isMermaidDiagramBlock", "mermaidC4DiagramTypeFromBlock", "looksLikeMermaidC4Diagram", "C4(?:Context|Container|Component|Dynamic|Deployment)", "replace(/[-_]/g, \"\")", "c4(?:context|container|component|dynamic|deployment)?", "C4Component"} {
+	text := string(diagrams)
+	for _, want := range []string{"sourceLanguage", "renderDiagramsIn", "diagramSourceFromCodeBlock", "mermaidC4TypeFromLanguage", "looksLikeMermaidC4", "C4(?:Context|Container|Component|Dynamic|Deployment)", "replace(/[-_\\s]/g, \"\")", "c4(?:context|container|component|dynamic|deployment)?", "C4Component"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI Mermaid C4 fence rendering missing %s", want)
 		}
@@ -2949,12 +3021,12 @@ func TestPreviewUIRendersMermaidC4Fences(t *testing.T) {
 }
 
 func TestPreviewUIRendersLikeC4ModelThroughMermaidC4(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
-	for _, want := range []string{"data-source-language", "renderLikeC4Blocks", "isLikeC4ModelBlock", "language-likec4", "language-c4-model", "language === \"c4model\"", "looksLikeLikeC4Model", "likeC4ModelToMermaid", "appendLikeC4MermaidRoot", "node.kind === \"softwareSystem\"", "C4Component", "Container_Boundary", "Component(", "Rel(", "relation[3] || \"Uses\"", "LikeC4 model"} {
+	text := string(diagrams)
+	for _, want := range []string{"sourceLanguage", "language === \"likec4\"", "language === \"c4model\"", "looksLikeLikeC4Model", "likeC4ModelToMermaid", "appendLikeC4Root", "node.kind === \"softwareSystem\"", "C4Component", "Container_Boundary", "Component(", "Rel(", "relation[3] || \"uses\"", "LikeC4 model"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI LikeC4 model rendering missing %s", want)
 		}
@@ -2966,7 +3038,7 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2974,8 +3046,8 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(html) + "\n" + string(app) + "\n" + string(css)
-	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "Ctrl/Command-scroll to zoom", "viewportSelector: \".svg-pan-zoom_viewport\"", "zoomEnabled: true", "panEnabled: true", "mouseWheelZoomEnabled: false", "!event.ctrlKey && !event.metaKey", "event.preventDefault()", "instance.zoomAtPointBy", "zoomScaleSensitivity: 0.4", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
+	text := string(html) + "\n" + string(diagrams) + "\n" + string(css)
+	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "Ctrl/Command-scroll to zoom", "mouseWheelZoomEnabled: false", "!event.ctrlKey && !event.metaKey", "event.preventDefault()", "instance.zoomAtPointBy", "zoomScaleSensitivity: 0.25", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom API missing %s", want)
 		}
@@ -2988,12 +3060,12 @@ func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
 }
 
 func TestPreviewDiagramPanZoomLifecycleIsManaged(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
-	for _, want := range []string{"destroyDiagramPanZoom", "destroyDiagramsIn", "instance.destroy()", "state.diagramPanZoomInstances.set", "state.diagramPanZoomInstances.delete", "state.diagramPanZoomTargets.delete"} {
+	text := string(diagrams)
+	for _, want := range []string{"destroyDiagramsIn", "panZoomInstances.get(id)?.destroy()", "panZoomInstances.set(id, instance)", "panZoomInstances.delete(id)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid svg-pan-zoom lifecycle missing %s", want)
 		}
@@ -3006,16 +3078,12 @@ func TestPreviewDiagramPanZoomLifecycleIsManaged(t *testing.T) {
 }
 
 func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
 	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app)
-	for _, want := range []string{"svgDiagramSize", "svg.setAttribute(\"width\", String(size.width))", "svg.setAttribute(\"height\", String(size.height))", "svg.style.width = \"100%\"", "svg.style.height = \"100%\"", "svg.style.maxWidth = \"none\"", "svg.setAttribute(\"preserveAspectRatio\"", "svg.classList.add(\"diagram-svg\")", "prepareSvgPanZoomViewport", "svg-pan-zoom_viewport"} {
+	text := string(diagrams)
+	for _, want := range []string{"svg.style.maxWidth = \"none\"", "svg.classList.add(\"diagram-svg\")", "window.svgPanZoom", "fit: true", "center: true"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview Mermaid SVG library preparation missing %s", want)
 		}
@@ -3029,7 +3097,7 @@ func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
 }
 
 func TestPreviewDiagramViewportUsesHiddenOverflowWithoutCustomBackground(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/app.ts")
+	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3037,7 +3105,7 @@ func TestPreviewDiagramViewportUsesHiddenOverflowWithoutCustomBackground(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(app) + "\n" + string(css)
+	text := string(diagrams) + "\n" + string(css)
 	for _, want := range []string{"overflow: hidden", "touch-action: none"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview inline Mermaid viewport behavior missing %s", want)

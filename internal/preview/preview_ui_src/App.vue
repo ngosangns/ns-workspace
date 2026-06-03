@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, provide } from "vue";
+import { computed, ref, onMounted, onUnmounted, provide, watch } from "vue";
 import Sidebar from "./components/Sidebar.vue";
 import DocViewer from "./components/DocViewer.vue";
 import GraphViewer from "./components/GraphViewer.vue";
@@ -64,6 +64,7 @@ type ThemePreference = "system" | "dark" | "light";
 const project = ref<ProjectSummary | null>(null);
 const specs = ref<SpecDocument[]>([]);
 const graph = ref<GraphData | null>(null);
+const graphLoading = ref(false);
 const currentSpec = ref<SpecDocument | null>(null);
 const selectedId = ref("");
 const selectedFolderPath = ref("");
@@ -93,6 +94,16 @@ async function fetchJSON(path: string) {
   const res = await fetch(path);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+async function loadGraph(): Promise<void> {
+  if (graph.value || graphLoading.value) return;
+  graphLoading.value = true;
+  try {
+    graph.value = await fetchJSON("/api/graph");
+  } finally {
+    graphLoading.value = false;
+  }
 }
 
 function resolvedSystemTheme(): "light" | "dark" {
@@ -231,6 +242,9 @@ function specFolderListing(folderPath: string): FolderListing {
 
 function switchTab(tabName: string, options: { updateURL?: boolean } = {}) {
   tab.value = tabName;
+  if (tabName === "graph") {
+    void loadGraph();
+  }
   if (tabName === "spec" && !selectedId.value && !selectedFolderPath.value) {
     const defaultId = defaultSpecId();
     if (defaultId) {
@@ -338,6 +352,7 @@ async function handlePopState() {
   syncRouteSpecFromURL(route);
 
   if (route.tab === "graph") {
+    await loadGraph();
     switchTab("graph", { updateURL: false });
     return;
   }
@@ -445,6 +460,40 @@ function closePreview() {
   previewShowRaw.value = false;
 }
 
+function pageTitleForTab(tabName: string): string {
+  if (tabName === "graph") {
+    const query = graphQuery.value.trim();
+    return query ? `Graph: ${query}` : "Graph";
+  }
+  if (tabName === "search") {
+    const query = searchQuery.value.trim();
+    return query ? `Search: ${query}` : "Search";
+  }
+  if (selectedFolderPath.value) return folderDisplayName(selectedFolderPath.value);
+  return currentSpec.value?.title || "Doc";
+}
+
+function updateDocumentTitle(): void {
+  const previewTitle = previewSource.value
+    ? previewSource.value.spec
+      ? `Doc preview: ${previewSource.value.spec.title || previewSource.value.path}`
+      : `File preview: ${previewSource.value.line ? `${previewSource.value.path}:${previewSource.value.line}` : previewSource.value.path}`
+    : "";
+  const baseTitle = project.value?.generatedTitle || "Docs Preview";
+  document.title = dedupeTitleParts([previewTitle, pageTitleForTab(tab.value), project.value?.name || "", baseTitle]).join(" | ");
+}
+
+function dedupeTitleParts(parts: string[]): string[] {
+  const seen = new Set<string>();
+  return parts
+    .map((part) => String(part || "").trim())
+    .filter((part) => {
+      if (!part || seen.has(part)) return false;
+      seen.add(part);
+      return true;
+    });
+}
+
 provide("project", project);
 provide("specs", specs);
 provide("graph", graph);
@@ -461,12 +510,13 @@ provide("openFilePreview", openFilePreview);
 provide("closePreview", closePreview);
 provide("toggleTheme", toggleTheme);
 
+watch([project, currentSpec, selectedFolderPath, tab, graphQuery, searchQuery, previewSource], updateDocumentTitle);
+
 onMounted(async () => {
   applyThemePreference(getInitialThemePreference());
-  const [proj, specList, graphData] = await Promise.all([fetchJSON("/api/project"), fetchJSON("/api/docs"), fetchJSON("/api/graph")]);
+  const [proj, specList] = await Promise.all([fetchJSON("/api/project"), fetchJSON("/api/docs")]);
   project.value = proj;
   specs.value = specList;
-  graph.value = graphData;
   const route = routeFromLocation();
   if (route.tab === "graph") {
     graphQuery.value = route.searchQuery;
@@ -476,7 +526,9 @@ onMounted(async () => {
   searchKeywordOperator.value = route.searchKeywordOperator;
   syncRouteSpecFromURL(route);
 
-  if (route.tab !== "graph") {
+  if (route.tab === "graph") {
+    await loadGraph();
+  } else {
     selectedId.value = validSpecId(route.spec || "") || (validSpecFolderPath(route.spec || "") ? "" : defaultSpecId());
     selectedFolderPath.value = validSpecFolderPath(route.spec || "");
     if (selectedFolderPath.value) {
@@ -490,6 +542,7 @@ onMounted(async () => {
     updateRouteURL("spec");
   }
   switchTab(route.tab || "spec", { updateURL: false });
+  updateDocumentTitle();
   window.addEventListener("popstate", handlePopState);
   systemThemeQuery?.addEventListener("change", handleSystemThemeChange);
 });

@@ -12,8 +12,9 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 
 | Path                               | Vai trò                                                                                                                                                |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `main.go`                          | CLI entrypoint, parse lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`, `preview`, `search`, `graph` và `lsp`.                          |
-| `internal/agentsync/`              | Logic adapter sync, path native của từng agent, backup và operation apply/status/doctor.                                                               |
+| `main.go`                          | CLI entrypoint, route nhóm lệnh agentsync, preview/search, graph và lsp.                                                                               |
+| `internal/cli/`                    | Parse flags và dispatch nhóm lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`/`catalog`.                                                |
+| `internal/agentsync/`              | Logic adapter sync, `SyncPlan`, path native của từng agent, backup và operation apply/status/doctor.                                                   |
 | `internal/preview/`                | Backend preview docs, API, search, graph và hot reload supervisor.                                                                                     |
 | `internal/graphquery/`             | Registry/setup/cache LSP cho Search/LSP Code Graph, CLI `lsp`, installer npm/go/archive và warning dùng chung.                                         |
 | `internal/preview/preview_ui_src/` | Source Vue 3/TypeScript của preview UI.                                                                                                                |
@@ -45,6 +46,7 @@ Go:
 go test ./...
 go test ./internal/preview
 go test ./internal/graphquery
+go test ./internal/cli
 go test ./internal/agentsync
 ```
 
@@ -54,6 +56,7 @@ Preview frontend:
 npm install
 npm run check:preview
 npm run lint:preview
+npm run lint:preview:fix
 npm run build:preview
 ```
 
@@ -71,6 +74,8 @@ gofmt -w main.go internal
 npm run format:docs
 npm run format:preview
 ```
+
+`npm install` chạy `prepare` để cài Git pre-commit hook bằng `simple-git-hooks`. Hook gọi `lint-staged`, chạy ESLint/Biome/Prettier fix trên file preview đã stage và để lint-staged cập nhật lại staged changes trước khi commit.
 
 Không cần chạy full build chỉ để sửa docs thuần. Với thay đổi nhỏ, chọn validation sát phạm vi thay đổi.
 

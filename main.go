@@ -2,11 +2,10 @@ package main
 
 import (
 	"embed"
-	"flag"
 	"fmt"
 	"os"
 
-	"github.com/ngosangns/ns-workspace/internal/agentsync"
+	synccli "github.com/ngosangns/ns-workspace/internal/cli"
 	"github.com/ngosangns/ns-workspace/internal/graphquery"
 	"github.com/ngosangns/ns-workspace/internal/preview"
 )
@@ -32,60 +31,22 @@ func run(args []string) error {
 		printUsage()
 		return nil
 	}
+	if synccli.IsAgentSyncCommand(cmd) {
+		return synccli.RunAgentSync(cmd, args[1:], presetFS)
+	}
 	switch cmd {
-	case "init", "update", "status", "doctor", "registry", "agents", "catalog", "preview", "search", "graph", "lsp":
+	case "preview":
+		return preview.Run(args[1:])
+	case "search":
+		return preview.RunSearch(args[1:])
+	case "graph":
+		return preview.RunGraph(args[1:])
+	case "lsp":
+		return graphquery.RunLSP(args[1:], preview.GraphQueryLSPDetector{})
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", cmd)
 	}
-	if cmd == "preview" {
-		return preview.Run(args[1:])
-	}
-	if cmd == "search" {
-		return preview.RunSearch(args[1:])
-	}
-	if cmd == "graph" {
-		return preview.RunGraph(args[1:])
-	}
-	if cmd == "lsp" {
-		return graphquery.RunLSP(args[1:], preview.GraphQueryLSPDetector{})
-	}
-
-	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
-	homeDefault, err := agentsync.DefaultAgentsDir()
-	if err != nil {
-		return err
-	}
-	opt := agentsync.Options{Command: cmd, AgentsDir: homeDefault}
-	tools := fs.String("tools", "all", "comma-separated tools: all,stable,manual,experimental,claude,opencode,grok,kimi,kiro,kiro-cli,qwen,gemini,codex,cline,windsurf,aider,cursor,github-copilot,jetbrains,antigravity,trae,roo")
-	fs.StringVar(&opt.AgentsDir, "agents-home", homeDefault, "shared agents home")
-	fs.BoolVar(&opt.DryRun, "dry-run", false, "show planned writes without changing files")
-	fs.BoolVar(&opt.Yes, "yes", false, "skip interactive confirmations")
-	fs.BoolVar(&opt.Force, "force", false, "replace existing files during init")
-	fs.BoolVar(&opt.CopyMode, "copy", false, "copy files instead of creating symlinks")
-	fs.BoolVar(&opt.NoMCP, "no-mcp", false, "skip MCP configuration")
-	fs.BoolVar(&opt.NoRegistry, "no-registry", false, "skip skills registry installation")
-	if err := fs.Parse(args[1:]); err != nil {
-		return err
-	}
-	opt.ToolFilter = agentsync.ParseTools(*tools)
-
-	manager := agentsync.Manager{Presets: presetFS}
-	switch cmd {
-	case "init":
-		return manager.Apply(opt, false)
-	case "update":
-		return manager.Apply(opt, true)
-	case "status":
-		return manager.Status(opt)
-	case "doctor":
-		return manager.Doctor(opt)
-	case "registry":
-		return manager.InstallRegistrySkills(opt)
-	case "agents", "catalog":
-		return manager.Catalog(opt)
-	}
-	return nil
 }
 
 func printUsage() {
