@@ -198,6 +198,8 @@ Mốc đầu hiện đã triển khai:
 - `internal/cli` đã tách parse/dispatch agentsync command khỏi root `main.go`.
 - Update plan đọc MCP/settings từ embedded presets để stale shared output không lan sang native configs.
 - Adapter phổ thông đã chuyển sang `AdapterSpec`; behavior riêng của Claude, OpenCode, Codex và Aider đã chuyển sang plugin nhỏ.
+- `UserConfig` overlay đã ship: `Options.ConfigPath` trỏ tới file JSON user-level, `readPresetFile`/`readOpenCodeConfigValues` merge user file trên embedded preset, áp dụng cho `InstallPresetFile`, `InstallPresetTree` (cả override lẫn addition), `readMCPManifest`, `readSettingsManifest`, `readRegistryManifest`, `readOpenCodeConfigManifest`. OpenCode plugin đọc full preset dưới dạng map nên user-defined key (`timeout`, `provider`, ...) đều flow qua. Default location `~/.config/ns-workspace/config.json` (XDG-aware) hoặc `NS_WORKSPACE_CONFIG`; `--config ""` tắt overlay.
+- MiniMax CLI (`mmx`) adapter đã thêm: stable tier, alias `minimax-cli`/`mmx`, plugin ghi default model/region presets vào `~/.mmx/config.json` qua `MergeJSON` (cùng pattern opencode). mmx-cli không có user-level skills/agents/MCP directory nên không fan-out các artifact đó.
 
 ### Vì sao không chỉ chia file cơ học
 

@@ -10,7 +10,7 @@ import (
 	"github.com/ngosangns/ns-workspace/internal/preview"
 )
 
-//go:embed presets/agents presets/mcp presets/opencode presets/registry presets/settings presets/skills/* presets/subagents
+//go:embed presets/agents presets/mcp presets/minimax presets/opencode presets/registry presets/settings presets/skills/* presets/subagents
 var presetFS embed.FS
 
 func main() {
@@ -70,6 +70,8 @@ Local checkout usage:
 
 Flags:
   --agents-home PATH   shared home, default ~/.agents
+  --config PATH       user config JSON overriding embedded presets;
+                       empty disables the overlay
   --tools LIST         all,stable,manual,experimental or comma-separated agent names
   --dry-run           print actions without writing
   --force             replace existing files during init

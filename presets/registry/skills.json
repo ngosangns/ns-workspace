@@ -19,6 +19,11 @@
       "name": "taste-skill",
       "source": "leonxlnx/taste-skill",
       "skill": "design-taste-frontend"
+    },
+    {
+      "name": "minimax-cli",
+      "source": "MiniMax-AI/cli",
+      "skill": "mmx-cli"
     }
   ]
 }

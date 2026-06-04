@@ -1,0 +1,8 @@
+{
+  "defaultTextModel": "MiniMax-M3",
+  "defaultSpeechModel": "speech-2.8-hd",
+  "defaultVideoModel": "MiniMax-Hailuo-2.3",
+  "defaultMusicModel": "music-2.6",
+  "timeout": 1800,
+  "sessionTimeout": 1800
+}

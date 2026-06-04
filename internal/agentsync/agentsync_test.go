@@ -450,6 +450,63 @@ func TestRegistryCommandArgsStayAlignedWithScriptCommand(t *testing.T) {
 	}
 }
 
+func TestRegistryManifestIncludesMiniMaxCLI(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	ctx, err := manager.context(Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("stable"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := readRegistryManifest(ctx)
+	if err != nil {
+		t.Fatalf("readRegistryManifest: %v", err)
+	}
+
+	var found bool
+	for _, s := range manifest.Skills {
+		if s.Name == "minimax-cli" {
+			found = true
+			if s.Source != "MiniMax-AI/cli" {
+				t.Fatalf("minimax-cli source = %q, want MiniMax-AI/cli", s.Source)
+			}
+			if s.Skill != "mmx-cli" {
+				t.Fatalf("minimax-cli skill = %q, want mmx-cli", s.Skill)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("minimax-cli not in registry manifest: %+v", manifest.Skills)
+	}
+
+	// writeRegistryHelpers materializes the install.sh — read it back and
+	// confirm the new entry made it through the same code path that runs in
+	// real `init` (with `--no-registry` set so npx never actually fires).
+	if err := writeRegistryHelpers(ctx, true); err != nil {
+		t.Fatalf("writeRegistryHelpers: %v", err)
+	}
+	script := readFile(t, filepath.Join(ctx.Options.AgentsDir, "registry", "install.sh"))
+	for _, part := range []string{
+		"npx --yes skills add MiniMax-AI/cli",
+		"--skill mmx-cli",
+		"--global",
+		"--agent universal",
+	} {
+		if !strings.Contains(script, part) {
+			t.Fatalf("install script missing %q. Got:\n%s", part, script)
+		}
+	}
+}
+
 func mustExist(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Lstat(path); err != nil {
