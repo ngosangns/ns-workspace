@@ -17,6 +17,7 @@ import (
 type Options struct {
 	Command    string
 	AgentsDir  string
+	ConfigPath string
 	DryRun     bool
 	Yes        bool
 	Force      bool
@@ -99,6 +100,7 @@ type Context struct {
 	Home          string
 	XDGConfigHome string
 	Presets       fs.FS
+	UserConfig    UserConfig
 	Report        StatusReporter
 	Update        bool
 }
@@ -137,7 +139,7 @@ type InstallPresetFile struct {
 }
 
 func (op InstallPresetFile) Apply(ctx Context) error {
-	data, err := fs.ReadFile(ctx.Presets, op.Src)
+	data, err := readPresetFile(ctx, op.Src)
 	if err != nil {
 		return err
 	}
@@ -159,7 +161,8 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 			return err
 		}
 	}
-	return fs.WalkDir(ctx.Presets, op.SrcRoot, func(path string, d fs.DirEntry, err error) error {
+	seen := map[string]bool{}
+	walkErr := fs.WalkDir(ctx.Presets, op.SrcRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -168,15 +171,40 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 			return err
 		}
 		dst := filepath.Join(op.DstRoot, rel)
+		seen[filepath.ToSlash(rel)] = true
 		if d.IsDir() {
 			return ensureDir(ctx, dst)
 		}
-		data, err := fs.ReadFile(ctx.Presets, path)
+		data, err := readPresetFile(ctx, path)
 		if err != nil {
 			return err
 		}
 		return writeFileManaged(ctx, dst, data, op.Replace)
 	})
+	if walkErr != nil {
+		return walkErr
+	}
+	// Materialize user additions under this tree root. The user config can
+	// point at brand-new files (e.g. an extra skill) that do not exist in
+	// the embedded presets, so the tree walk above never visits them.
+	for _, rel := range ctx.UserConfig.EntriesUnder(op.SrcRoot) {
+		if seen[rel] {
+			continue
+		}
+		fullKey := filepath.ToSlash(filepath.Join(op.SrcRoot, rel))
+		data, err := readPresetFileFromUser(ctx, fullKey)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(op.DstRoot, filepath.FromSlash(rel))
+		if err := ensureDir(ctx, filepath.Dir(dst)); err != nil {
+			return err
+		}
+		if err := writeFileManaged(ctx, dst, data, op.Replace); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (op InstallPresetTree) Describe(ctx Context) {
@@ -472,12 +500,15 @@ func (p opencodePlugin) ExtraOperations(ctx Context, _ AdapterSpec, update bool)
 		manifest = opencodeMCPManifest(manifest)
 		configValues["mcp"] = manifest.MCPServers
 	}
-	configManifest, err := readOpenCodeConfigManifest(ctx)
+	presetValues, err := readOpenCodeConfigValues(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if configManifest.Permission != nil {
-		configValues["permission"] = configManifest.Permission
+	for key, value := range presetValues {
+		// `permission` has a typed struct field for legacy readers; copy
+		// the value verbatim so user-defined key shape (string or object)
+		// survives untouched.
+		configValues[key] = value
 	}
 	if len(configValues) > 0 {
 		// Update rewrites the managed OpenCode config object so removed preset keys
@@ -560,6 +591,46 @@ func (p aiderPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Oper
 
 func (p aiderPlugin) ExtraStatusPaths(ctx Context, _ AdapterSpec) []string {
 	return []string{filepath.Join(ctx.Home, ".aider.conf.yml")}
+}
+
+// minimaxPlugin writes default model + region presets into
+// ~/.mmx/config.json. mmx-cli does not have a user-level skills / agents /
+// MCP directory concept, so the adapter only manages the JSON config file
+// via MergeJSON. The same default values are documented in the bundled
+// `presets/skills/minimax-cli/SKILL.md` for AI agents that invoke mmx.
+type minimaxPlugin struct {
+	ConfigPath string
+}
+
+func (p minimaxPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
+	caps.Artifacts = append(caps.Artifacts, ArtifactSettings)
+	return caps
+}
+
+func (p minimaxPlugin) ExtraOperations(ctx Context, _ AdapterSpec, update bool) ([]Operation, error) {
+	if p.ConfigPath == "" {
+		return nil, nil
+	}
+	replace := update || ctx.Force
+	values, err := readPresetFile(ctx, "presets/minimax/config.json")
+	if err != nil {
+		return nil, err
+	}
+	parsed := map[string]any{}
+	if err := json.Unmarshal(values, &parsed); err != nil {
+		return nil, fmt.Errorf("presets/minimax/config.json: %w", err)
+	}
+	if len(parsed) == 0 {
+		return nil, nil
+	}
+	return []Operation{MergeJSON{Dst: p.ConfigPath, KeyPath: []string{}, Values: parsed, Replace: replace}}, nil
+}
+
+func (p minimaxPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string {
+	if p.ConfigPath == "" {
+		return nil
+	}
+	return []string{p.ConfigPath}
 }
 
 func DefaultAgentsDir() (string, error) {
@@ -723,7 +794,11 @@ func (m Manager) context(opt Options) (Context, error) {
 	if opt.ToolFilter == nil {
 		opt.ToolFilter = map[string]bool{"all": true}
 	}
-	return Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, Report: stdoutReporter{}}, nil
+	userCfg, err := loadUserConfig(opt)
+	if err != nil {
+		return Context{}, err
+	}
+	return Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, UserConfig: userCfg, Report: stdoutReporter{}}, nil
 }
 
 func (m Manager) adapters(ctx Context) []AgentAdapter {
@@ -745,6 +820,7 @@ func (m Manager) adapters(ctx Context) []AgentAdapter {
 		specAdapter{spec: AdapterSpec{ID: "cline", Tier: TierStable, Executables: []string{"cline"}, Targets: AdapterTargets{Skills: filepath.Join(home, ".cline", "data", "skills"), Subagents: filepath.Join(home, ".cline", "data", "agents"), MCPPath: filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"), MCPKeyPath: []string{"mcpServers"}}, Docs: []string{"https://docs.cline.bot/cline-cli/configuration"}}},
 		specAdapter{spec: AdapterSpec{ID: "windsurf", Tier: TierStable, Targets: AdapterTargets{Instruction: filepath.Join(home, ".codeium", "windsurf", "memories", "global_rules.md")}, Docs: []string{"https://docs.windsurf.com/windsurf/cascade/memories"}}},
 		specAdapter{spec: AdapterSpec{ID: "aider", Tier: TierStable, Executables: []string{"aider"}, Docs: []string{"https://aider.chat/docs/config/aider_conf.html", "https://aider.chat/docs/usage/conventions.html"}}, plugin: aiderPlugin{}},
+		specAdapter{spec: AdapterSpec{ID: "minimax", Aliases: []string{"minimax-cli", "mmx"}, Tier: TierStable, Executables: []string{"mmx"}, Docs: []string{"https://platform.minimax.io/docs/token-plan/minimax-cli", "https://github.com/MiniMax-AI/cli"}, Notes: "MiniMax CLI (mmx) is a multimodal content-generation CLI (text/image/video/speech/music). Adapter writes default model and region presets to ~/.mmx/config.json via MergeJSON. The shared skills/ and agents/ fan-out does not apply because mmx-cli does not expose a user-level skills or subagents directory; use the bundled `presets/skills/minimax-cli/SKILL.md` from a coding agent to teach it the mmx surface."}, plugin: minimaxPlugin{ConfigPath: filepath.Join(home, ".mmx", "config.json")}},
 		specAdapter{spec: AdapterSpec{ID: "cursor", Tier: TierManual, Executables: []string{"cursor-agent"}, Manual: true, Docs: []string{"https://docs.cursor.com/en/context", "https://docs.cursor.com/cli/mcp"}, Notes: "Cursor user rules are stored through Cursor settings; generated helper only."}},
 		specAdapter{spec: AdapterSpec{ID: "github-copilot", Tier: TierManual, Manual: true, Docs: []string{"https://code.visualstudio.com/docs/copilot/customization/custom-instructions"}, Notes: "Copilot instructions are repo/editor scoped; generated helper only."}},
 		specAdapter{spec: AdapterSpec{ID: "jetbrains", Tier: TierManual, Manual: true, Docs: []string{"https://www.jetbrains.com/help/ai-assistant/mcp.html"}, Notes: "JetBrains AI MCP setup is product/version specific."}},
@@ -785,7 +861,7 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 			return manifest, err
 		}
 	}
-	data, err := fs.ReadFile(ctx.Presets, "presets/mcp/servers.json")
+	data, err := readPresetFile(ctx, "presets/mcp/servers.json")
 	if err != nil {
 		return manifest, err
 	}
@@ -797,7 +873,7 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 
 func readOpenCodeConfigManifest(ctx Context) (OpenCodeConfigManifest, error) {
 	var manifest OpenCodeConfigManifest
-	data, err := fs.ReadFile(ctx.Presets, "presets/opencode/opencode.json")
+	data, err := readPresetFile(ctx, "presets/opencode/opencode.json")
 	if err != nil {
 		return manifest, err
 	}
@@ -805,6 +881,24 @@ func readOpenCodeConfigManifest(ctx Context) (OpenCodeConfigManifest, error) {
 		return manifest, err
 	}
 	return manifest, nil
+}
+
+// readOpenCodeConfigValues returns the full opencode preset as a generic
+// map so user-defined keys (timeout, provider, etc.) flow through to the
+// native config alongside the canonical `mcp` and `permission` keys.
+// `mcp` is intentionally stripped here because the opencode plugin layers
+// the shared MCP manifest on top after this call.
+func readOpenCodeConfigValues(ctx Context) (map[string]any, error) {
+	data, err := readPresetFile(ctx, "presets/opencode/opencode.json")
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]any{}
+	if err := json.Unmarshal(data, &values); err != nil {
+		return nil, err
+	}
+	delete(values, "mcp")
+	return values, nil
 }
 
 func opencodeMCPManifest(manifest MCPManifest) MCPManifest {
@@ -847,7 +941,7 @@ func readSettingsManifest(ctx Context) (SettingsManifest, error) {
 			return manifest, err
 		}
 	}
-	data, err := fs.ReadFile(ctx.Presets, "presets/settings/settings.json")
+	data, err := readPresetFile(ctx, "presets/settings/settings.json")
 	if err != nil {
 		return manifest, err
 	}
@@ -861,7 +955,7 @@ func readSettingsManifest(ctx Context) (SettingsManifest, error) {
 }
 
 func writeRegistryHelpers(ctx Context, replace bool) error {
-	manifest, err := readRegistryManifest(ctx.Presets)
+	manifest, err := readRegistryManifest(ctx)
 	if err != nil {
 		return err
 	}
@@ -897,9 +991,9 @@ func writeMCPReadme(ctx Context, replace bool) error {
 	return writeFileManaged(ctx, filepath.Join(ctx.Options.AgentsDir, "mcp", "README.md"), []byte(readme), replace)
 }
 
-func readRegistryManifest(presets fs.FS) (RegistryManifest, error) {
+func readRegistryManifest(ctx Context) (RegistryManifest, error) {
 	var manifest RegistryManifest
-	data, err := fs.ReadFile(presets, "presets/registry/skills.json")
+	data, err := readPresetFile(ctx, "presets/registry/skills.json")
 	if err != nil {
 		return manifest, err
 	}
@@ -910,7 +1004,7 @@ func readRegistryManifest(presets fs.FS) (RegistryManifest, error) {
 }
 
 func installRegistrySkills(ctx Context) error {
-	manifest, err := readRegistryManifest(ctx.Presets)
+	manifest, err := readRegistryManifest(ctx)
 	if err != nil {
 		return err
 	}

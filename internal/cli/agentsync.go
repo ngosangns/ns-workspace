@@ -23,8 +23,13 @@ func RunAgentSync(cmd string, args []string, presets fs.FS) error {
 		return err
 	}
 	opt := agentsync.Options{Command: cmd, AgentsDir: homeDefault}
-	tools := flagSet.String("tools", "all", "comma-separated tools: all,stable,manual,experimental,claude,opencode,grok,kimi,kiro,kiro-cli,qwen,gemini,codex,cline,windsurf,aider,cursor,github-copilot,jetbrains,antigravity,trae,roo")
+	tools := flagSet.String("tools", "all", "comma-separated tools: all,stable,manual,experimental,claude,opencode,grok,kimi,kiro,kiro-cli,qwen,gemini,codex,cline,windsurf,aider,minimax,minimax-cli,mmx,cursor,github-copilot,jetbrains,antigravity,trae,roo")
 	flagSet.StringVar(&opt.AgentsDir, "agents-home", homeDefault, "shared agents home")
+	configDefault, err := agentsync.DefaultUserConfigPath()
+	if err != nil {
+		return err
+	}
+	flagSet.StringVar(&opt.ConfigPath, "config", configDefault, "path to user config file overriding embedded presets; empty disables overlay")
 	flagSet.BoolVar(&opt.DryRun, "dry-run", false, "show planned writes without changing files")
 	flagSet.BoolVar(&opt.Yes, "yes", false, "skip interactive confirmations")
 	flagSet.BoolVar(&opt.Force, "force", false, "replace existing files during init")

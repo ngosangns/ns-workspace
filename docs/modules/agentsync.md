@@ -28,7 +28,8 @@ Các command `init`, `update`, `status`, `doctor`, `registry`, `agents` và alia
 ## Data Model
 
 - `Options` giữ command options và filter adapter.
-- `Context` gom options, user home, XDG config home, preset filesystem, reporter và `Update` mode.
+- `Context` gom options, user home, XDG config home, preset filesystem, user config overlay, reporter và `Update` mode.
+- `UserConfig` ánh xạ preset path (ví dụ `presets/opencode/opencode.json`) tới file tuyệt đối trên disk do user cung cấp, dùng để override hoặc bổ sung embedded presets.
 - `SyncPlan` là contract build-before-apply cho `init` và `update`.
 - `PlanPhase` gom operation theo thứ tự core, registry helpers, registry install, MCP và adapters.
 - `PlannedOperation` gắn `Operation` với owner adapter/core/registry và artifact kind để tests/status logic có thể inspect.
@@ -83,7 +84,74 @@ Khi build `update`, MCP/settings manifests được đọc từ embedded presets
 
 Registry skills trong `presets/registry/skills.json` được ghi thành `~/.agents/registry/skills.json` và `install.sh`. Khi không dùng `--no-registry`, manager chạy `npx --yes skills add ... --global --agent universal --yes` cho từng skill để cài vào shared skills home trước; adapter fan-out vẫn do `ns-workspace update` link/copy từ `~/.agents/skills`. Lỗi từng registry skill được report thành warning để các bước khác vẫn có thể hoàn tất.
 
+Registry hiện ship 5 skill: `find-skills`, `dispatching-parallel-agents`, `gitbutler`, `taste-skill` và `minimax-cli` (từ `MiniMax-AI/cli`, skill name `mmx-cli`). `minimax-cli` cài official SKILL.md của MiniMax CLI để các coding agent có thể invoke `mmx` command mà không cần user tự `npx skills add MiniMax-AI/cli -y -g`.
+
 `--no-mcp` bỏ qua MCP materialization cho adapter và shared MCP preset. `--no-registry` vẫn ghi registry helper files nhưng không chạy cài skills.
+
+## User Config Overlay
+
+`Options.ConfigPath` trỏ tới file JSON user-level dùng để override hoặc bổ sung embedded presets. File này cho phép cá nhân hoá preset mà không cần fork repo hay sửa binary. `--config ""` tắt overlay hoàn toàn.
+
+### Vị Trí Mặc Định
+
+| Nền tảng | Đường dẫn |
+| --- | --- |
+| Linux/macOS | `$XDG_CONFIG_HOME/ns-workspace/config.json` (mặc định `~/.config/ns-workspace/config.json`) |
+| Windows | `%AppData%\ns-workspace\config.json` |
+
+Env var `NS_WORKSPACE_CONFIG` override vị trí. Flag `--config <file>` override cả env var và default.
+
+### Định Dạng
+
+JSON object phẳng, key là preset path bắt đầu bằng `presets/`, value là đường dẫn tuyệt đối tới file user:
+
+```json
+{
+  "presets/agents/AGENTS.md": "/home/me/.config/ns-workspace/AGENTS.md",
+  "presets/opencode/opencode.json": "/home/me/.config/ns-workspace/opencode.json",
+  "presets/skills/minimax-cli/SKILL.md": "/home/me/.config/ns-workspace/minimax-cli.md",
+  "presets/mcp/servers.json": "/home/me/.config/ns-workspace/servers.json"
+}
+```
+
+Key được chuẩn hoá: `\\` chuyển thành `/`, khoảng trắng đầu/cuối bị cắt, leading `/` bị bỏ. Value phải là đường dẫn tuyệt đối tới file tồn tại. Path không khớp preset nào vẫn hợp lệ và hoạt động như phép cộng (vd: skill hoàn toàn mới).
+
+### Thứ Tự Ưu Tiên
+
+Khi materialization đọc preset path, thứ tự là:
+
+1. **User config** nếu có entry cho path đó.
+2. **Embedded preset** trong binary nếu user không cung cấp.
+
+Trên `init`, nếu shared home (`~/.agents/...`) đã có file, nó vẫn được giữ nguyên (không overwrite trừ khi `--force`). Trên `update`, user config đè embedded, và embedded đè shared home cũ để cleanup stale entries.
+
+### Phạm Vi Áp Dụng
+
+- `InstallPresetFile`: đọc qua `readPresetFile()` — áp dụng cho `presets/agents/AGENTS.md`, `presets/settings/settings.json`, `presets/mcp/servers.json`.
+- `InstallPresetTree`: walk embedded + materialize user additions cho `presets/skills/*` và `presets/subagents/*`.
+- `opencodePlugin`: đọc full `presets/opencode/opencode.json` dưới dạng map rồi merge, cho phép user thêm `timeout`, `provider`, v.v. ngoài `permission` mặc định.
+- `readMCPManifest`/`readSettingsManifest`/`readRegistryManifest`: dùng overlay làm fallback khi shared home không có (update mode) hoặc không tồn tại (init mode).
+
+### Ví Dụ: Default Preset Có Full Authorization + Increased Timeout
+
+Để có preset opencode mặc định với full authorization và timeout 300 giây cho mọi tool:
+
+```json
+{
+  "presets/opencode/opencode.json": "/home/me/.config/ns-workspace/opencode.json"
+}
+```
+
+`/home/me/.config/ns-workspace/opencode.json`:
+
+```json
+{
+  "permission": "allow",
+  "timeout": 300000
+}
+```
+
+Sau `ns-workspace init` hoặc `ns-workspace update`, `~/.config/opencode/opencode.json` chứa cả `permission` và `timeout` do user cung cấp.
 
 ## Safety Rules
 

@@ -64,10 +64,13 @@ Không dùng dạng `go run /Users/ngosangns/Github/ns-workspace ...` từ một
 
 ```bash
 --agents-home ~/.agents
+--config ~/.config/ns-workspace/config.json
 --tools all
 --tools stable
---tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,cursor,trae
+--tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,minimax,cursor,trae
 --tools kiro-cli
+--tools minimax-cli
+--tools mmx
 --dry-run
 --force
 --copy
@@ -75,7 +78,47 @@ Không dùng dạng `go run /Users/ngosangns/Github/ns-workspace ...` từ một
 --no-registry
 ```
 
-Dùng `--copy` nếu không muốn tạo symlink.
+Dùng `--copy` nếu không muốn tạo symlink. Dùng `--config <file>` trỏ tới file JSON user-level để override hoặc bổ sung embedded preset (xem [User Config Overlay](#user-config-overlay)).
+
+## User Config Overlay
+
+`ns-workspace` cho phép cá nhân hoá preset mà không cần fork repo. Tạo file JSON ở vị trí mặc định `~/.config/ns-workspace/config.json` (override bằng `NS_WORKSPACE_CONFIG` hoặc `--config`) với format:
+
+```json
+{
+  "presets/agents/AGENTS.md": "/home/me/.config/ns-workspace/AGENTS.md",
+  "presets/opencode/opencode.json": "/home/me/.config/ns-workspace/opencode.json",
+  "presets/skills/custom-skill/SKILL.md": "/home/me/.config/ns-workspace/skill.md"
+}
+```
+
+Key là preset path (bắt đầu bằng `presets/`, dùng `/`), value là đường dẫn tuyệt đối tới file user. User file đè embedded preset; nếu key chỉ vào path mà embedded không có (vd: `presets/skills/custom-skill/SKILL.md`), file đó được cài như skill mới.
+
+Ví dụ preset mặc định opencode với full authorization + tăng timeout:
+
+```json
+// ~/.config/ns-workspace/opencode.json
+{
+  "permission": "allow",
+  "timeout": 300000
+}
+```
+
+Sau `ns-workspace init`/`update`, `~/.config/opencode/opencode.json` sẽ có cả `permission` lẫn `timeout`. Tắt overlay bằng `--config ""`.
+
+Preset MiniMax CLI (`presets/skills/minimax-cli/SKILL.md`) mặc định đã có sẵn, cấp full authorization cho mọi subcommand và đề xuất timeout dài hơn cho video/music generation. Có thể override qua user config hoặc qua `npx skills add MiniMax-AI/cli -y -g` để lấy bản chính thức mới nhất.
+
+## MiniMax CLI Adapter
+
+MiniMax CLI (`mmx`) được hỗ trợ như một stable adapter, chọn bằng `--tools minimax` (alias: `minimax-cli`, `mmx`). mmx-cli là multimodal CLI (text/image/video/speech/music) nên adapter chỉ quản lý config — không có skills/agents/MCP user-level directory để fan-out:
+
+- Preset: `presets/minimax/config.json` (default model + region).
+- Native target: `~/.mmx/config.json`, ghi qua `MergeJSON` với `Replace: true` trên `update` để cleanup stale managed keys, mirror cùng pattern với `opencode`.
+- Default models: `MiniMax-M3` (text), `speech-2.8-hd` (speech), `MiniMax-Hailuo-2.3` (video), `music-2.6` (music).
+- Default timeouts: `timeout: 1800` (per-call, 30 phút) + `sessionTimeout: 1800` (long-running session như video generation sync).
+- Bật: `go run . init --tools minimax` (sau khi `npm install -g mmx-cli && mmx auth login`).
+- Override defaults qua user config: thêm `"presets/minimax/config.json": "/path/to/your.json"` vào `~/.config/ns-workspace/config.json`.
+- Official SKILL tự động cài qua registry: `npx skills add MiniMax-AI/cli -y -g` chạy trong phase registry install khi không dùng `--no-registry`. User có thể chạy lại bất cứ lúc nào qua `sh ~/.agents/registry/install.sh`.
 
 ## Dữ Liệu Được Quản Lý
 
@@ -88,19 +131,20 @@ Dùng `--copy` nếu không muốn tạo symlink.
 
 Stable adapters ghi vào các user-level path đã biết:
 
-| Agent         | User-level targets                                                                                                         |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
-| OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                |
-| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build          |
-| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                  |
-| Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`; `--tools kiro-cli` là alias của `kiro`        |
-| Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                              |
-| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với hooks và MCP                                      |
-| Codex CLI     | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml`                                    |
-| Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                           |
-| Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                             |
-| Aider         | Managed conventions block trong `~/.aider.conf.yml`                                                                        |
+| Agent | User-level targets |
+| --- | --- |
+| Claude Code | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
+| OpenCode | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP |
+| Grok Build | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build |
+| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json` |
+| Kiro / CLI | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`; `--tools kiro-cli` là alias của `kiro` |
+| Qwen Code | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP |
+| Gemini CLI | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với hooks và MCP |
+| Codex CLI | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml` |
+| Cline | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json` |
+| Windsurf | `~/.codeium/windsurf/memories/global_rules.md` |
+| Aider | Managed conventions block trong `~/.aider.conf.yml` |
+| MiniMax CLI | `~/.mmx/config.json` (default model presets); alias `minimax-cli` / `mmx` qua `--tools` |
 
 Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<agent>/` thay vì ghi trực tiếp vào native path chưa chắc chắn. Nhóm này hiện gồm Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 
