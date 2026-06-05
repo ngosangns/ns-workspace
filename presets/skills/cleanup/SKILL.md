@@ -1,6 +1,6 @@
 ---
 name: cleanup
-description: Quét worktree, uncommitted changes, implemented work, branch hoặc commit/ref để đánh giá cleanup dead code, dead flows, dead docs, legacy code và legacy docs. Dùng khi user muốn lập cleanup plan sau một đợt implement, muốn audit branch/commit đã làm, hoặc muốn tìm những phần nên xóa/rút gọn trước khi tiếp tục.
+description: Audit worktree, uncommitted changes, branch hoặc commit/ref để đánh giá dead code, dead flows, dead docs, legacy code/docs. Output là một plan trong `docs/specs/planning/` để user duyệt, không tự xóa. Trigger: dọn dẹp, audit branch, tìm dead code, lập cleanup plan, rút gọn trước khi tiếp tục.
 ---
 
 # Cleanup Audit Và Plan
