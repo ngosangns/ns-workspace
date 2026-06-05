@@ -50,3 +50,4 @@ Dùng skill này khi cần đánh giá cleanup trước khi xóa hoặc refactor
 - Không tạo cleanup plan kiểu changelog, commit summary hoặc danh sách diff thô.
 - Không cập nhật docs hiện trạng thành "đã cleanup" trước khi cleanup thật sự được duyệt và triển khai.
 - Không chạy full build chỉ để kết thúc audit; chọn validation mục tiêu theo candidate đã xác định.
+- **Hỏi lại khi vướng mắc:** Khi một cleanup candidate có rủi ro cao (public contract, config user-level, generated artifact, dữ liệu đã migrate), khi bằng chứng reachability yếu và chỉ là "không thấy reference trong grep", khi có nhiều cách diễn giải "dead" vs "ít dùng cố ý", hoặc khi cleanup chạm sang module/feature khác ngoài scope audit → **dừng lại và hỏi user** trước khi đưa vào plan, kèm bằng chứng thu thập được, mức độ rủi ro và các lựa chọn (giữ lại, xóa có gate, archive). Không tự quyết xóa thứ mà user có thể muốn giữ.

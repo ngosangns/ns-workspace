@@ -59,3 +59,4 @@ Dùng skill này cho các công việc chỉ đọc trên knowledge base của d
 - Không xem lịch sử commit là nội dung docs.
 - Nếu docs stale so với HEAD, nói rõ trước khi dựa vào chúng.
 - Nếu user yêu cầu cập nhật docs sau khi đọc/search, chuyển sang `update-docs`.
+- **Hỏi lại khi vướng mắc:** Sau khi đã đọc specs và code mà vẫn còn câu hỏi chưa giải đáp được từ knowledge base của repo (ý định user mơ hồ, nhiều cách hiểu khác nhau, thông tin mâu thuẫn giữa docs và code mà không có tín hiệu nào rõ ràng hơn) → **dừng lại và hỏi user cụ thể** thay vì phỏng đoán. Liệt kê các giả thuyết khả dĩ, file/đoạn đã đọc, và câu hỏi cần user quyết. Không suy luận quá tay khi repo không cho đủ bằng chứng.

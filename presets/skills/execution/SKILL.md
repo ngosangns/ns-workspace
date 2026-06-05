@@ -22,6 +22,7 @@ Dùng skill này khi đã đến bước sửa code. Với task lớn, chỉ dù
 - **Liệt kê việc còn lại:** Nếu task chưa xử lý trọn vẹn, nêu rõ phần còn lại, lý do dang dở, bước tiếp theo ngắn gọn.
 - **Không build chỉ để kết thúc:** Không chạy build rộng nếu repo guidance không yêu cầu.
 - **Tự review liên tục:** Lặp lại review và cleanup đến khi diff không còn vấn đề rõ ràng về scope, chất lượng, comment, validation.
+- **Hỏi lại khi vướng mắc:** Khi đang triển khai phát hiện plan thiếu sót thật sự (thiếu file, thiếu dependency, design assumption sai), khi cần đổi hướng/expand scope so với plan đã duyệt, khi requirements mâu thuẫn với plan/prompt, hoặc khi có quyết định kiến trúc phụ mà plan chưa nói tới → **dừng lại và hỏi user** trước khi sửa, kèm phần đã làm, phần phát hiện, các lựa chọn. Không tự ý đổi hướng plan đã duyệt vì "thấy hợp lý hơn".
 
 ## Nguyên Tắc Thực Thi
 

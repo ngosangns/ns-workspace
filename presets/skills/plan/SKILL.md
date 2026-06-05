@@ -21,6 +21,7 @@ Các công việc nhỏ và rõ ràng có thể bỏ qua skill này.
 
 - **Tìm nguyên nhân gốc rễ trước khi lập hướng đi:** Kế hoạch phải thể hiện vì sao vấn đề tồn tại hoặc vì sao thay đổi là cần thiết, phân biệt triệu chứng, nguyên nhân trực tiếp, nguyên nhân gốc rễ và động lực thiết kế.
 - **Nhìn tổng quát nhưng giữ trọng tâm:** Kế hoạch phải bao quát đủ context hệ thống, module boundary, contract, luồng dữ liệu và rủi ro liên quan, nhưng chỉ đề xuất công việc nằm trong phạm vi cần thiết để giải quyết mục tiêu.
+- **Hỏi lại khi vướng mắc:** Khi gặp điều chưa rõ, nghi ngờ mâu thuẫn giữa các nguồn (requirements, plan cũ, code hiện tại, prompt của user), phát hiện nhiều hướng kiến trúc/thiết kế hợp lý mà không rõ user prefer cái nào, hoặc cần ý kiến user để chốt phạm vi/scope/ngoài-scope → **dừng lại và hỏi cụ thể**, kèm context đã thu thập và các lựa chọn khả dĩ. Không tự đoán hoặc tự chọn hướng có rủi ro sai ý user.
 
 ## Vị Trí Lưu Kế Hoạch
 

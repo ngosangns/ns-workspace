@@ -14,6 +14,7 @@ Dùng skill này để cập nhật knowledge base của repo sau nghiên cứu 
 - **Requirements theo feature/module:** Mỗi feature folder hoặc module folder nên có `requirements.md` chứa critical requirements phải luôn follow cho phạm vi đó. Khi user yêu cầu cập nhật requirements, critical rules, constraints, acceptance criteria hoặc always-follow rules cho feature/module, tạo hoặc cập nhật `requirements.md` tương ứng.
 - **Báo cáo cô đọng:** Nói thẳng docs nào đã đổi và validation nào đã chạy.
 - **Cập nhật tinh gọn:** Nội dung phải phản ánh thiết kế/logic mới nhất. Xóa nội dung cũ không còn chính xác, không giữ lại rồi thêm correction bên cạnh.
+- **Hỏi lại khi vướng mắc:** Khi user yêu cầu cập nhật docs mà scope chưa rõ (chỉ feature đang đổi, hay toàn bộ module/architecture chịu ảnh hưởng), khi docs cũ và code hiện tại mâu thuẫn mà không rõ phía nào đúng (docs lỗi thời hay behavior đã đổi có chủ đích), khi có nhiều cách diễn giải thiết kế hiện tại, hoặc khi cần quyết định có migrate flat doc sang folder feature/module hay không → **dừng lại và hỏi user** trước khi viết, kèm diff context, các lựa chọn và rủi ro. Không tự quyết phạm vi docs khi ý user chưa rõ.
 
 ## Bộ Quy Tắc Viết Docs
 
