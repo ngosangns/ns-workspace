@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Tạo file kế hoạch cho công việc lớn hoặc phức tạp và chờ user phê duyệt trước khi sửa mã nguồn. Dùng sau bước nghiên cứu khi công việc lớn, liên quan kiến trúc, rủi ro hoặc nhiều bước.
+description: Tạo file kế hoạch trong `docs/specs/planning/` cho công việc lớn, phức tạp, liên quan kiến trúc/rủi ro, rồi chờ user phê duyệt trước khi sửa code. Dùng sau `research`; hỗ trợ suy ra kế hoạch từ tên branch hoặc commit/ref. Trigger: lập plan, viết spec, đề xuất thiết kế, refactor lớn, "lên kế hoạch", "phân tích trước".
 ---
 
 # Lập Kế Hoạch Và Xin Phép
@@ -88,13 +88,15 @@ Thay vào đó, kế hoạch phải chuyển hóa thông tin đã đọc thành:
 
 ## Quy Trình
 
-1. Đảm bảo bước nghiên cứu đã xác định docs/specs liên quan, đường dẫn code, ràng buộc và các giả định chưa được giải quyết. Khi kế hoạch phụ thuộc vào quan hệ symbol/call/reference, chạy Graph Query CLI/script bằng module path mới nhất theo README trước khi lập hướng đi:
+1. Đảm bảo bước nghiên cứu đã xác định docs/specs liên quan, đường dẫn code, ràng buộc và các giả định chưa được giải quyết. Khi kế hoạch phụ thuộc vào quan hệ symbol/call/reference, dùng skill `lsp-code-graph` để chạy Graph Query CLI; cú pháp đúng là từ checkout local của `ns-workspace`, không dùng `@latest`:
 
    ```sh
-   go run github.com/ngosangns/ns-workspace@latest graph --project /path/to/project --query "<symbol-or-concept>" --json
+   cd ~/path/to/ns-workspace
+   go run . graph --project /path/to/project --query "<symbol-or-concept>" --json
    ```
 
    `graph --query` tự ensure/cài language server còn thiếu theo mặc định vào cache user của `ns-workspace`; chỉ dùng `--no-ensure-lsp` khi workflow bắt buộc read-only hoặc cần cấm network/install side effect. Đọc `warnings`, ưu tiên `panels.codeGraph` cho symbol/caller/callee/references và `panels.docsGraph` cho quan hệ tài liệu. Nếu install/prerequisite/relation expansion fail hoặc kết quả không đủ, ghi rõ fallback sang docs, diff và code inspection.
+
 2. Làm rõ nguyên nhân gốc rễ hoặc động lực thiết kế chính: vấn đề thật sự là gì, vì sao xảy ra, contract/invariant nào liên quan và hậu quả nếu chỉ vá triệu chứng.
 3. Xác định bức tranh tổng quan vừa đủ rồi thu hẹp trọng tâm: module boundary, luồng dữ liệu, API/contract, vùng bị ảnh hưởng, vùng ngoài phạm vi và tiêu chí giữ scope.
 4. Nếu user đưa tên branch hoặc commit/ref, đọc toàn bộ thay đổi liên quan bằng lệnh Git chỉ đọc, không switch branch và không làm đổi worktree.
