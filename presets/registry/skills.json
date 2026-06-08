@@ -21,6 +21,66 @@
       "skill": "design-taste-frontend"
     },
     {
+      "name": "taste-skill-v1",
+      "source": "leonxlnx/taste-skill",
+      "skill": "design-taste-frontend-v1"
+    },
+    {
+      "name": "gpt-taste",
+      "source": "leonxlnx/taste-skill",
+      "skill": "gpt-taste"
+    },
+    {
+      "name": "imagegen-frontend-web",
+      "source": "leonxlnx/taste-skill",
+      "skill": "imagegen-frontend-web"
+    },
+    {
+      "name": "imagegen-frontend-mobile",
+      "source": "leonxlnx/taste-skill",
+      "skill": "imagegen-frontend-mobile"
+    },
+    {
+      "name": "brandkit",
+      "source": "leonxlnx/taste-skill",
+      "skill": "brandkit"
+    },
+    {
+      "name": "full-output-enforcement",
+      "source": "leonxlnx/taste-skill",
+      "skill": "full-output-enforcement"
+    },
+    {
+      "name": "minimalist-ui",
+      "source": "leonxlnx/taste-skill",
+      "skill": "minimalist-ui"
+    },
+    {
+      "name": "industrial-brutalist-ui",
+      "source": "leonxlnx/taste-skill",
+      "skill": "industrial-brutalist-ui"
+    },
+    {
+      "name": "image-to-code",
+      "source": "leonxlnx/taste-skill",
+      "skill": "image-to-code"
+    },
+    {
+      "name": "high-end-visual-design",
+      "source": "leonxlnx/taste-skill",
+      "skill": "high-end-visual-design"
+    },
+    {
+      "name": "redesign-existing-projects",
+      "source": "leonxlnx/taste-skill",
+      "skill": "redesign-existing-projects"
+    },
+    {
+      "name": "stitch-design-taste",
+      "source": "leonxlnx/taste-skill",
+      "skill": "stitch-design-taste"
+    },
+    {
       "name": "minimax-cli",
       "source": "MiniMax-AI/cli",
       "skill": "mmx-cli"
