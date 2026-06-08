@@ -1,0 +1,6 @@
+{
+  "id": "opencode",
+  "target": ".config/opencode/opencode.json",
+  "preset": "presets/opencode/opencode.json",
+  "raw": true
+}

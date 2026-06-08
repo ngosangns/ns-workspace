@@ -5,7 +5,7 @@
 - **Status**: active
 - **Description**: Tài liệu module `internal/agentsync`, mô tả sync plan, adapter sync, preset materialization, managed operations, registry skills, native targets và safety rules.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Kiến trúc tổng quan](../architecture/overview.md), [Aspect inventory](../research/aspect-inventory.md), [Thuật ngữ](../shared/glossary.md), [Plan tối ưu Agentsync](../specs/planning/refactor-agentsync-preset-architecture.md)
+- **Links**: [Chỉ mục](../_index.md), [Kiến trúc tổng quan](../architecture/overview.md), [Aspect inventory](../research/aspect-inventory.md), [Thuật ngữ](../shared/glossary.md), [Plan tối ưu Agentsync](../specs/planning/refactor-agentsync-preset-architecture.md), [Per-adapter settings polymorphism](../specs/planning/per-adapter-settings-preset-polymorphism.md)
 
 ## Tổng Quan
 
@@ -38,6 +38,9 @@ Các command `init`, `update`, `status`, `doctor`, `registry`, `agents` và alia
 - `AgentAdapter` định nghĩa adapter contract: `Name`, `Capabilities`, `Plan`, `StatusPaths`, `DoctorExecutables`.
 - `Operation` là thao tác materialization có `Apply`, `Describe` và `Path`.
 - `MCPManifest`, `SettingsManifest`, `RegistryManifest` và `OpenCodeConfigManifest` parse JSON preset từ shared home hoặc embedded presets trong dry-run.
+- `AdapterSettingsProfile` mô tả cách materialize settings cho một provider: target path (relative to home), preset files, và merge strategy per field (deep-merge, shallow-merge, replace).
+- `AdapterSettingsManifest` chứa catalog trung tâm cho adapters cần settings profile, đọc từ `presets/manifest.json`.
+- `ApplyAdapterSettings` là operation materialization settings cho provider có profile; provider chưa migrate vẫn dùng `LinkOrCopy` cũ.
 - `AgentCapabilities` mô tả support tier, docs URL, artifact kinds và notes cho `agents/catalog`.
 
 ## Managed Operations
@@ -62,7 +65,7 @@ Manual adapters hiện gồm Cursor, GitHub Copilot và JetBrains AI. Experiment
 
 Plugin adapter hiện có:
 
-- OpenCode nhận MCP presets dưới key `mcp` và đổi server type `http` thành `remote`; permission lấy từ `presets/opencode/opencode.json`.
+- OpenCode dùng `opencodePlugin.ExtraOperations` nhận MCP presets dưới key `mcp` và đổi server type `http` thành `remote`; config values lấy từ `presets/opencode/opencode.json` và merge vào native config qua `MergeJSON` thay vì qua `ApplyAdapterSettings`.
 - Claude tạo script helper `~/.agents/generated/claude/mcp.commands.sh` để add MCP bằng CLI user scope.
 - Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers.
 - Aider append managed conventions block vào `~/.aider.conf.yml`.
@@ -70,7 +73,7 @@ Plugin adapter hiện có:
 
 ## Preset Và Registry Rules
 
-Preset embedded trong `main.go` bao gồm `presets/agents`, `presets/skills/*`, `presets/subagents`, `presets/settings`, `presets/mcp`, `presets/registry` và `presets/opencode`. `BuildPlan()` luôn đặt shared directories và preset core trước registry, MCP và adapter operations.
+Preset embedded trong `main.go` bao gồm `presets/agents`, `presets/skills/*`, `presets/subagents`, `presets/settings`, `presets/adapters`, `presets/mcp`, `presets/registry` và `presets/opencode`. `BuildPlan()` luôn đặt shared directories và preset core trước registry, MCP và adapter operations.
 
 Phase order của `SyncPlan`:
 
@@ -87,6 +90,41 @@ Registry skills trong `presets/registry/skills.json` được ghi thành `~/.age
 Registry hiện ship 5 skill: `find-skills`, `dispatching-parallel-agents`, `gitbutler`, `taste-skill` và `minimax-cli` (từ `MiniMax-AI/cli`, skill name `mmx-cli`). `minimax-cli` cài official SKILL.md của MiniMax CLI để các coding agent có thể invoke `mmx` command mà không cần user tự `npx skills add MiniMax-AI/cli -y -g`.
 
 `--no-mcp` bỏ qua MCP materialization cho adapter và shared MCP preset. `--no-registry` vẫn ghi registry helper files nhưng không chạy cài skills.
+
+## Per-Adapter Settings Profiles
+
+Settings cho mỗi provider được materialize qua adapter settings profile thay vì share một file chung. Mỗi provider có profile riêng trong `presets/adapters/` mô tả:
+
+- `target`: đường dẫn relative to user home, ví dụ `.claude/settings.json`.
+- `defaultPreset`: preset cross-cutting (hooks, ...) trong `presets/settings/default.json`.
+- `preset`: preset riêng provider trong `presets/settings/<id>.json`.
+- `merge`: bảng field → strategy → source (`default`, `preset`, hoặc `shared` cho MCP).
+
+Catalog trung tâm ở `presets/manifest.json` liệt kê adapter id, support tier, executable, docs URL và profile path. Khi `specAdapter.Plan` thấy adapter id trong manifest, nó emit operation `ApplyAdapterSettings` thay cho `LinkOrCopy` settings cũ + `MergeJSON` hooks. Provider chưa có profile vẫn dùng path cũ để giữ backward-compat.
+
+Cấu trúc preset settings:
+
+- `presets/settings/default.json`: hooks cross-cutting rỗng `{}`, làm source `default` cho mọi provider.
+- `presets/settings/claude.json`: `{ "permissions": { "defaultMode": "bypassPermissions" } }` chỉ dùng cho Claude Code, merge strategy `replace`.
+- `presets/settings/qwen.json`, `gemini.json`, `cline.json`: `{}`, mỗi provider có thể extend sau.
+
+Cấu trúc adapter profiles:
+
+- `presets/adapters/claude.json`: target `.claude/settings.json`, merge `hooks` (deep, từ default), `permissions` (replace, từ claude.json), `mcpServers` (shallow, từ shared).
+- `presets/adapters/qwen.json`, `gemini.json`: target `.qwen/settings.json` / `.gemini/settings.json`, merge `hooks` (deep, từ default) và `mcpServers` (shallow, từ shared), không có `permissions`.
+- `presets/adapters/cline.json`: target `.cline/data/settings/cline_mcp_settings.json`, chỉ merge `mcpServers`.
+- `presets/adapters/opencode.json`: profile raw, copy thẳng `presets/opencode/opencode.json` sang `~/.config/opencode/opencode.json` (opencodePlugin xử lý MCP merge ở apply phase).
+
+Ưu điểm:
+
+- Thêm field mới cho provider X không leak sang provider Y.
+- Thêm provider mới không cần đụng Go code, chỉ cần thêm profile + preset + manifest row.
+- Tách rõ field cross-cutting (`default.json`) khỏi field provider-specific.
+
+Hạn chế:
+
+- Một số provider cần logic đặc biệt (opencode merge top-level object) vẫn dùng plugin riêng, không qua `ApplyAdapterSettings`.
+- File name `default.json` thay vì `_default.json` vì `embed.FS` skip file bắt đầu `_`.
 
 ## User Config Overlay
 

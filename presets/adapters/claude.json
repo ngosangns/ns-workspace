@@ -1,0 +1,20 @@
+{
+  "id": "claude",
+  "target": ".claude/settings.json",
+  "defaultPreset": "presets/settings/default.json",
+  "preset": "presets/settings/claude.json",
+  "merge": {
+    "hooks": {
+      "strategy": "merge-deep",
+      "from": "default"
+    },
+    "permissions": {
+      "strategy": "replace",
+      "from": "preset"
+    },
+    "mcpServers": {
+      "strategy": "merge-shallow",
+      "from": "shared"
+    }
+  }
+}
