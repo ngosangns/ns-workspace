@@ -410,6 +410,22 @@ func (a specAdapter) Capabilities() AgentCapabilities {
 	return caps
 }
 
+// adapterSettingsProfile trả về profile path cho adapter nếu có trong manifest.
+func (a specAdapter) adapterSettingsProfile(ctx Context) (string, error) {
+	manifest, err := loadAdapterSettingsManifest(ctx)
+	if err != nil {
+		return "", err
+	}
+	return manifest[a.spec.ID], nil
+}
+
+// adapterSettingsHomeDir trả về user home directory để áp dụng settings
+// profile. Target path trong profile là relative to home (vd
+// ), nên khi apply cần resolve từ user home.
+func adapterSettingsHomeDir() (string, error) {
+	return os.UserHomeDir()
+}
+
 func (a specAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	replace := update || ctx.Force
 	ops := []Operation{}
@@ -435,15 +451,31 @@ func (a specAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	if targets.Subagents != "" {
 		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSubagents, DstRoot: targets.Subagents, Replace: replace})
 	}
-	if targets.Settings != "" {
-		ops = append(ops, LinkOrCopy{Src: filepath.Join(ctx.Options.AgentsDir, "settings.json"), Dst: targets.Settings, Replace: replace})
+	profilePath, err := a.adapterSettingsProfile(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if targets.HooksPath != "" && len(targets.HooksKeyPath) > 0 {
-		manifest, err := readSettingsManifest(ctx)
+	if profilePath != "" {
+		homeDir, err := adapterSettingsHomeDir()
 		if err != nil {
 			return nil, err
 		}
-		ops = append(ops, MergeJSON{Dst: targets.HooksPath, KeyPath: targets.HooksKeyPath, Values: manifest.Hooks, Replace: replace})
+		targetPath, err := resolveAdapterSettingsTarget(ctx, profilePath, homeDir)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, ApplyAdapterSettings{ProfilePath: profilePath, TargetPath: targetPath, HomeDir: homeDir, Replace: replace})
+	} else {
+		if targets.Settings != "" {
+			ops = append(ops, LinkOrCopy{Src: filepath.Join(ctx.Options.AgentsDir, "settings.json"), Dst: targets.Settings, Replace: replace})
+		}
+		if targets.HooksPath != "" && len(targets.HooksKeyPath) > 0 {
+			manifest, err := readSettingsManifest(ctx)
+			if err != nil {
+				return nil, err
+			}
+			ops = append(ops, MergeJSON{Dst: targets.HooksPath, KeyPath: targets.HooksKeyPath, Values: manifest.Hooks, Replace: replace})
+		}
 	}
 	if !ctx.NoMCP && targets.MCPPath != "" && len(targets.MCPKeyPath) > 0 {
 		manifest, err := readMCPManifest(ctx)
@@ -469,6 +501,12 @@ func (a specAdapter) StatusPaths(ctx Context) []string {
 	paths := []string{targets.Instruction, targets.Skills, targets.Subagents, targets.Settings, targets.HooksPath, targets.MCPPath}
 	if a.spec.Manual {
 		paths = append(paths, filepath.Join(ctx.Options.AgentsDir, "generated", a.spec.ID, "README.md"))
+	}
+	if profilePath, err := a.adapterSettingsProfile(ctx); err == nil && profilePath != "" {
+		homeDir, _ := adapterSettingsHomeDir()
+		if targetPath, err := resolveAdapterSettingsTarget(ctx, profilePath, homeDir); err == nil {
+			paths = append(paths, ApplyAdapterSettings{ProfilePath: profilePath, TargetPath: targetPath, HomeDir: homeDir}.Path())
+		}
 	}
 	if plugin, ok := a.plugin.(interface {
 		ExtraStatusPaths(Context, AdapterSpec) []string
@@ -941,7 +979,7 @@ func readSettingsManifest(ctx Context) (SettingsManifest, error) {
 			return manifest, err
 		}
 	}
-	data, err := readPresetFile(ctx, "presets/settings/settings.json")
+	data, err := readPresetFile(ctx, "presets/settings/default.json")
 	if err != nil {
 		return manifest, err
 	}

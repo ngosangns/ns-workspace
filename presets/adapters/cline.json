@@ -1,0 +1,8 @@
+{
+  "id": "cline",
+  "target": ".cline/data/settings/cline_mcp_settings.json",
+  "preset": "presets/settings/cline.json",
+  "merge": {
+    "mcpServers": { "strategy": "merge-shallow", "from": "shared" }
+  }
+}

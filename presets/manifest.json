@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "adapters": [
+    {
+      "id": "claude",
+      "tier": "stable",
+      "executable": "claude",
+      "docs": [
+        "https://docs.claude.com/en/docs/claude-code/settings",
+        "https://docs.claude.com/en/docs/claude-code/mcp"
+      ],
+      "settingsProfile": "presets/adapters/claude.json"
+    },
+    {
+      "id": "qwen",
+      "tier": "stable",
+      "executable": "qwen",
+      "docs": [
+        "https://qwenlm.github.io/qwen-code-docs/en/cli/configuration/",
+        "https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/"
+      ],
+      "settingsProfile": "presets/adapters/qwen.json"
+    },
+    {
+      "id": "gemini",
+      "tier": "stable",
+      "executable": "gemini",
+      "docs": [
+        "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"
+      ],
+      "settingsProfile": "presets/adapters/gemini.json"
+    },
+    {
+      "id": "cline",
+      "tier": "stable",
+      "executable": "cline",
+      "docs": [
+        "https://docs.cline.bot/cline-cli/configuration"
+      ],
+      "settingsProfile": "presets/adapters/cline.json"
+    }
+  ]
+}

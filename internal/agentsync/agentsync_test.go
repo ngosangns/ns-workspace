@@ -578,3 +578,115 @@ func planPhaseNames(plan SyncPlan) []PlanPhaseName {
 	}
 	return names
 }
+
+func TestAdapterSettingsPerProviderNoFieldLeak(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("claude,qwen,gemini"),
+	}
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	claudeSettings := readFile(t, filepath.Join(home, ".claude", "settings.json"))
+	if !strings.Contains(claudeSettings, "permissions") {
+		t.Fatalf("claude settings should have permissions field: %s", claudeSettings)
+	}
+
+	qwenSettings := readFile(t, filepath.Join(home, ".qwen", "settings.json"))
+	if strings.Contains(qwenSettings, "permissions") {
+		t.Fatalf("qwen settings should NOT have permissions field (field leak): %s", qwenSettings)
+	}
+
+	geminiSettings := readFile(t, filepath.Join(home, ".gemini", "settings.json"))
+	if strings.Contains(geminiSettings, "permissions") {
+		t.Fatalf("gemini settings should NOT have permissions field (field leak): %s", geminiSettings)
+	}
+}
+
+func TestAdapterSettingsBuildsCorrectContent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("claude"),
+	}
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	claudeSettings := readFile(t, filepath.Join(home, ".claude", "settings.json"))
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(claudeSettings), &parsed); err != nil {
+		t.Fatalf("claude settings is not valid JSON: %v", err)
+	}
+	if _, ok := parsed["permissions"]; !ok {
+		t.Fatalf("claude settings missing permissions key: %s", claudeSettings)
+	}
+	if perms, ok := parsed["permissions"].(map[string]any); ok {
+		if mode, ok := perms["defaultMode"].(string); !ok || mode != "bypassPermissions" {
+			t.Fatalf("claude settings permissions.defaultMode = %v, want bypassPermissions", mode)
+		}
+	}
+}
+
+func TestAdapterSettingsHonorsMergeStrategy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("claude"),
+	}
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	claudeSettings := readFile(t, filepath.Join(home, ".claude", "settings.json"))
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(claudeSettings), &parsed); err != nil {
+		t.Fatalf("claude settings is not valid JSON: %v", err)
+	}
+
+	// Verify hooks field exists (from default preset, merge-deep strategy)
+	if _, ok := parsed["hooks"]; !ok {
+		t.Fatalf("claude settings missing hooks key (should come from default preset): %s", claudeSettings)
+	}
+
+	// Verify permissions field exists (from claude preset, replace strategy)
+	perms, ok := parsed["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("claude settings missing or invalid permissions key: %s", claudeSettings)
+	}
+	if mode, ok := perms["defaultMode"].(string); !ok || mode != "bypassPermissions" {
+		t.Fatalf("claude settings permissions.defaultMode = %v, want bypassPermissions", mode)
+	}
+
+	// Verify mcpServers field exists (from shared MCP manifest, merge-shallow strategy)
+	if _, ok := parsed["mcpServers"]; !ok {
+		t.Fatalf("claude settings missing mcpServers key (should come from shared MCP manifest): %s", claudeSettings)
+	}
+}
+

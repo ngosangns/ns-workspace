@@ -63,7 +63,7 @@ func (m Manager) buildPlan(ctx Context, update bool) (SyncPlan, error) {
 	plan.Add(PhaseCore, "core", ArtifactInstructions, InstallPresetFile{Src: "presets/agents/AGENTS.md", Dst: filepath.Join(ctx.Options.AgentsDir, "AGENTS.md"), Replace: replace})
 	plan.Add(PhaseCore, "core", ArtifactSkills, InstallPresetTree{SrcRoot: "presets/skills", DstRoot: filepath.Join(ctx.Options.AgentsDir, "skills"), Replace: replace})
 	plan.Add(PhaseCore, "core", ArtifactSubagents, InstallPresetTree{SrcRoot: "presets/subagents", DstRoot: filepath.Join(ctx.Options.AgentsDir, "agents"), Replace: replace})
-	plan.Add(PhaseCore, "core", ArtifactSettings, InstallPresetFile{Src: "presets/settings/settings.json", Dst: filepath.Join(ctx.Options.AgentsDir, "settings.json"), Replace: replace})
+	plan.Add(PhaseCore, "core", ArtifactSettings, InstallPresetFile{Src: "presets/settings/default.json", Dst: filepath.Join(ctx.Options.AgentsDir, "settings.json"), Replace: replace})
 
 	plan.Add(PhaseRegistryHelpers, "registry", ArtifactSkills, WriteRegistryHelpers{Replace: replace})
 	if !ctx.NoRegistry {
