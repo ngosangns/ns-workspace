@@ -1011,6 +1011,8 @@ func writeRegistryHelpers(ctx Context, replace bool) error {
 	}
 	var script strings.Builder
 	script.WriteString("#!/usr/bin/env sh\nset -eu\n\n")
+	script.WriteString("# Get GitHub token from gh CLI to avoid rate limits\n")
+	script.WriteString("GITHUB_TOKEN=$(gh auth token 2>/dev/null) || GITHUB_TOKEN=\"\"\n\n")
 	script.WriteString(fmt.Sprintf("# Install registry-managed skills. Custom skills live in %s.\n", filepath.Join(ctx.Options.AgentsDir, "skills")))
 	for _, skill := range manifest.Skills {
 		script.WriteString(registryCommand(skill, true, ctx.CopyMode, ctx.Options.AgentsDir))
@@ -1066,6 +1068,10 @@ func installRegistrySkills(ctx Context) error {
 		cmd.Stdin = os.Stdin
 		// Keep registry installs aligned with --agents-home instead of the CLI default.
 		cmd.Env = append(os.Environ(), "AGENTS_HOME="+ctx.Options.AgentsDir)
+		// Use GitHub token from gh CLI to avoid rate limits.
+		if token, err := exec.Command("gh", "auth", "token").Output(); err == nil {
+			cmd.Env = append(cmd.Env, "GITHUB_TOKEN="+strings.TrimSpace(string(token)))
+		}
 		if err := cmd.Run(); err != nil {
 			ctx.Report.Line("warning: registry skill %s failed: %v", skill.Name, err)
 			continue
