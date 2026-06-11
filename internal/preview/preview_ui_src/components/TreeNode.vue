@@ -2,13 +2,7 @@
 import { computed } from "vue";
 import Icon from "./Icon.vue";
 
-interface SpecDocument {
-  id: string;
-  title: string;
-  path: string;
-  status?: string;
-  compliance?: string;
-}
+import type { SpecDocument } from "../js/shared-types.js";
 
 interface TreeNodeData {
   name: string;

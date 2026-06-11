@@ -28,7 +28,7 @@ export interface NetworkGraphData {
   links: NetworkGraphLink[];
 }
 
-export interface NetworkGraphRenderer {
+interface NetworkGraphRenderer {
   fit(): void;
   kill(): void;
   setSelected(id: string): void;
@@ -91,7 +91,7 @@ export function renderNetworkGraph(options: RenderNetworkGraphOptions): NetworkG
     defaultEdgeType: "arrow",
     defaultNodeColor: "#94a3b8",
     defaultDrawNodeLabel: drawNodeLabel,
-    defaultDrawNodeHover: drawNodeHoverLabelOnly,
+    defaultDrawNodeHover: drawNodeLabel,
     hideEdgesOnMove: false,
     hideLabelsOnMove: false,
     itemSizesReference: "screen",
@@ -263,10 +263,6 @@ function installModifierWheelZoomGuard(container: HTMLElement): () => void {
   return () => container.removeEventListener("wheel", handleWheel, options);
 }
 
-function drawNodeHoverLabelOnly(context: CanvasRenderingContext2D, data: any, settings: any) {
-  drawNodeLabel(context, data, settings);
-}
-
 function drawNodeLabel(context: CanvasRenderingContext2D, data: any, settings: any) {
   if (!data.label) return;
   const size = settings.labelSize;
@@ -376,10 +372,7 @@ function fitRenderer(renderer: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>) 
   });
 }
 
-function endpointID(endpoint: string | NetworkGraphNode): string {
-  if (typeof endpoint === "string") return endpoint;
-  return endpoint?.id || "";
-}
+import { endpointID } from "./shared-utils.js";
 
 function nodeSize(node: NetworkGraphNode): number {
   switch (node.type) {

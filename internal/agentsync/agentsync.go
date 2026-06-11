@@ -238,11 +238,13 @@ func removeStaleRecursive(ctx Context, root, relPrefix string, entries []os.DirE
 						break
 					}
 				}
-				if !hasManagedChild {
-					ctx.Report.Line("remove empty dir: %s", fullPath)
-					if !ctx.DryRun {
-						os.Remove(fullPath)
+			if !hasManagedChild {
+				ctx.Report.Line("remove empty dir: %s", fullPath)
+				if !ctx.DryRun {
+					if err := os.Remove(fullPath); err != nil {
+						ctx.Report.Line("warning: remove empty dir failed: %v", err)
 					}
+				}
 				}
 			}
 			continue
@@ -253,7 +255,9 @@ func removeStaleRecursive(ctx Context, root, relPrefix string, entries []os.DirE
 				if err := backupPath(ctx, fullPath); err != nil {
 					return err
 				}
-				os.Remove(fullPath)
+				if err := os.Remove(fullPath); err != nil {
+					ctx.Report.Line("warning: remove stale failed: %v", err)
+				}
 			}
 		}
 	}
@@ -1118,10 +1122,11 @@ func installRegistrySkills(ctx Context) error {
 		installScript := filepath.Join(ctx.Options.AgentsDir, "registry", "install.sh")
 		return fmt.Errorf("npx is required to install registry skills; rerun with --no-registry or run %s later", installScript)
 	}
-	// Cache GitHub token once before the loop to avoid spawning gh N times.
 	baseEnv := append(os.Environ(), "AGENTS_HOME="+ctx.Options.AgentsDir)
+	var ghToken string
 	if token, err := exec.Command("gh", "auth", "token").Output(); err == nil {
-		baseEnv = append(baseEnv, "GITHUB_TOKEN="+strings.TrimSpace(string(token)))
+		ghToken = strings.TrimSpace(string(token))
+		baseEnv = append(baseEnv, "GITHUB_TOKEN="+ghToken)
 	}
 	for _, skill := range manifest.Skills {
 		args := registryCommandArgs(skill, true, ctx.CopyMode)
@@ -1136,7 +1141,11 @@ func installRegistrySkills(ctx Context) error {
 		cmd.Stdin = os.Stdin
 		cmd.Env = baseEnv
 		if err := cmd.Run(); err != nil {
-			ctx.Report.Line("warning: registry skill %s failed: %v", skill.Name, err)
+			msg := fmt.Sprintf("%v", err)
+			if ghToken != "" {
+				msg = strings.ReplaceAll(msg, ghToken, "***")
+			}
+			ctx.Report.Line("warning: registry skill %s failed: %s", skill.Name, msg)
 			continue
 		}
 	}

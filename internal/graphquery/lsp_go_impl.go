@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 type goImplementation struct{}
@@ -57,8 +59,8 @@ func (impl goImplementation) install(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("go install failed: %w: %s", err, trimCommandOutput(out))
 	}
-	path := filepath.Join(binDir, executableNames(spec.Command)[0])
-	if !executableFile(path) {
+	path := filepath.Join(binDir, internalutil.ExecutableNames(spec.Command)[0])
+	if !internalutil.ExecutableFile(path) {
 		return "", fmt.Errorf("%s installed but not found at %s", spec.Command, path)
 	}
 	return path, nil

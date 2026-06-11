@@ -14,6 +14,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 type ArchiveSource struct {
@@ -86,7 +89,7 @@ func installArchiveLSP(ctx context.Context, spec InstallSpec, source ArchiveSour
 		return "", err
 	}
 	// Keep resolver paths stable when upstream archives change launcher names.
-	wrapperPath := filepath.Join(binDir, executableNames(spec.Command)[0])
+	wrapperPath := filepath.Join(binDir, internalutil.ExecutableNames(spec.Command)[0])
 	if err := writeExecutableWrapper(wrapperPath, launcherPath); err != nil {
 		return "", err
 	}
@@ -98,7 +101,8 @@ func downloadArchive(ctx context.Context, source ArchiveSource, dest string) err
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
@@ -281,7 +285,7 @@ func createSafeArchiveSymlink(dest, linkTarget, target string) error {
 func findArchiveExecutable(root string, candidates []string) (string, error) {
 	for _, candidate := range candidates {
 		path := filepath.Join(root, candidate)
-		if executableFile(path) {
+		if internalutil.ExecutableFile(path) {
 			return path, nil
 		}
 	}
@@ -292,7 +296,7 @@ func findArchiveExecutable(root string, candidates []string) (string, error) {
 		}
 		name := entry.Name()
 		for _, candidate := range candidates {
-			if name == filepath.Base(candidate) && executableFile(path) {
+			if name == filepath.Base(candidate) && internalutil.ExecutableFile(path) {
 				found = path
 				return nil
 			}

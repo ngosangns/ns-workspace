@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 const defaultSearchLauncherName = "ns-workspace-search.html"
@@ -311,7 +313,7 @@ func normalizeGraphQueryLimit(limit int) int {
 }
 
 func normalizeSearchOutputPath(cwd, path string) string {
-	path = expandPath(strings.TrimSpace(path))
+	path = internalutil.ExpandPath(strings.TrimSpace(path))
 	if path == "" {
 		path = defaultSearchLauncherName
 	}

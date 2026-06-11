@@ -51,10 +51,3 @@ interface ToastMarkdownViewerConstructor {
 interface ToastMarkdownViewer {
   destroy(): void;
 }
-
-interface ToastMarkdownCodeBlockNode {
-  info?: string;
-  lang?: string;
-  language?: string;
-  literal?: string;
-}

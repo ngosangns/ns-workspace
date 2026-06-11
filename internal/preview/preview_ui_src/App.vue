@@ -6,60 +6,34 @@ import GraphViewer from "./components/GraphViewer.vue";
 import SearchPanel from "./components/SearchPanel.vue";
 import PreviewModal from "./components/PreviewModal.vue";
 import Icon from "./components/Icon.vue";
-
-interface ProjectSummary {
-  name: string;
-  generatedTitle?: string;
-  projectRoot?: string;
-  docsRoot?: string;
-  totalSpecs: number;
-  categories?: Record<string, number>;
-  statusCounts?: Record<string, number>;
-  compliance?: Record<string, number>;
-  warnings?: string[];
-  sync?: Record<string, string>;
-}
-
-interface SpecDocument {
-  id: string;
-  title: string;
-  path: string;
-  raw?: string;
-  language?: string;
-  status?: string;
-  compliance?: string;
-}
-
-interface GraphData {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-}
-
-interface GraphNode {
-  id: string;
-  label?: string;
-  type?: string;
-  path?: string;
-  specId?: string;
-  category?: string;
-  status?: string;
-  [key: string]: any;
-}
-
-interface GraphEdge {
-  from: string;
-  to: string;
-  type?: string;
-  label?: string;
-  [key: string]: any;
-}
+import {
+  ProjectKey,
+  SpecsKey,
+  GraphKey,
+  CurrentSpecKey,
+  SelectedIdKey,
+  SelectedFolderPathKey,
+  TabKey,
+  ThemeKey,
+  SearchQueryKey,
+  SearchKeywordOperatorKey,
+  SelectSpecKey,
+  OpenSpecPreviewKey,
+  OpenFilePreviewKey,
+  ClosePreviewKey,
+  ToggleThemeKey,
+  type SpecDocument,
+  type GraphData,
+  type ProjectSummary,
+  type PreviewSource,
+  type ThemePreference,
+} from "./js/shared-types.js";
+import { fetchJSON } from "./js/shared-utils.js";
 
 interface FolderListing {
   folders: Array<{ path: string; name: string; count: number }>;
   docs: SpecDocument[];
 }
-
-type ThemePreference = "system" | "dark" | "light";
 
 const project = ref<ProjectSummary | null>(null);
 const specs = ref<SpecDocument[]>([]);
@@ -73,9 +47,7 @@ const routeFolderPath = ref("");
 const tab = ref("spec");
 const theme = ref<"light" | "dark">("light");
 const themePreference = ref<ThemePreference>("system");
-const previewSource = ref<{ type: "doc" | "file"; raw: string; language: string; path: string; line: number; spec?: SpecDocument } | null>(
-  null,
-);
+const previewSource = ref<PreviewSource | null>(null);
 const previewShowRaw = ref(false);
 const graphQuery = ref("");
 const searchQuery = ref("");
@@ -88,12 +60,6 @@ function getInitialThemePreference(): ThemePreference {
   const stored = localStorage.getItem("spec-preview-theme");
   if (stored === "dark" || stored === "light") return stored;
   return "system";
-}
-
-async function fetchJSON(path: string) {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 async function loadGraph(): Promise<void> {
@@ -114,7 +80,7 @@ function resolveThemePreference(preference: ThemePreference): "light" | "dark" {
   return preference === "system" ? resolvedSystemTheme() : preference;
 }
 
-function applyThemePreference(preference: ThemePreference, options: { persist?: boolean; rerender?: boolean } = {}) {
+function applyThemePreference(preference: ThemePreference, options: { persist?: boolean } = {}) {
   themePreference.value = preference;
   const resolvedTheme = resolveThemePreference(preference);
   theme.value = resolvedTheme;
@@ -130,12 +96,12 @@ function applyThemePreference(preference: ThemePreference, options: { persist?: 
 
 function toggleTheme() {
   const next = themePreference.value === "system" ? "dark" : themePreference.value === "dark" ? "light" : "system";
-  applyThemePreference(next, { persist: true, rerender: true });
+  applyThemePreference(next, { persist: true });
 }
 
 function handleSystemThemeChange() {
   if (themePreference.value === "system") {
-    applyThemePreference("system", { rerender: true });
+    applyThemePreference("system");
   }
 }
 
@@ -320,19 +286,6 @@ function updateSearchKeywordOperator(keywordOperator: string) {
   replaceFocusedRouteURL("search");
 }
 
-function setPageChromeForTab(tabName: string) {
-  if (tabName === "spec") {
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    document.querySelector("#specTab")?.classList.add("active");
-  } else if (tabName === "graph") {
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    document.querySelector("#graphTab")?.classList.add("active");
-  } else if (tabName === "search") {
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    document.querySelector("#searchTab")?.classList.add("active");
-  }
-}
-
 function syncRouteSpecFromURL(route: { tab?: string; spec?: string; fragment?: string }) {
   // Keep resolved route values separate from refs so URL sync updates Vue state.
   const resolvedSpecId = validSpecId(route.spec || "");
@@ -361,12 +314,7 @@ async function handlePopState() {
     return;
   }
 
-  // Sync tab from URL without triggering another URL update.
-  if (route.tab === "spec") {
-    switchTab("spec", { updateURL: false });
-  } else {
-    switchTab("spec", { updateURL: false });
-  }
+  switchTab("spec", { updateURL: false });
 
   // Sync spec or folder selection from URL without triggering another URL update.
   const resolvedSpecId = validSpecId(route.spec || "");
@@ -384,9 +332,6 @@ async function selectSpec(id: string, showSpecTab = true, options: { updateURL?:
   selectedId.value = id;
   selectedFolderPath.value = "";
   currentSpec.value = spec;
-  if (tab.value === "spec" || showSpecTab) {
-    setPageChromeForTab("spec");
-  }
   if (showSpecTab) {
     switchTab("spec", { updateURL });
   } else if (updateURL && tab.value === "spec") {
@@ -400,9 +345,6 @@ async function selectSpecFolder(path: string, showSpecTab = true, options: { upd
   selectedId.value = "";
   selectedFolderPath.value = folderPath;
   currentSpec.value = null;
-  if (tab.value === "spec" || showSpecTab) {
-    setPageChromeForTab("spec");
-  }
   if (showSpecTab) {
     switchTab("spec", { updateURL: options.updateURL });
   } else if (options.updateURL !== false && tab.value === "spec") {
@@ -418,7 +360,7 @@ async function selectSpecTreeItem(idOrPath: string) {
   await selectSpec(idOrPath, true);
 }
 
-function openSpecPreview(id: string, options: { updateURL?: boolean } = {}) {
+function openSpecPreview(id: string) {
   if (!id) return;
   fetchJSON(`/api/docs/${encodeURIComponent(id)}`)
     .then((spec) => {
@@ -435,7 +377,7 @@ function openSpecPreview(id: string, options: { updateURL?: boolean } = {}) {
     .catch(console.error);
 }
 
-function openFilePreview(path: string, line: number, options: { updateURL?: boolean } = {}) {
+function openFilePreview(path: string, line: number) {
   if (!path) return;
   fetchJSON(`/api/files?${new URLSearchParams({ path }).toString()}`)
     .then((data) => {
@@ -494,21 +436,21 @@ function dedupeTitleParts(parts: string[]): string[] {
     });
 }
 
-provide("project", project);
-provide("specs", specs);
-provide("graph", graph);
-provide("currentSpec", currentSpec);
-provide("selectedId", selectedId);
-provide("selectedFolderPath", selectedFolderPath);
-provide("tab", tab);
-provide("theme", theme);
-provide("searchQuery", searchQuery);
-provide("searchKeywordOperator", searchKeywordOperator);
-provide("selectSpec", selectSpec);
-provide("openSpecPreview", openSpecPreview);
-provide("openFilePreview", openFilePreview);
-provide("closePreview", closePreview);
-provide("toggleTheme", toggleTheme);
+provide(ProjectKey, project);
+provide(SpecsKey, specs);
+provide(GraphKey, graph);
+provide(CurrentSpecKey, currentSpec);
+provide(SelectedIdKey, selectedId);
+provide(SelectedFolderPathKey, selectedFolderPath);
+provide(TabKey, tab);
+provide(ThemeKey, theme);
+provide(SearchQueryKey, searchQuery);
+provide(SearchKeywordOperatorKey, searchKeywordOperator);
+provide(SelectSpecKey, selectSpec);
+provide(OpenSpecPreviewKey, openSpecPreview);
+provide(OpenFilePreviewKey, openFilePreview);
+provide(ClosePreviewKey, closePreview);
+provide(ToggleThemeKey, toggleTheme);
 
 watch([project, currentSpec, selectedFolderPath, tab, graphQuery, searchQuery, previewSource], updateDocumentTitle);
 

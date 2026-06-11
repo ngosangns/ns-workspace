@@ -101,12 +101,3 @@ func lspCommandSource(path, projectRoot string) string {
 func lspUnavailableWarning(lang lspLanguage, detail string) string {
 	return graphquery.UnavailableWarning(lang.ServerID, lang.Name, detail)
 }
-
-func stringInSlice(value string, values []string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
-}

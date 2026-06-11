@@ -1,20 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, computed, inject, nextTick, onUnmounted, type Ref } from "vue";
+import { ref, watch, computed, inject, nextTick, onUnmounted } from "vue";
 import { decorateInternalDocNavigation, type SpecDocument, type InternalSpecTarget } from "../js/internal-links.js";
 import Icon from "./Icon.vue";
 import { destroyDiagramsIn, renderDiagramsIn } from "../js/diagrams.js";
 import { decorateCodePreviewLines, escapeHTML, renderCodePreview, scrollPreviewToLine } from "../js/code-preview.js";
 import { renderHTMLPreview } from "../js/html-doc.js";
 import { renderMarkdownPreview } from "../js/markdown.js";
-
-interface PreviewSource {
-  type: "doc" | "file";
-  raw: string;
-  language: string;
-  path: string;
-  line: number;
-  spec?: SpecDocument;
-}
+import { SpecsKey, SelectSpecKey, ThemeKey, type PreviewSource } from "../js/shared-types.js";
+import { languageFromPath } from "../js/shared-utils.js";
 
 interface Props {
   source: PreviewSource | null;
@@ -27,9 +20,9 @@ const emit = defineEmits<{
   (e: "toggleRaw"): void;
 }>();
 
-const specs = inject<Ref<SpecDocument[]>>("specs");
-const selectSpec = inject<(id: string, showSpecTab?: boolean) => Promise<void>>("selectSpec");
-const theme = inject<Ref<"light" | "dark">>("theme", ref("light"));
+const specs = inject(SpecsKey);
+const selectSpec = inject(SelectSpecKey);
+const theme = inject(ThemeKey, ref("light"));
 const previewDialogBody = ref<HTMLElement | null>(null);
 let renderToken = 0;
 
@@ -143,13 +136,6 @@ async function renderPreviewSource(): Promise<void> {
 async function decorateRenderedDoc(root: HTMLElement, spec: SpecDocument, fallbackKey: string): Promise<void> {
   await renderDiagramsIn(root, theme.value, spec.id || spec.path || fallbackKey);
   decorateInternalDocNavigation(root, spec, specs?.value || [], handleInternalLinkNavigation);
-}
-
-function languageFromPath(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase() || "";
-  if (ext === "md" || ext === "markdown") return "markdown";
-  if (ext === "html" || ext === "htm") return "html";
-  return "text";
 }
 
 watch(

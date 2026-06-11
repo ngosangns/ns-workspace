@@ -10,11 +10,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 const CacheEnv = "NS_WORKSPACE_LSP_CACHE"
@@ -391,7 +394,7 @@ func SupportedIDs() []string {
 		ids = append(ids, lang.Aliases...)
 	}
 	sort.Strings(ids)
-	return uniqueSortedStrings(ids)
+	return internalutil.UniqueSortedStrings(ids)
 }
 
 func InstallSpecByID(id string) (InstallSpec, bool) {
@@ -410,7 +413,7 @@ func InstallSpecByServerID(serverID string) (InstallSpec, bool) {
 
 func CacheRoot() string {
 	if value := strings.TrimSpace(os.Getenv(CacheEnv)); value != "" {
-		return expandPath(value)
+		return internalutil.ExpandPath(value)
 	}
 	if dir, err := os.UserCacheDir(); err == nil && dir != "" {
 		return filepath.Join(dir, "ns-workspace", "lsp")
@@ -438,7 +441,7 @@ func ResolveCommandWithSource(command, projectRoot string) (string, string, erro
 		return path, CommandSource(path, projectRoot), nil
 	}
 	for _, candidate := range commandCandidates(command, projectRoot) {
-		if executableFile(candidate) {
+		if internalutil.ExecutableFile(candidate) {
 			return candidate, CommandSource(candidate, projectRoot), nil
 		}
 	}
@@ -513,12 +516,12 @@ func implementationByID(id string) (lspImplementation, bool) {
 	id = normalizeID(id)
 	for _, impl := range implementations() {
 		spec := impl.installSpec()
-		if normalizeID(spec.ID) == id || stringInSlice(id, normalizedIDs(spec.Aliases)) {
+		if normalizeID(spec.ID) == id || slices.Contains(normalizedIDs(spec.Aliases), id) {
 			return impl, true
 		}
 	}
 	for _, lang := range LanguageSpecs() {
-		if normalizeID(lang.ID) == id || stringInSlice(id, normalizedIDs(lang.Aliases)) {
+		if normalizeID(lang.ID) == id || slices.Contains(normalizedIDs(lang.Aliases), id) {
 			return implementationByServerID(lang.ServerID)
 		}
 	}
@@ -590,7 +593,7 @@ func parseMajorVersion(text string) (int, bool) {
 }
 
 func checkBinary(ctx context.Context, path string, args []string) error {
-	if !executableFile(path) {
+	if !internalutil.ExecutableFile(path) {
 		return fmt.Errorf("installed LSP binary is not executable: %s", path)
 	}
 	if len(args) == 0 {
@@ -605,7 +608,7 @@ func checkBinary(ctx context.Context, path string, args []string) error {
 }
 
 func normalizeProjectRoot(root string) string {
-	root = expandPath(strings.TrimSpace(root))
+	root = internalutil.ExpandPath(strings.TrimSpace(root))
 	if root == "" {
 		root = "."
 	}
@@ -629,29 +632,7 @@ func normalizedIDs(ids []string) []string {
 	return out
 }
 
-func uniqueSortedStrings(values []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
-}
 
-func stringInSlice(value string, values []string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
-}
 
 func shellQuote(value string) string {
 	if value == "" {
@@ -670,7 +651,7 @@ func commandCandidates(command, projectRoot string) []string {
 		if dir == "" {
 			return
 		}
-		dirs = appendUniqueString(dirs, expandPath(dir))
+		dirs = internalutil.AppendUniqueString(dirs, internalutil.ExpandPath(dir))
 	}
 	if projectRoot != "" {
 		addDir(filepath.Join(projectRoot, "node_modules", ".bin"))
@@ -680,10 +661,10 @@ func commandCandidates(command, projectRoot string) []string {
 	}
 	if command == "gopls" {
 		addDir(os.Getenv("GOBIN"))
-		if gopath := firstNonEmpty(os.Getenv("GOPATH"), goEnvValue("GOPATH")); gopath != "" {
+		if gopath := internalutil.FirstNonEmpty(os.Getenv("GOPATH"), internalutil.GoEnvValue("GOPATH")); gopath != "" {
 			addDir(filepath.Join(gopath, "bin"))
 		}
-		if gobin := goEnvValue("GOBIN"); gobin != "" {
+		if gobin := internalutil.GoEnvValue("GOBIN"); gobin != "" {
 			addDir(gobin)
 		}
 		if home, err := os.UserHomeDir(); err == nil {
@@ -696,80 +677,14 @@ func commandCandidates(command, projectRoot string) []string {
 
 	candidates := []string{}
 	for _, dir := range dirs {
-		for _, name := range executableNames(command) {
-			candidates = appendUniqueString(candidates, filepath.Join(dir, name))
+		for _, name := range internalutil.ExecutableNames(command) {
+			candidates = internalutil.AppendUniqueString(candidates, filepath.Join(dir, name))
 		}
 	}
 	return candidates
 }
 
-func executableNames(command string) []string {
-	if runtimeExt := executableExtension(); runtimeExt != "" && !strings.HasSuffix(strings.ToLower(command), runtimeExt) {
-		return []string{command + runtimeExt, command}
-	}
-	return []string{command}
-}
 
-func executableExtension() string {
-	if os.PathSeparator == '\\' {
-		return ".exe"
-	}
-	return ""
-}
-
-func executableFile(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return false
-	}
-	if os.PathSeparator == '\\' {
-		return true
-	}
-	return info.Mode()&0o111 != 0
-}
-
-func appendUniqueString(values []string, value string) []string {
-	for _, existing := range values {
-		if existing == value {
-			return values
-		}
-	}
-	return append(values, value)
-}
-
-func expandPath(path string) string {
-	if path == "" || path[0] != '~' {
-		return path
-	}
-	if len(path) > 1 && path[1] != '/' && path[1] != '\\' {
-		return path
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return path
-	}
-	if len(path) == 1 {
-		return home
-	}
-	return filepath.Join(home, path[2:])
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func goEnvValue(name string) string {
-	out, err := exec.Command("go", "env", name).Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
 
 func trimCommandOutput(out []byte) string {
 	text := strings.TrimSpace(string(out))

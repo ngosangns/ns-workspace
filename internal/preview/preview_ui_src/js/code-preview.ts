@@ -1,6 +1,6 @@
-export function escapeHTML(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
+import { escapeHTML } from "./shared-utils.js";
+
+export { escapeHTML };
 
 export function renderCodePreview(raw: string, language = "text"): string {
   const lang = language ? ` data-source-language="${escapeHTML(language)}"` : "";

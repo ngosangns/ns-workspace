@@ -18,6 +18,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 //go:embed preview_ui
@@ -208,7 +210,7 @@ func previewChildArgs(args []string, projectRoot string) ([]string, error) {
 }
 
 func normalizePreviewProjectRoot(path string) string {
-	path = expandPath(path)
+	path = internalutil.ExpandPath(path)
 	if abs, err := filepath.Abs(path); err == nil {
 		return abs
 	}
@@ -509,18 +511,6 @@ func (ps *previewServer) changeToken() string {
 }
 
 var startToken = fmt.Sprintf("%d", time.Now().UnixNano())
-
-func expandPath(path string) string {
-	if path == "~" {
-		home, _ := os.UserHomeDir()
-		return home
-	}
-	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[2:])
-	}
-	return path
-}
 
 func newestModToken(root string) string {
 	var newest int64

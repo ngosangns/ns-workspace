@@ -14,12 +14,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 const (
@@ -701,7 +704,7 @@ func previewEmbeddingConfigFromKnownsSettings(settings knownsEmbeddingSettings, 
 	if !ok {
 		return previewEmbeddingConfig{}, fmt.Errorf("Knowns embedding model %q is not registered.", modelID)
 	}
-	modelName := firstNonEmpty(model.Model, modelID)
+	modelName := internalutil.FirstNonEmpty(model.Model, modelID)
 	provider, ok := settings.Providers[model.Provider]
 	if !ok || provider.APIBase == "" {
 		return previewEmbeddingConfig{}, fmt.Errorf("Knowns embedding provider %q is not registered.", model.Provider)
@@ -829,9 +832,9 @@ func searchDocsGraphByQuery(graph specGraph, query string, tokens []string, excl
 		}
 		results = append(results, previewSearchResult{
 			ID:        "docs-graph:" + node.ID,
-			Title:     firstNonEmpty(node.Label, node.ID),
+			Title:     internalutil.FirstNonEmpty(node.Label, node.ID),
 			Path:      node.Path,
-			Kind:      firstNonEmpty(node.Type, "doc-node"),
+			Kind:      internalutil.FirstNonEmpty(node.Type, "doc-node"),
 			Score:     score,
 			MatchedBy: []string{"graph"},
 			SpecID:    node.SpecID,
@@ -900,9 +903,9 @@ func expandDocsGraphAnchor(graph specGraph, index docsGraphIndex, startID string
 		}
 		result := previewSearchResult{
 			ID:        "docs-graph:" + node.ID,
-			Title:     firstNonEmpty(node.Label, node.ID),
+			Title:     internalutil.FirstNonEmpty(node.Label, node.ID),
 			Path:      node.Path,
-			Kind:      firstNonEmpty(node.Type, "doc-node"),
+			Kind:      internalutil.FirstNonEmpty(node.Type, "doc-node"),
 			Score:     graphExpansionScore(anchor.Score, item.Depth),
 			MatchedBy: graphExpansionMatchedBy(item.Depth),
 			SpecID:    node.SpecID,
@@ -930,15 +933,15 @@ func expandDocsGraphAnchor(graph specGraph, index docsGraphIndex, startID string
 
 func codeGraphFlowRole(matchedBy []string) string {
 	switch {
-	case containsString(matchedBy, "graph-root-caller"):
+	case slices.Contains(matchedBy, "graph-root-caller"):
 		return "root-caller"
-	case containsString(matchedBy, "graph-caller"):
+	case slices.Contains(matchedBy, "graph-caller"):
 		return "caller"
-	case containsString(matchedBy, "graph-callee"):
+	case slices.Contains(matchedBy, "graph-callee"):
 		return "callee"
-	case containsString(matchedBy, "graph-flow"):
+	case slices.Contains(matchedBy, "graph-flow"):
 		return "context"
-	case containsString(matchedBy, "graph"):
+	case slices.Contains(matchedBy, "graph"):
 		return "match"
 	default:
 		return ""
@@ -967,15 +970,15 @@ func newDocsGraphIndex(graph specGraph) docsGraphIndex {
 	for _, node := range graph.Nodes {
 		index.Nodes[node.ID] = node
 		for _, key := range graphNodeKeys(node) {
-			index.Keys[key] = appendUniqueString(index.Keys[key], node.ID)
+			index.Keys[key] = internalutil.AppendUniqueString(index.Keys[key], node.ID)
 		}
 	}
 	for _, edge := range graph.Edges {
 		if edge.From == "" || edge.To == "" {
 			continue
 		}
-		index.Edges[edge.From] = append(index.Edges[edge.From], graphEdge{From: edge.From, To: edge.To, Type: firstNonEmpty(edge.Type, edge.Label, "references"), Label: edge.Label, Origin: edge.Origin, Raw: edge.Raw})
-		index.Edges[edge.To] = append(index.Edges[edge.To], graphEdge{From: edge.To, To: edge.From, Type: firstNonEmpty(edge.Type, edge.Label, "references"), Label: edge.Label, Origin: edge.Origin, Raw: edge.Raw})
+		index.Edges[edge.From] = append(index.Edges[edge.From], graphEdge{From: edge.From, To: edge.To, Type: internalutil.FirstNonEmpty(edge.Type, edge.Label, "references"), Label: edge.Label, Origin: edge.Origin, Raw: edge.Raw})
+		index.Edges[edge.To] = append(index.Edges[edge.To], graphEdge{From: edge.To, To: edge.From, Type: internalutil.FirstNonEmpty(edge.Type, edge.Label, "references"), Label: edge.Label, Origin: edge.Origin, Raw: edge.Raw})
 	}
 	return index
 }
@@ -984,7 +987,7 @@ func (index docsGraphIndex) match(anchor graphSearchAnchor) []string {
 	matches := []string{}
 	for _, key := range anchorKeys(anchor) {
 		for _, nodeID := range index.Keys[key] {
-			matches = appendUniqueString(matches, nodeID)
+			matches = internalutil.AppendUniqueString(matches, nodeID)
 		}
 	}
 	return matches
@@ -994,7 +997,7 @@ func graphAnchorsFromSemantic(semantic []previewSearchResult) []graphSearchAncho
 	anchors := make([]graphSearchAnchor, 0, len(semantic))
 	for _, result := range semantic {
 		anchor := graphSearchAnchor{
-			ID:     firstNonEmpty(result.ID, result.SpecID, result.Path, result.Title),
+			ID:     internalutil.FirstNonEmpty(result.ID, result.SpecID, result.Path, result.Title),
 			Title:  result.Title,
 			Path:   result.Path,
 			SpecID: result.SpecID,
@@ -1035,10 +1038,10 @@ func normalizedGraphKeys(values ...string) []string {
 		if value == "" {
 			continue
 		}
-		keys = appendUniqueString(keys, value)
+		keys = internalutil.AppendUniqueString(keys, value)
 		tokenKey := strings.Join(searchTokens(value), "")
 		if tokenKey != "" {
-			keys = appendUniqueString(keys, tokenKey)
+			keys = internalutil.AppendUniqueString(keys, tokenKey)
 		}
 	}
 	return keys
@@ -1048,7 +1051,7 @@ func graphExpansionLimit(limit int) int {
 	if limit <= 0 {
 		limit = defaultSearchLimit
 	}
-	return minInt(maxSearchLimit, maxInt(limit, limit*3))
+	return min(maxSearchLimit, max(limit, limit*3))
 }
 
 func graphExpansionDepth(limit int) int {
@@ -1081,14 +1084,7 @@ func mergeGraphResult(results map[string]previewSearchResult, next previewSearch
 }
 
 func graphResultMergeKey(result previewSearchResult) string {
-	return firstNonEmpty(result.NodeID, result.ID, result.SpecID, result.Path, result.Title)
-}
-
-func appendUniqueString(values []string, value string) []string {
-	if value == "" || containsString(values, value) {
-		return values
-	}
-	return append(values, value)
+	return internalutil.FirstNonEmpty(result.NodeID, result.ID, result.SpecID, result.Path, result.Title)
 }
 
 func limitNeighbors(neighbors []previewSearchNeighbor, limit int) []previewSearchNeighbor {
@@ -1114,7 +1110,7 @@ func boostSemanticWithGraph(semantic []previewSearchResult, graph []previewSearc
 	for i := range semantic {
 		if graphPaths[semantic[i].Path] || graphPaths[semantic[i].SpecID] {
 			semantic[i].Score = roundScore(math.Min(1, semantic[i].Score+0.08))
-			if !containsString(semantic[i].MatchedBy, "graph") {
+			if !slices.Contains(semantic[i].MatchedBy, "graph") {
 				semantic[i].MatchedBy = append(semantic[i].MatchedBy, "graph")
 			}
 		}
@@ -1201,11 +1197,11 @@ func mergeResultsRRF(keyword, semantic []previewSearchResult) []previewSearchRes
 }
 
 func searchResultMergeKey(result previewSearchResult) string {
-	return firstNonEmpty(result.SpecID, result.Path, result.ID, result.Title)
+	return internalutil.FirstNonEmpty(result.SpecID, result.Path, result.ID, result.Title)
 }
 
 func mergeMatchMethods(methods []string, method string) []string {
-	if containsString(methods, method) {
+	if slices.Contains(methods, method) {
 		return methods
 	}
 	return append([]string{method}, methods...)
@@ -1362,7 +1358,7 @@ func searchQueryParts(query string) []string {
 			parts = append(parts, query)
 		}
 	}
-	return uniqueStrings(parts)
+	return internalutil.UniqueStrings(parts)
 }
 
 func searchTokens(value string) []string {
@@ -1385,7 +1381,7 @@ func searchTokens(value string) []string {
 		}
 	}
 	flush()
-	return uniqueStrings(tokens)
+	return internalutil.UniqueStrings(tokens)
 }
 
 func headingsFromMarkdown(raw string) []string {
@@ -1399,26 +1395,27 @@ func headingsFromMarkdown(raw string) []string {
 	return headings
 }
 
+var codeSymbolPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)`),
+	regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:type|class|interface|enum|struct)\s+([A-Za-z_][A-Za-z0-9_]*)`),
+	regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\b`),
+	regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)`),
+	regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+|static\s+|final\s+|open\s+|override\s+|suspend\s+|async\s+)*fun\s+([A-Za-z_][A-Za-z0-9_]*)`),
+	regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+|static\s+|final\s+|open\s+|override\s+|async\s+)*func\s+([A-Za-z_][A-Za-z0-9_]*)`),
+	regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+|static\s+|final\s+|override\s+|async\s+)*(?:[A-Za-z_][A-Za-z0-9_<>,\[\]?]*\s+)+([A-Za-z_][A-Za-z0-9_]*)\s*\(`),
+	regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|static\s+|async\s+|readonly\s+)*([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*(?::\s*[^={]+)?\s*\{`),
+}
+
 func codeSymbols(content string) []string {
 	out := []string{}
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?m)^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)`),
-		regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:type|class|interface|enum|struct)\s+([A-Za-z_][A-Za-z0-9_]*)`),
-		regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\b`),
-		regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)`),
-		regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+|static\s+|final\s+|open\s+|override\s+|suspend\s+|async\s+)*fun\s+([A-Za-z_][A-Za-z0-9_]*)`),
-		regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+|static\s+|final\s+|open\s+|override\s+|async\s+)*func\s+([A-Za-z_][A-Za-z0-9_]*)`),
-		regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+|static\s+|final\s+|override\s+|async\s+)*(?:[A-Za-z_][A-Za-z0-9_<>,\[\]?]*\s+)+([A-Za-z_][A-Za-z0-9_]*)\s*\(`),
-		regexp.MustCompile(`(?m)^\s*(?:public\s+|private\s+|protected\s+|static\s+|async\s+|readonly\s+)*([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*(?::\s*[^={]+)?\s*\{`),
-	}
-	for _, re := range patterns {
+	for _, re := range codeSymbolPatterns {
 		for _, match := range re.FindAllStringSubmatch(content, -1) {
 			if len(match) == 2 && !isControlFlowSymbol(match[1]) {
 				out = append(out, match[1])
 			}
 		}
 	}
-	return uniqueStrings(out)
+	return internalutil.UniqueStrings(out)
 }
 
 func isControlFlowSymbol(value string) bool {
@@ -1465,8 +1462,8 @@ func codeExcerptForQuery(content string, tokens []string) (int, string) {
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
 		if lineMatchesTokens(line, tokens) {
-			start := maxInt(0, i-1)
-			end := minInt(len(lines), i+2)
+			start := max(0, i-1)
+			end := min(len(lines), i+2)
 			return i + 1, compactWhitespace(strings.Join(lines[start:end], "\n"), 260)
 		}
 	}
@@ -1509,8 +1506,8 @@ func scanDocsSearchDocs(projectRoot, docsRoot string, specs []specDocument) ([]d
 			ID:          doc.ID,
 			Title:       doc.Title,
 			Path:        doc.Path,
-			Content:     firstNonEmpty(doc.SearchText, doc.Raw),
-			Headings:    headingsFromMarkdown(firstNonEmpty(doc.SearchText, doc.Raw)),
+			Content:     internalutil.FirstNonEmpty(doc.SearchText, doc.Raw),
+			Headings:    headingsFromMarkdown(internalutil.FirstNonEmpty(doc.SearchText, doc.Raw)),
 			Description: doc.Description,
 			SpecID:      doc.ID,
 			Kind:        "doc",
@@ -1957,6 +1954,9 @@ func (cfg previewEmbeddingConfig) embedBatchRaw(texts []string) ([][]float32, er
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.APIKey != "" {
+		if req.URL.Scheme == "http" && !isLoopbackHost(req.URL.Host) {
+			return nil, fmt.Errorf("refusing to send API key over non-TLS connection to %s; use https:// or a localhost address", req.URL.Host)
+		}
 		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	}
 	client := http.Client{Timeout: time.Duration(timeout) * time.Second}
@@ -2102,7 +2102,7 @@ func dedupeSearchResults(results []previewSearchResult) []previewSearchResult {
 	seen := map[string]bool{}
 	out := []previewSearchResult{}
 	for _, result := range results {
-		key := firstNonEmpty(result.ID, result.NodeID, result.Path, result.Title)
+		key := internalutil.FirstNonEmpty(result.ID, result.NodeID, result.Path, result.Title)
 		if seen[key] {
 			continue
 		}
@@ -2136,25 +2136,13 @@ func clamp01(score float64) float64 {
 	return score
 }
 
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
+func isLoopbackHost(host string) bool {
+	hostname := host
+	if idx := strings.LastIndex(host, ":"); idx > 0 {
+		hostname = host[:idx]
 	}
-	return false
+	hostname = strings.Trim(hostname, "[]")
+	return hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" || hostname == ""
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

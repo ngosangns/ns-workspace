@@ -11,13 +11,7 @@ interface ProjectSummary {
   totalSpecs: number;
 }
 
-interface SpecDocument {
-  id: string;
-  title: string;
-  path: string;
-  status?: string;
-  compliance?: string;
-}
+import type { SpecDocument } from "../js/shared-types.js";
 
 const props = defineProps<{
   project: ProjectSummary | null;

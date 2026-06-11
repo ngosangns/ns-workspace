@@ -366,14 +366,7 @@ function escapeMermaidText(value: string): string {
     .replace(/"/g, '\\"');
 }
 
-function escapeHTML(value: string): string {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+import { escapeHTML } from "./shared-utils.js";
 
 function safeId(value: string): string {
   return String(value || "doc").replace(/[^a-zA-Z0-9_-]/g, "-");
