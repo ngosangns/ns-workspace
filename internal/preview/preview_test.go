@@ -15,11 +15,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ngosangns/ns-workspace/internal/graphquery"
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 func previewUIText(t *testing.T) string {
@@ -36,8 +38,10 @@ func previewUIText(t *testing.T) string {
 		"preview_ui_src/js/html-doc.ts",
 		"preview_ui_src/js/markdown.ts",
 		"preview_ui_src/js/metadata.ts",
-		"preview_ui_src/js/network_graph.ts",
+		"preview_ui_src/js/network-graph.ts",
 		"preview_ui_src/js/internal-links.ts",
+		"preview_ui_src/js/shared-types.ts",
+		"preview_ui_src/js/shared-utils.ts",
 		"preview_ui_src/types.d.ts",
 		"preview_ui_src/components/DocViewer.vue",
 		"preview_ui_src/components/GraphViewer.vue",
@@ -320,7 +324,7 @@ func TestGraphQueryAutoEnsuresLSPByDefault(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &search); err != nil {
 		t.Fatalf("graph query should keep JSON stdout valid after ensure: %v\n%s", err, output)
 	}
-	if !containsString(search.Warnings, "auto ensure warning") {
+	if !slices.Contains(search.Warnings, "auto ensure warning") {
 		t.Fatalf("graph query should include ensure warnings, got %+v", search.Warnings)
 	}
 }
@@ -413,7 +417,7 @@ func credentialVault() {}
 	if len(search.Panels.CodeGraph[0].Neighbors) != 1 || search.Panels.CodeGraph[0].Neighbors[0].Path != "caller.go" {
 		t.Fatalf("graph query should expose neighbor preview targets: %+v", search.Panels.CodeGraph[0].Neighbors)
 	}
-	if !containsString(search.Warnings, "Code Graph relation expansion is unavailable for this language server.") {
+	if !slices.Contains(search.Warnings, "Code Graph relation expansion is unavailable for this language server.") {
 		t.Fatalf("graph query should preserve Code Graph warnings: %+v", search.Warnings)
 	}
 }
@@ -876,7 +880,7 @@ policyEngine → accessRule
 	if len(search.Panels.DocsGraph) == 0 {
 		t.Fatalf("expected docs graph direct query result: %+v", search.Panels)
 	}
-	if containsString(search.Panels.DocsGraph[0].MatchedBy, "semantic-anchor") || !containsString(search.Panels.DocsGraph[0].MatchedBy, "graph") {
+	if slices.Contains(search.Panels.DocsGraph[0].MatchedBy, "semantic-anchor") || !slices.Contains(search.Panels.DocsGraph[0].MatchedBy, "graph") {
 		t.Fatalf("expected docs graph direct match, got %+v", search.Panels.DocsGraph[0])
 	}
 	if search.Panels.DocsGraph[0].NodeID != "policyEngine" {
@@ -943,7 +947,7 @@ func hydrateStore() {}
 	if len(search.Panels.CodeGraph) == 0 {
 		t.Fatalf("expected code graph direct query result: %+v", search.Panels)
 	}
-	if containsString(search.Panels.CodeGraph[0].MatchedBy, "semantic-anchor") || !containsString(search.Panels.CodeGraph[0].MatchedBy, "graph") {
+	if slices.Contains(search.Panels.CodeGraph[0].MatchedBy, "semantic-anchor") || !slices.Contains(search.Panels.CodeGraph[0].MatchedBy, "graph") {
 		t.Fatalf("expected code graph direct match, got %+v", search.Panels.CodeGraph[0])
 	}
 	if search.Panels.CodeGraph[0].Path != "store.go" || search.Panels.CodeGraph[0].Line != 3 {
@@ -999,12 +1003,12 @@ func TestLSPSourceFilesSkipsGeneratedPreviewUIButKeepsPreviewUISource(t *testing
 		got = append(got, file.Rel)
 	}
 	for _, forbidden := range []string{"internal/preview/preview_ui/index.html", "internal/preview/preview_ui/style.css"} {
-		if containsString(got, forbidden) {
+		if slices.Contains(got, forbidden) {
 			t.Fatalf("generated preview UI artifact %s should not be indexed by LSP: %+v", forbidden, got)
 		}
 	}
 	for _, want := range []string{"internal/preview/preview_ui_src/index.html", "internal/preview/preview_ui_src/main.ts"} {
-		if !containsString(got, want) {
+		if !slices.Contains(got, want) {
 			t.Fatalf("preview UI source %s should remain in LSP source files: %+v", want, got)
 		}
 	}
@@ -1442,7 +1446,7 @@ func TestPreviewLSPManagerFindsGoBinOutsidePATH(t *testing.T) {
 	home := t.TempDir()
 	root := t.TempDir()
 	writeTestFile(t, home, "go/bin/gopls", "#!/bin/sh\n")
-	if err := os.Chmod(filepath.Join(home, "go", "bin", executableNames("gopls")[0]), 0o755); err != nil {
+	if err := os.Chmod(filepath.Join(home, "go", "bin", internalutil.ExecutableNames("gopls")[0]), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
@@ -1455,7 +1459,7 @@ func TestPreviewLSPManagerFindsGoBinOutsidePATH(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != filepath.Join(home, "go", "bin", executableNames("gopls")[0]) {
+	if got != filepath.Join(home, "go", "bin", internalutil.ExecutableNames("gopls")[0]) {
 		t.Fatalf("expected GOPATH-style gopls fallback, got %q", got)
 	}
 }
@@ -1463,7 +1467,7 @@ func TestPreviewLSPManagerFindsGoBinOutsidePATH(t *testing.T) {
 func TestPreviewLSPManagerFindsProjectNodeBinOutsidePATH(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	command := executableNames("typescript-language-server")[0]
+	command := internalutil.ExecutableNames("typescript-language-server")[0]
 	writeTestFile(t, root, filepath.Join("node_modules", ".bin", command), "#!/bin/sh\n")
 	if err := os.Chmod(filepath.Join(root, "node_modules", ".bin", command), 0o755); err != nil {
 		t.Fatal(err)
@@ -1485,7 +1489,7 @@ func TestPreviewLSPManagerFindsCachedNodeBinOutsidePATH(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	cache := t.TempDir()
-	command := executableNames("typescript-language-server")[0]
+	command := internalutil.ExecutableNames("typescript-language-server")[0]
 	writeTestFile(t, cache, filepath.Join("typescript", "node_modules", ".bin", command), "#!/bin/sh\n")
 	if err := os.Chmod(filepath.Join(cache, "typescript", "node_modules", ".bin", command), 0o755); err != nil {
 		t.Fatal(err)
@@ -1518,7 +1522,7 @@ func TestPreviewLSPManagerFindsCachedWebAndKotlinBinsOutsidePATH(t *testing.T) {
 		"kotlin": "kotlin-lsp",
 	}
 	for id, command := range commands {
-		name := executableNames(command)[0]
+		name := internalutil.ExecutableNames(command)[0]
 		dir := filepath.Join(id, "bin")
 		if id == "html" || id == "css" {
 			dir = filepath.Join(id, "node_modules", ".bin")
@@ -1722,11 +1726,11 @@ func TestRunLSPInstallKotlinDownloadsArchiveToCache(t *testing.T) {
 	if decodeErr := json.NewDecoder(&buf).Decode(&results); decodeErr != nil {
 		t.Fatalf("expected install JSON: %v\n%s", decodeErr, buf.String())
 	}
-	wantPath := filepath.Join(cache, "kotlin", "bin", executableNames("kotlin-lsp")[0])
+	wantPath := filepath.Join(cache, "kotlin", "bin", internalutil.ExecutableNames("kotlin-lsp")[0])
 	if len(results) != 1 || results[0].ID != "kotlin" || results[0].Status != "installed" || results[0].Path != wantPath {
 		t.Fatalf("expected Kotlin installed result at %s, got %+v", wantPath, results)
 	}
-	if !executableFile(wantPath) {
+	if !internalutil.ExecutableFile(wantPath) {
 		t.Fatalf("expected installed Kotlin wrapper to be executable at %s", wantPath)
 	}
 	manager := newPreviewLSPManager(root)
@@ -1936,7 +1940,7 @@ func parseAuthToken(raw string) string {
 	if len(search.Panels.DocsSemantic) == 0 || search.Panels.DocsSemantic[0].Path != "auth.md" {
 		t.Fatalf("expected embedding semantic doc result for auth.md, got %+v", search.Panels.DocsSemantic)
 	}
-	if !containsString(search.Panels.DocsSemantic[0].MatchedBy, "semantic") {
+	if !slices.Contains(search.Panels.DocsSemantic[0].MatchedBy, "semantic") {
 		t.Fatalf("expected semantic match method, got %+v", search.Panels.DocsSemantic[0].MatchedBy)
 	}
 	for _, warning := range search.Warnings {
@@ -2061,7 +2065,7 @@ public String loadCredential() { return ""; }
 `
 	symbols := codeSymbols(content)
 	for _, want := range []string{"createSession", "ProfileStore", "refreshToken", "scheduleOnboarding", "loadCredential"} {
-		if !containsString(symbols, want) {
+		if !slices.Contains(symbols, want) {
 			t.Fatalf("expected codeSymbols to include %s, got %+v", want, symbols)
 		}
 	}
@@ -2082,7 +2086,7 @@ func TestPreviewChildArgsPickAutoPortOnce(t *testing.T) {
 	if got := strings.Join(args[:2], " "); got != "--project "+projectRoot {
 		t.Fatalf("preview child args should inject the caller project root, got %+v", args)
 	}
-	if !containsString(args, "--addr") {
+	if !slices.Contains(args, "--addr") {
 		t.Fatalf("preview child args should include an auto-picked address: %+v", args)
 	}
 	addr := args[len(args)-1]
@@ -2111,7 +2115,7 @@ func TestPreviewChildArgsNormalizesExplicitProjectForSupervisor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsString(args, "--project") || !containsString(args, projectRoot) {
+	if !slices.Contains(args, "--project") || !slices.Contains(args, projectRoot) {
 		t.Fatalf("preview child args should replace relative project with normalized caller project root: %+v", args)
 	}
 	if strings.Contains(strings.Join(args, " "), "--project=.") {
@@ -2184,8 +2188,10 @@ func TestPreviewUIHasTypeScriptToolchain(t *testing.T) {
 		"preview_ui_src/js/html-doc.ts",
 		"preview_ui_src/js/markdown.ts",
 		"preview_ui_src/js/metadata.ts",
-		"preview_ui_src/js/network_graph.ts",
+		"preview_ui_src/js/network-graph.ts",
 		"preview_ui_src/js/internal-links.ts",
+		"preview_ui_src/js/shared-types.ts",
+		"preview_ui_src/js/shared-utils.ts",
 		"preview_ui_src/types.d.ts",
 		"preview_ui/index.html",
 	} {
@@ -2228,7 +2234,7 @@ func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 
 func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
 	text := previewUIText(t)
-	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
+	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network-graph.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2328,7 +2334,7 @@ func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
+	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network-graph.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2577,7 +2583,6 @@ func TestPreviewUIHasFaviconAndRouteTitles(t *testing.T) {
 		`href="/favicon.svg"`,
 		`type="image/svg+xml"`,
 		`viewBox="0 0 64 64"`,
-		"setPageChromeForTab",
 		"updateDocumentTitle",
 		"pageTitleForTab",
 		"dedupeTitleParts",
@@ -2598,7 +2603,7 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network_graph.ts")
+	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network-graph.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2619,7 +2624,7 @@ func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
 	if strings.Contains(string(networkGraphJS), "highlighted: node === selectedId") {
 		t.Fatalf("focused preview graph node should not render Sigma highlighted label background")
 	}
-	if !strings.Contains(string(networkGraphJS), "defaultDrawNodeHover: drawNodeHoverLabelOnly") {
+	if !strings.Contains(string(networkGraphJS), "defaultDrawNodeHover: drawNodeLabel") {
 		t.Fatalf("hovered preview graph node should not render Sigma label background")
 	}
 	if !strings.Contains(string(networkGraphJS), "const unfocusedColor = options.unfocusedEdgeColor || colorWithOpacity(data.color, 0.14)") ||

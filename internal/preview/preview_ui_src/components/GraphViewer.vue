@@ -1,31 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { ref, watch, onUnmounted } from "vue";
 import Icon from "./Icon.vue";
-import { renderNetworkGraph, type NetworkGraphData, type NetworkGraphLink, type NetworkGraphNode } from "../js/network_graph.js";
-
-interface GraphNode {
-  id: string;
-  label?: string;
-  type?: string;
-  path?: string;
-  specId?: string;
-  category?: string;
-  status?: string;
-  [key: string]: any;
-}
-
-interface GraphEdge {
-  from: string;
-  to: string;
-  type?: string;
-  label?: string;
-  [key: string]: any;
-}
-
-interface GraphData {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-}
+import { renderNetworkGraph, type NetworkGraphData, type NetworkGraphLink, type NetworkGraphNode } from "../js/network-graph.js";
+import type { GraphData, GraphNode } from "../js/shared-types.js";
+import { endpointID, escapeHTML } from "../js/shared-utils.js";
 
 interface Props {
   graph: GraphData | null;
@@ -215,14 +193,6 @@ function renderEdgeList(edges: NetworkGraphLink[], side: "source" | "target"): s
   `;
 }
 
-function escapeHTML(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
-
-function endpointID(endpoint: string | NetworkGraphNode): string {
-  return typeof endpoint === "string" ? endpoint : endpoint?.id || "";
-}
-
 function selectGraphNode(node: NetworkGraphNode) {
   selectedNodeId.value = node.id;
   graphRenderer.value?.setSelected(node.id);
@@ -251,10 +221,11 @@ function destroyGraph() {
 }
 
 watch(
-  () => props.graph,
+  () => [props.graph, props.active, props.theme, graphSearch.value] as const,
   () => {
-    if (!props.active) return;
-    initGraph();
+    if (props.active) {
+      initGraph();
+    }
   },
   { immediate: true },
 );
@@ -262,26 +233,12 @@ watch(
 watch(
   () => props.active,
   (isActive) => {
-    if (isActive) {
-      initGraph();
-    } else {
-      destroyGraph();
-    }
-  },
-);
-
-watch(
-  () => props.theme,
-  () => {
-    if (props.active) {
-      initGraph();
-    }
+    if (!isActive) destroyGraph();
   },
 );
 
 watch(graphSearch, () => {
   emit("update:query", graphSearch.value);
-  if (props.active) initGraph();
 });
 
 watch(
@@ -292,12 +249,6 @@ watch(
   },
   { immediate: true },
 );
-
-onMounted(() => {
-  if (props.graph && props.active) {
-    initGraph();
-  }
-});
 
 onUnmounted(() => {
   destroyGraph();

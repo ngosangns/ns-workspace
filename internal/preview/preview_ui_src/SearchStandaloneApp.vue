@@ -3,25 +3,21 @@ import { onMounted, onUnmounted, provide, ref } from "vue";
 import SearchPanel from "./components/SearchPanel.vue";
 import PreviewModal from "./components/PreviewModal.vue";
 import Icon from "./components/Icon.vue";
-
-interface ProjectSummary {
-  name: string;
-  generatedTitle?: string;
-  projectRoot?: string;
-  docsRoot?: string;
-}
-
-interface SpecDocument {
-  id: string;
-  title: string;
-  path: string;
-  raw?: string;
-  language?: string;
-  status?: string;
-  compliance?: string;
-}
-
-type ThemePreference = "system" | "dark" | "light";
+import {
+  ProjectKey,
+  SpecsKey,
+  ThemeKey,
+  SelectSpecKey,
+  OpenSpecPreviewKey,
+  OpenFilePreviewKey,
+  ClosePreviewKey,
+  ToggleThemeKey,
+  type SpecDocument,
+  type ProjectSummary,
+  type PreviewSource,
+  type ThemePreference,
+} from "./js/shared-types.js";
+import { fetchJSON } from "./js/shared-utils.js";
 
 const project = ref<ProjectSummary | null>(null);
 const specs = ref<SpecDocument[]>([]);
@@ -29,9 +25,7 @@ const theme = ref<"light" | "dark">("light");
 const themePreference = ref<ThemePreference>("system");
 const searchQuery = ref("");
 const searchKeywordOperator = ref("sum");
-const previewSource = ref<{ type: "doc" | "file"; raw: string; language: string; path: string; line: number; spec?: SpecDocument } | null>(
-  null,
-);
+const previewSource = ref<PreviewSource | null>(null);
 const previewShowRaw = ref(false);
 const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)") || null;
 
@@ -39,12 +33,6 @@ function handlePopState() {
   const next = routeFromLocation();
   searchQuery.value = next.query;
   searchKeywordOperator.value = next.keywordOperator;
-}
-
-async function fetchJSON(path: string) {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 function getInitialThemePreference(): ThemePreference {
@@ -172,14 +160,14 @@ function closePreview() {
   previewShowRaw.value = false;
 }
 
-provide("project", project);
-provide("specs", specs);
-provide("theme", theme);
-provide("selectSpec", selectSpec);
-provide("openSpecPreview", openSpecPreview);
-provide("openFilePreview", openFilePreview);
-provide("closePreview", closePreview);
-provide("toggleTheme", toggleTheme);
+provide(ProjectKey, project);
+provide(SpecsKey, specs);
+provide(ThemeKey, theme);
+provide(SelectSpecKey, selectSpec);
+provide(OpenSpecPreviewKey, openSpecPreview);
+provide(OpenFilePreviewKey, openFilePreview);
+provide(ClosePreviewKey, closePreview);
+provide(ToggleThemeKey, toggleTheme);
 
 onMounted(async () => {
   applyThemePreference(getInitialThemePreference());

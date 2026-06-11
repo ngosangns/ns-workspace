@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onUnmounted, ref, watch, type Ref } from "vue";
+import { computed, inject, nextTick, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
-import { renderNetworkGraph, type NetworkGraphData, type NetworkGraphLink, type NetworkGraphNode } from "../js/network_graph.js";
+import { renderNetworkGraph, type NetworkGraphData, type NetworkGraphLink, type NetworkGraphNode } from "../js/network-graph.js";
+import { ThemeKey } from "../js/shared-types.js";
+import { endpointID, escapeHTML, fetchJSON } from "../js/shared-utils.js";
 
 interface SearchResult {
   id?: string;
@@ -74,19 +76,13 @@ const docsGraphCanvas = ref<HTMLElement | null>(null);
 const docsGraphDetails = ref<HTMLElement | null>(null);
 const codeGraphCanvas = ref<HTMLElement | null>(null);
 const codeGraphDetails = ref<HTMLElement | null>(null);
-const theme = inject<Ref<"light" | "dark">>("theme", ref("light"));
+const theme = inject(ThemeKey, ref("light"));
 const searchGraphRenderers = new Map<string, ReturnType<typeof renderNetworkGraph>>();
 const searchGraphSelections = new Map<string, string>();
 const renderedSearchGraphs = new Map<string, NetworkGraphData>();
 const fullscreenSearchGraph = ref("");
 const docsResultCount = computed(() => panelResults("docsSemantic").length + panelResults("docsGraph").length);
 const codeResultCount = computed(() => panelResults("codeSemantic").length + panelResults("codeGraph").length);
-
-async function fetchJSON(path: string, signal?: AbortSignal) {
-  const res = await fetch(path, { signal });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
 
 async function runSearch() {
   const query = searchQuery.value.trim();
@@ -503,10 +499,6 @@ function darkSearchEdgeColor(type: string): string {
   }
 }
 
-function endpointID(endpoint: string | NetworkGraphNode): string {
-  return typeof endpoint === "string" ? endpoint : endpoint?.id || "";
-}
-
 function searchGraphDetailsElement(name: string): HTMLElement | null {
   return name === "docsGraph" ? docsGraphDetails.value : codeGraphDetails.value;
 }
@@ -532,10 +524,6 @@ function fitSearchGraph(name: string) {
 function toggleSearchGraphFullscreen(name: string) {
   fullscreenSearchGraph.value = fullscreenSearchGraph.value === name ? "" : name;
   refitSearchGraphSoon(name);
-}
-
-function escapeHTML(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 onUnmounted(() => {

@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 func npmCacheDirs(spec InstallSpec) []string {
@@ -28,9 +30,9 @@ func installNPMLSP(ctx context.Context, spec InstallSpec, packages []string) (st
 	if err != nil {
 		return "", fmt.Errorf("npm install failed: %w: %s", err, trimCommandOutput(out))
 	}
-	for _, name := range executableNames(spec.Command) {
+	for _, name := range internalutil.ExecutableNames(spec.Command) {
 		path := filepath.Join(prefix, "node_modules", ".bin", name)
-		if executableFile(path) {
+		if internalutil.ExecutableFile(path) {
 			return path, nil
 		}
 	}

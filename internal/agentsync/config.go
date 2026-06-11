@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -215,9 +216,5 @@ func normalizePresetKey(key string) string {
 }
 
 func sortStrings(values []string) {
-	for i := 1; i < len(values); i++ {
-		for j := i; j > 0 && values[j-1] > values[j]; j-- {
-			values[j-1], values[j] = values[j], values[j-1]
-		}
-	}
+	sort.Strings(values)
 }

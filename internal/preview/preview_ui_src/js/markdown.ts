@@ -38,7 +38,7 @@ async function loadToastMarkdownViewer(): Promise<ToastMarkdownViewerConstructor
   return Viewer;
 }
 
-export function renderableMarkdownMetadata(raw: string): { html: string; body: string } {
+function renderableMarkdownMetadata(raw: string): { html: string; body: string } {
   const lines = String(raw || "").split("\n");
   const rows: MetadataRow[] = [];
   let body = raw;
@@ -63,7 +63,7 @@ export function renderableMarkdownMetadata(raw: string): { html: string; body: s
   };
 }
 
-export function markdownMetadataRows(lines: string[]): MetadataRow[] {
+function markdownMetadataRows(lines: string[]): MetadataRow[] {
   const rows: MetadataRow[] = [];
   let current: MetadataRow | null = null;
   lines.forEach((line) => {
@@ -86,7 +86,7 @@ export function markdownMetadataRows(lines: string[]): MetadataRow[] {
   return rows.filter((row) => row.key);
 }
 
-export function markdownBodyMetadata(raw: string): { rows: MetadataRow[]; body: string } {
+function markdownBodyMetadata(raw: string): { rows: MetadataRow[]; body: string } {
   const lines = String(raw || "").split("\n");
   const start = lines.findIndex((line) => /^##\s+Meta\s*$/i.test(line.trim()));
   if (start < 0) return { rows: [], body: raw };

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch, inject, type Ref } from "vue";
+import { onMounted, onUnmounted, ref, watch, inject } from "vue";
 import { decorateInternalDocNavigation, type SpecDocument, type InternalSpecTarget } from "../js/internal-links.js";
 import { destroyDiagramsIn, renderDiagramsIn } from "../js/diagrams.js";
 import { renderCodePreview } from "../js/code-preview.js";
 import { renderHTMLPreview } from "../js/html-doc.js";
 import { renderMarkdownPreview } from "../js/markdown.js";
+import { SpecsKey, SelectSpecKey } from "../js/shared-types.js";
+import { languageFromPath } from "../js/shared-utils.js";
 
 interface Props {
   spec: SpecDocument | null;
@@ -12,8 +14,8 @@ interface Props {
 }
 
 const props = defineProps<Props>();
-const specs = inject<Ref<SpecDocument[]>>("specs");
-const selectSpec = inject<(id: string, showSpecTab?: boolean) => Promise<void>>("selectSpec");
+const specs = inject(SpecsKey);
+const selectSpec = inject(SelectSpecKey);
 const specContent = ref<HTMLElement | null>(null);
 let renderToken = 0;
 
@@ -49,13 +51,6 @@ async function renderSpecDocumentContent(root: HTMLElement, spec: SpecDocument):
 async function decorateRenderedDoc(root: HTMLElement, spec: SpecDocument, fallbackKey: string): Promise<void> {
   await renderDiagramsIn(root, props.theme, spec.id || spec.path || fallbackKey);
   decorateInternalDocNavigation(root, spec, specs?.value || [], handleInternalLinkNavigation);
-}
-
-function languageFromPath(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase() || "";
-  if (ext === "md" || ext === "markdown") return "markdown";
-  if (ext === "html" || ext === "htm") return "html";
-  return "text";
 }
 
 async function renderCurrentSpec(): Promise<void> {

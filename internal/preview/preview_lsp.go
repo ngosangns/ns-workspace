@@ -2,6 +2,7 @@ package preview
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,18 +10,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 const (
@@ -229,7 +235,7 @@ func (p *previewLSPCodeGraphProvider) cachedIndex(ctx context.Context) (lspCodeG
 	if token != "" && token == p.token {
 		index := p.index
 		p.mu.Unlock()
-		return index, uniqueStrings(append(append([]string{}, index.Warnings...), warnings...))
+		return index, internalutil.UniqueStrings(append(append([]string{}, index.Warnings...), warnings...))
 	}
 	p.mu.Unlock()
 
@@ -364,7 +370,7 @@ func lspFullSymbolName(name, owner string) string {
 	name = strings.TrimSpace(name)
 	owner = strings.TrimSpace(owner)
 	if owner == "" || name == "" {
-		return firstNonEmpty(name, owner)
+		return internalutil.FirstNonEmpty(name, owner)
 	}
 	for _, prefix := range []string{owner + ".", owner + "#", owner + "::", "(" + owner + ")"} {
 		if strings.HasPrefix(name, prefix) {
@@ -421,7 +427,7 @@ func searchLSPCodeGraph(ctx context.Context, provider *previewLSPCodeGraphProvid
 		out = append(out, result)
 	}
 	sortSearchResults(out)
-	return limitResults(dedupeSearchResults(out), graphExpansionLimit(limit)), uniqueStrings(warnings)
+	return limitResults(dedupeSearchResults(out), graphExpansionLimit(limit)), internalutil.UniqueStrings(warnings)
 }
 
 func (p *previewLSPCodeGraphProvider) expandLSPCodeGraphCallFlow(ctx context.Context, index lspCodeGraphIndex, candidate lspCodeGraphCandidate, limit int) (map[string]previewSearchResult, []lspCodeEdge, []string) {
@@ -465,10 +471,10 @@ func (p *previewLSPCodeGraphProvider) relationsForNode(ctx context.Context, inde
 	cancel()
 	warnings = append(warnings, callWarnings...)
 	if len(edges) > 0 {
-		return edges, uniqueStrings(warnings)
+		return edges, internalutil.UniqueStrings(warnings)
 	}
 	if ctx.Err() != nil {
-		return nil, uniqueStrings(append(warnings, fmt.Sprintf("Code Graph relation expansion for %s timed out before references fallback.", lspCodeNodeTitle(node))))
+		return nil, internalutil.UniqueStrings(append(warnings, fmt.Sprintf("Code Graph relation expansion for %s timed out before references fallback.", lspCodeNodeTitle(node))))
 	}
 
 	refCtx, cancel := context.WithTimeout(ctx, lspRelationPhaseTimeout)
@@ -479,7 +485,7 @@ func (p *previewLSPCodeGraphProvider) relationsForNode(ctx context.Context, inde
 		if callTimedOut {
 			warnings = append(warnings, fmt.Sprintf("Code Graph relation expansion for %s fell back to references after call hierarchy timeout.", lspCodeNodeTitle(node)))
 		}
-		return refEdges, uniqueStrings(warnings)
+		return refEdges, internalutil.UniqueStrings(warnings)
 	}
 	if refErr != nil && refTimedOut {
 		warnings = append(warnings, fmt.Sprintf("Code Graph references fallback for %s timed out.", lspCodeNodeTitle(node)))
@@ -487,7 +493,7 @@ func (p *previewLSPCodeGraphProvider) relationsForNode(ctx context.Context, inde
 	if callErr != nil && refErr != nil && len(warnings) == 0 {
 		warnings = append(warnings, "Code Graph relation expansion is unavailable for this language server.")
 	}
-	return nil, uniqueStrings(warnings)
+	return nil, internalutil.UniqueStrings(warnings)
 }
 
 func (p *previewLSPCodeGraphProvider) callHierarchyEdges(ctx context.Context, srv *previewLSPServer, index lspCodeGraphIndex, node lspCodeNode) ([]lspCodeEdge, []string, error) {
@@ -528,7 +534,7 @@ func (p *previewLSPCodeGraphProvider) callHierarchyEdges(ctx context.Context, sr
 			}
 		}
 	}
-	return dedupeLSPCodeEdges(edges), uniqueStrings(warnings), firstErr
+	return dedupeLSPCodeEdges(edges), internalutil.UniqueStrings(warnings), firstErr
 }
 
 func (p *previewLSPCodeGraphProvider) referenceEdges(ctx context.Context, srv *previewLSPServer, index lspCodeGraphIndex, node lspCodeNode) ([]lspCodeEdge, error) {
@@ -589,7 +595,7 @@ func lspCodeNodeSearchResult(node lspCodeNode, score float64, matchedBy []string
 	return previewSearchResult{
 		Title:      lspCodeNodeTitle(node),
 		Path:       node.Path,
-		Kind:       firstNonEmpty(node.KindLabel, "symbol"),
+		Kind:       internalutil.FirstNonEmpty(node.KindLabel, "symbol"),
 		Source:     "lsp",
 		Line:       nodeLine(node),
 		Score:      roundScore(score),
@@ -605,7 +611,7 @@ func lspCodeNodeSearchResult(node lspCodeNode, score float64, matchedBy []string
 }
 
 func lspCodeNodeTitle(node lspCodeNode) string {
-	title := firstNonEmpty(node.FullName, node.Name, node.ID)
+	title := internalutil.FirstNonEmpty(node.FullName, node.Name, node.ID)
 	if lspSymbolIsCallable(node.Kind) && !strings.Contains(title, "(") {
 		title += "()"
 	}
@@ -621,7 +627,7 @@ func nodeLine(node lspCodeNode) int {
 	if line <= 0 {
 		line = node.Range.Start.Line + 1
 	}
-	return maxInt(1, line)
+	return max(1, line)
 }
 
 func sortLSPCodeGraphCandidates(candidates []lspCodeGraphCandidate) {
@@ -649,13 +655,13 @@ func limitLSPCodeGraphCandidates(candidates []lspCodeGraphCandidate, limit int) 
 	if limit <= 0 {
 		limit = defaultSearchLimit
 	}
-	return candidates[:minInt(len(candidates), maxInt(limit, limit*2))]
+	return candidates[:min(len(candidates), max(limit, limit*2))]
 }
 
 func (index lspCodeGraphIndex) nodeIDForLocation(projectRoot, uri string, pos lspPosition) string {
 	rel := cleanProjectRel(projectRoot, pathFromLSPURI(uri))
 	best := ""
-	bestSpan := int(^uint(0) >> 1)
+	bestSpan := math.MaxInt
 	for _, id := range index.ByPath[rel] {
 		node := index.Nodes[id]
 		if positionInLSPRange(pos, node.SelectionRange) || node.SelectionRange.Start.Line == pos.Line {
@@ -675,7 +681,7 @@ func (index lspCodeGraphIndex) nodeIDForLocation(projectRoot, uri string, pos ls
 func (index lspCodeGraphIndex) containingNodeIDForLocation(projectRoot, uri string, pos lspPosition) string {
 	rel := cleanProjectRel(projectRoot, pathFromLSPURI(uri))
 	best := ""
-	bestSpan := int(^uint(0) >> 1)
+	bestSpan := math.MaxInt
 	for _, id := range index.ByPath[rel] {
 		node := index.Nodes[id]
 		if !positionInLSPRange(pos, node.Range) {
@@ -827,7 +833,7 @@ func lspSourceToken(files []lspSourceFile) string {
 func lspLanguageForPath(path string) (lspLanguage, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
 	for _, lang := range lspLanguageSpecs() {
-		if !stringInSlice(ext, lang.Extensions) {
+		if !slices.Contains(lang.Extensions, ext) {
 			continue
 		}
 		server, ok := lspInstallSpecByID(lang.ServerID)
@@ -876,7 +882,7 @@ func (m *previewLSPManager) resolveCommandWithSource(command string) (string, st
 		return path, "path", nil
 	}
 	for _, candidate := range m.commandCandidates(command) {
-		if executableFile(candidate) {
+		if internalutil.ExecutableFile(candidate) {
 			return candidate, lspCommandSource(candidate, m.root), nil
 		}
 	}
@@ -890,7 +896,7 @@ func (m *previewLSPManager) commandCandidates(command string) []string {
 		if dir == "" {
 			return
 		}
-		dirs = appendUniqueString(dirs, dir)
+		dirs = internalutil.AppendUniqueString(dirs, dir)
 	}
 
 	addDir(filepath.Join(m.root, "node_modules", ".bin"))
@@ -903,10 +909,10 @@ func (m *previewLSPManager) commandCandidates(command string) []string {
 
 	if command == "gopls" {
 		addDir(os.Getenv("GOBIN"))
-		if gopath := firstNonEmpty(os.Getenv("GOPATH"), goEnvValue("GOPATH")); gopath != "" {
+		if gopath := internalutil.FirstNonEmpty(os.Getenv("GOPATH"), internalutil.GoEnvValue("GOPATH")); gopath != "" {
 			addDir(filepath.Join(gopath, "bin"))
 		}
-		if gobin := goEnvValue("GOBIN"); gobin != "" {
+		if gobin := internalutil.GoEnvValue("GOBIN"); gobin != "" {
 			addDir(gobin)
 		}
 		if home, err := os.UserHomeDir(); err == nil {
@@ -920,42 +926,11 @@ func (m *previewLSPManager) commandCandidates(command string) []string {
 
 	candidates := []string{}
 	for _, dir := range dirs {
-		for _, name := range executableNames(command) {
-			candidates = appendUniqueString(candidates, filepath.Join(dir, name))
+		for _, name := range internalutil.ExecutableNames(command) {
+			candidates = internalutil.AppendUniqueString(candidates, filepath.Join(dir, name))
 		}
 	}
 	return candidates
-}
-
-func executableNames(command string) []string {
-	if runtime.GOOS == "windows" {
-		return []string{command, command + ".exe", command + ".cmd", command + ".bat"}
-	}
-	return []string{command}
-}
-
-func executableFile(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return false
-	}
-	if runtime.GOOS == "windows" {
-		return true
-	}
-	return info.Mode()&0o111 != 0
-}
-
-func goEnvValue(key string) string {
-	if _, err := exec.LookPath("go"); err != nil {
-		return ""
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "go", "env", key).Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 func (m *previewLSPManager) ServerByID(serverID string) (*previewLSPServer, error) {
@@ -1006,7 +981,11 @@ func (s *previewLSPServer) Start(ctx context.Context) error {
 		s.mu.Unlock()
 		return err
 	}
-	cmd.Stderr = io.Discard
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+	if runtime.GOOS != "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	}
 	if err := cmd.Start(); err != nil {
 		s.mu.Unlock()
 		return err
@@ -1052,7 +1031,11 @@ func (s *previewLSPServer) Stop(ctx context.Context) error {
 	s.reader = nil
 	s.mu.Unlock()
 	if cmd.Process != nil {
-		_ = cmd.Process.Kill()
+		if runtime.GOOS != "windows" {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		} else {
+			_ = cmd.Process.Kill()
+		}
 	}
 	return nil
 }

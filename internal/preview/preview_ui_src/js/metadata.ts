@@ -47,7 +47,7 @@ function renderMetadataGroupValue(group: { key: string; rows: MetadataRow[] }): 
     .join("")}</span>`;
 }
 
-export function renderMetadataValue(raw: string, key = "", href = ""): string {
+function renderMetadataValue(raw: string, key = "", href = ""): string {
   if (href) {
     return renderMetadataLinkBadges([{ label: cleanMetadataScalar(raw) || href, href }]);
   }

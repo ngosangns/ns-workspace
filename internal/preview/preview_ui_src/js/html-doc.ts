@@ -1,9 +1,9 @@
 import { escapeHTML } from "./code-preview.js";
 import { renderMetadataTable, type MetadataRow } from "./metadata.js";
 
-export const htmlMVPStylesheetURL = "https://cdn.jsdelivr.net/npm/mvp.css@1.17.3/mvp.css";
+const htmlMVPStylesheetURL = "https://cdn.jsdelivr.net/npm/mvp.css@1.17.3/mvp.css";
 
-export const htmlDocSanitizeConfig = {
+const htmlDocSanitizeConfig = {
   ADD_TAGS: [
     "doc-meta",
     "doc-title",
@@ -51,7 +51,7 @@ export async function renderHTMLPreview(root: HTMLElement, raw: string): Promise
   normalizeHTMLDocTags(root);
 }
 
-export async function ensureHTMLMVPStylesheet(): Promise<void> {
+async function ensureHTMLMVPStylesheet(): Promise<void> {
   if (document.querySelector("style[data-html-mvp-css]")) return;
   if (!htmlMVPStylesheetPromise) {
     htmlMVPStylesheetPromise = fetch(htmlMVPStylesheetURL)
@@ -73,7 +73,7 @@ export async function ensureHTMLMVPStylesheet(): Promise<void> {
   await htmlMVPStylesheetPromise;
 }
 
-export function scopeMVPStylesheet(css: string): string {
+function scopeMVPStylesheet(css: string): string {
   try {
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(css);
@@ -110,7 +110,7 @@ function scopeMVPSelector(selector: string): string {
   return `.html-doc ${selector}`;
 }
 
-export function normalizeHTMLDocTags(root: HTMLElement): void {
+function normalizeHTMLDocTags(root: HTMLElement): void {
   root.querySelectorAll("doc-meta").forEach((node) => {
     const metadata = document.createElement("div");
     const rows = htmlMetadataRows(node);
@@ -163,7 +163,7 @@ export function normalizeHTMLDocTags(root: HTMLElement): void {
   root.querySelectorAll("doc-metric").forEach((node) => replaceDocMetric(node));
 }
 
-export function htmlMetadataRows(meta: Element): MetadataRow[] {
+function htmlMetadataRows(meta: Element): MetadataRow[] {
   const rows: MetadataRow[] = [];
   ["status", "compliance", "priority", "version", "tone"].forEach((key) => {
     const value = meta.getAttribute(key);

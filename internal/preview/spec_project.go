@@ -14,6 +14,8 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"golang.org/x/net/html"
+
+	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
 type specProject struct {
@@ -181,7 +183,7 @@ func scanSpecProject(projectRoot, docsDir string) (specProject, error) {
 }
 
 func docsRoot(projectRoot, docsDir string) string {
-	docsDir = expandPath(docsDir)
+	docsDir = internalutil.ExpandPath(docsDir)
 	if filepath.IsAbs(docsDir) {
 		return filepath.Clean(docsDir)
 	}
@@ -218,7 +220,7 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 		meta := mergeModuleMeta(parseDocumentMeta(rel, raw), table[rel])
 		docs = append(docs, specDocument{
 			ID:          rel,
-			Title:       firstNonEmpty(meta.Title, titleFromDocument(raw, format), rel),
+			Title:       internalutil.FirstNonEmpty(meta.Title, titleFromDocument(raw, format), rel),
 			Path:        rel,
 			Language:    languageForPath(path),
 			Format:      format,
@@ -247,13 +249,13 @@ func mergeModuleMeta(docMeta, tableMeta moduleMeta) moduleMeta {
 		return docMeta
 	}
 	return moduleMeta{
-		Title:       firstNonEmpty(tableMeta.Title, docMeta.Title),
-		Path:        firstNonEmpty(tableMeta.Path, docMeta.Path),
-		Status:      firstNonEmpty(tableMeta.Status, docMeta.Status),
-		Version:     firstNonEmpty(tableMeta.Version, docMeta.Version),
-		Compliance:  firstNonEmpty(tableMeta.Compliance, docMeta.Compliance),
-		Priority:    firstNonEmpty(tableMeta.Priority, docMeta.Priority),
-		Description: firstNonEmpty(tableMeta.Description, docMeta.Description),
+		Title:       internalutil.FirstNonEmpty(tableMeta.Title, docMeta.Title),
+		Path:        internalutil.FirstNonEmpty(tableMeta.Path, docMeta.Path),
+		Status:      internalutil.FirstNonEmpty(tableMeta.Status, docMeta.Status),
+		Version:     internalutil.FirstNonEmpty(tableMeta.Version, docMeta.Version),
+		Compliance:  internalutil.FirstNonEmpty(tableMeta.Compliance, docMeta.Compliance),
+		Priority:    internalutil.FirstNonEmpty(tableMeta.Priority, docMeta.Priority),
+		Description: internalutil.FirstNonEmpty(tableMeta.Description, docMeta.Description),
 	}
 }
 
@@ -369,7 +371,7 @@ func parseDocumentMeta(rel, raw string) moduleMeta {
 			meta.Description = stripMarkdown(entry.Value)
 		}
 	}
-	for _, line := range strings.Split(firstNonEmpty(block, raw), "\n") {
+	for _, line := range strings.Split(internalutil.FirstNonEmpty(block, raw), "\n") {
 		trimmed := strings.TrimSpace(strings.TrimPrefix(line, "-"))
 		if strings.Contains(trimmed, "**Status**") {
 			meta.Status = valueAfterColon(trimmed)
@@ -384,10 +386,10 @@ func parseDocumentMeta(rel, raw string) moduleMeta {
 			meta.Description = valueAfterColon(trimmed)
 		}
 		if strings.Contains(trimmed, "**Meta**") {
-			meta.Status = firstNonEmpty(meta.Status, betweenAfter(trimmed, "Status"))
-			meta.Version = firstNonEmpty(meta.Version, betweenAfter(trimmed, "Version"))
-			meta.Compliance = firstNonEmpty(meta.Compliance, betweenAfter(trimmed, "Compliance"))
-			meta.Description = firstNonEmpty(meta.Description, betweenAfter(trimmed, "Description"))
+			meta.Status = internalutil.FirstNonEmpty(meta.Status, betweenAfter(trimmed, "Status"))
+			meta.Version = internalutil.FirstNonEmpty(meta.Version, betweenAfter(trimmed, "Version"))
+			meta.Compliance = internalutil.FirstNonEmpty(meta.Compliance, betweenAfter(trimmed, "Compliance"))
+			meta.Description = internalutil.FirstNonEmpty(meta.Description, betweenAfter(trimmed, "Description"))
 		}
 	}
 	return meta
@@ -499,16 +501,16 @@ func parseSpecGraph(indexRaw string, docs []specDocument) specGraph {
 		if doc, ok := specByModule[node.ID]; ok {
 			node.SpecID = doc.ID
 			node.Path = doc.Path
-			node.Type = firstNonEmpty(node.Type, "doc")
+			node.Type = internalutil.FirstNonEmpty(node.Type, "doc")
 			node.Category = doc.Category
 			node.Status = doc.Status
 		} else if doc, ok := docByNodeID[node.ID]; ok {
 			node.SpecID = doc.ID
 			node.Path = doc.Path
-			node.Type = firstNonEmpty(node.Type, "doc")
+			node.Type = internalutil.FirstNonEmpty(node.Type, "doc")
 			node.Category = doc.Category
 			node.Status = doc.Status
-			node.Label = firstNonEmpty(node.Label, doc.Title)
+			node.Label = internalutil.FirstNonEmpty(node.Label, doc.Title)
 		}
 		list = append(list, node)
 	}
@@ -734,8 +736,8 @@ func parseRelationshipEdges(markdown string) []graphEdge {
 		for _, from := range splitNodeList(leftRight[0]) {
 			for _, to := range splitNodeList(toPart) {
 				if from != "" && to != "" {
-					relationType := relationTypeFromText(firstNonEmpty(section, desc, "related"))
-					out = append(out, graphEdge{From: from, To: to, Label: firstNonEmpty(desc, relationType), Type: relationType, Origin: "relationship-map", Raw: item})
+					relationType := relationTypeFromText(internalutil.FirstNonEmpty(section, desc, "related"))
+					out = append(out, graphEdge{From: from, To: to, Label: internalutil.FirstNonEmpty(desc, relationType), Type: relationType, Origin: "relationship-map", Raw: item})
 				}
 			}
 		}
@@ -776,7 +778,7 @@ func parseDocumentMetadataEdges(doc specDocument, from string, docByPath map[str
 		}
 		for _, relation := range data.Relations {
 			if target, ok := resolveSpecReference(doc.Path, relation.Target, docByPath, diagramLabelSet); ok && from != target {
-				edges = append(edges, graphEdge{From: from, To: target, Label: relation.Type, Type: relation.Type, Origin: "metadata", Raw: firstNonEmpty(relation.Raw, relation.Target)})
+				edges = append(edges, graphEdge{From: from, To: target, Label: relation.Type, Type: relation.Type, Origin: "metadata", Raw: internalutil.FirstNonEmpty(relation.Raw, relation.Target)})
 			}
 		}
 		return dedupeEdges(edges)
@@ -939,7 +941,7 @@ func parseHTMLDocumentData(raw string) htmlDocData {
 			}
 		}
 	})
-	data.Meta.Title = firstNonEmpty(data.Meta.Title, firstHeading)
+	data.Meta.Title = internalutil.FirstNonEmpty(data.Meta.Title, firstHeading)
 	data.Text = compactAllWhitespace(strings.Join(textParts, " "))
 	data.BodyText = compactAllWhitespace(strings.Join(bodyParts, " "))
 	return data
@@ -1004,15 +1006,15 @@ func htmlDocMetadataEntries(metaNode *html.Node, meta moduleMeta) []metadataEntr
 		if href == "" {
 			continue
 		}
-		relationType := firstNonEmpty(htmlAttr(child, "type"), defaultSpecRelation)
+		relationType := internalutil.FirstNonEmpty(htmlAttr(child, "type"), defaultSpecRelation)
 		add(relationType, href)
 	}
 	return entries
 }
 
 func htmlRelationFromNode(node *html.Node) htmlDocRelation {
-	target := firstNonEmpty(htmlAttr(node, "target"), htmlAttr(node, "href"))
-	relationType := firstNonEmpty(htmlAttr(node, "type"), defaultSpecRelation)
+	target := internalutil.FirstNonEmpty(htmlAttr(node, "target"), htmlAttr(node, "href"))
+	relationType := internalutil.FirstNonEmpty(htmlAttr(node, "type"), defaultSpecRelation)
 	if !allowedSpecRelations[relationType] {
 		relationType = defaultSpecRelation
 	}
@@ -1254,7 +1256,7 @@ func extractPlainSpecPathRefs(text string) []string {
 			out = append(out, match[1])
 		}
 	}
-	return uniqueStrings(out)
+	return internalutil.UniqueStrings(out)
 }
 
 func trimDocFragment(value string) string {
@@ -1376,7 +1378,7 @@ func parseForbiddenLine(raw string) (string, string, string) {
 		if idx := strings.Index(raw, arrow); idx >= 0 {
 			to, inlineDesc := splitConstraintTarget(raw[idx+len(arrow):])
 			if inlineDesc != "" {
-				desc = strings.TrimSpace(firstNonEmpty(desc, inlineDesc))
+				desc = strings.TrimSpace(internalutil.FirstNonEmpty(desc, inlineDesc))
 			}
 			return cleanConstraintNode(raw[:idx]), to, desc
 		}
@@ -1543,15 +1545,6 @@ func betweenAfter(value, marker string) string {
 	return valueAfterColon(value[idx:])
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
 func fencedBlockAfterHeading(markdown, heading string) string {
 	lines := strings.Split(markdown, "\n")
 	inHeading := false
@@ -1642,22 +1635,9 @@ func relationshipsFromEdges(edges []graphEdge) []graphRelation {
 		out = append(out, graphRelation{
 			From:        edge.From,
 			To:          edge.To,
-			Description: firstNonEmpty(edge.Label, edge.Type, defaultSpecRelation),
+			Description: internalutil.FirstNonEmpty(edge.Label, edge.Type, defaultSpecRelation),
 			Section:     edge.Origin,
 		})
 	}
 	return dedupeRelationships(out)
-}
-
-func uniqueStrings(values []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, value := range values {
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
 }

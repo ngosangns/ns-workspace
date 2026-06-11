@@ -1,15 +1,6 @@
-export interface SpecDocument {
-  id: string;
-  title: string;
-  path: string;
-  raw?: string;
-  language?: string;
-  status?: string;
-  version?: string;
-  compliance?: string;
-  priority?: string;
-  description?: string;
-}
+import type { SpecDocument } from "./shared-types.js";
+
+export type { SpecDocument };
 
 export interface InternalSpecTarget {
   specId: string;
@@ -22,27 +13,28 @@ export function decorateInternalDocNavigation(
   specs: SpecDocument[],
   onNavigate: (target: InternalSpecTarget) => void,
 ): void {
-  decorateInternalDocLinks(root, spec, specs, onNavigate);
-  decorateInternalDocMentions(root, spec, specs, onNavigate);
+  const lookup = buildSpecLookup(specs);
+  decorateInternalDocLinks(root, spec, lookup, onNavigate);
+  decorateInternalDocMentions(root, spec, lookup, onNavigate);
 }
 
-export function decorateInternalDocLinks(
+function decorateInternalDocLinks(
   root: HTMLElement,
   spec: SpecDocument,
-  specs: SpecDocument[],
+  lookup: Map<string, SpecDocument>,
   onNavigate: (target: InternalSpecTarget) => void,
 ): void {
   root.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((link) => {
-    const target = resolveSpecNavigationTarget(link.getAttribute("href") || "", spec.path, specs);
+    const target = resolveSpecNavigationTarget(link.getAttribute("href") || "", spec.path, lookup);
     if (!target) return;
     configureInternalSpecLink(link, target, onNavigate);
   });
 }
 
-export function decorateInternalDocMentions(
+function decorateInternalDocMentions(
   root: HTMLElement,
   spec: SpecDocument,
-  specs: SpecDocument[],
+  lookup: Map<string, SpecDocument>,
   onNavigate: (target: InternalSpecTarget) => void,
 ): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -51,31 +43,31 @@ export function decorateInternalDocMentions(
       if (!parent || parent.closest("a, pre, code, script, style")) {
         return NodeFilter.FILTER_REJECT;
       }
-      return internalDocMentionPattern().test(node.textContent || "") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      return internalDocMentionPattern.test(node.textContent || "") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
     },
   });
   const nodes: Text[] = [];
   while (walker.nextNode()) {
     nodes.push(walker.currentNode as Text);
   }
-  nodes.forEach((node) => replaceInternalDocMentions(node, spec, specs, onNavigate));
+  nodes.forEach((node) => replaceInternalDocMentions(node, spec, lookup, onNavigate));
 }
 
 function replaceInternalDocMentions(
   node: Text,
   spec: SpecDocument,
-  specs: SpecDocument[],
+  lookup: Map<string, SpecDocument>,
   onNavigate: (target: InternalSpecTarget) => void,
 ): void {
   const text = node.textContent || "";
-  const pattern = internalDocMentionPattern();
+  const pattern = internalDocMentionPattern;
   const fragment = document.createDocumentFragment();
   let cursor = 0;
   let changed = false;
   for (const match of text.matchAll(pattern)) {
     const raw = match[0];
     const index = match.index || 0;
-    const target = resolveSpecNavigationTarget(raw, spec.path, specs);
+    const target = resolveSpecNavigationTarget(raw, spec.path, lookup);
     if (!target) continue;
     fragment.append(document.createTextNode(text.slice(cursor, index)));
     fragment.append(createInternalSpecAnchor(raw, target, onNavigate));
@@ -87,9 +79,8 @@ function replaceInternalDocMentions(
   node.replaceWith(fragment);
 }
 
-export function internalDocMentionPattern(): RegExp {
-  return /@(?:doc|spec)\/[A-Za-z0-9_./-]+(?:#[A-Za-z0-9_-]+)?|(?:\.{1,2}\/|docs\/|specs\/)?[A-Za-z0-9_./-]+\.(?:md|html?)(?:#[A-Za-z0-9_-]+)?/g;
-}
+const internalDocMentionPattern =
+  /@(?:doc|spec)\/[A-Za-z0-9_./-]+(?:#[A-Za-z0-9_-]+)?|(?:\.{1,2}\/|docs\/|specs\/)?[A-Za-z0-9_./-]+\.(?:md|html?)(?:#[A-Za-z0-9_-]+)?/g;
 
 function createInternalSpecAnchor(
   label: string,
@@ -119,10 +110,9 @@ function configureInternalSpecLink(
   });
 }
 
-export function resolveSpecNavigationTarget(value: string, sourcePath: string, specs: SpecDocument[]): InternalSpecTarget | null {
+function resolveSpecNavigationTarget(value: string, sourcePath: string, lookup: Map<string, SpecDocument>): InternalSpecTarget | null {
   const parsed = parseInternalSpecTargetValue(value);
   if (!parsed) return null;
-  const lookup = buildSpecLookup(specs);
   for (const candidate of specPathCandidates(parsed.path, sourcePath)) {
     const spec = lookup.get(candidate);
     if (spec) {
@@ -247,7 +237,7 @@ function normalizePathSegments(path: string): string {
   return segments.join("/");
 }
 
-export function slugifySpecText(value: string): string {
+function slugifySpecText(value: string): string {
   return value
     .trim()
     .toLowerCase()
