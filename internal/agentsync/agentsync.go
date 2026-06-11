@@ -43,10 +43,6 @@ type RegistryManifest struct {
 	Skills []RegistrySkill `json:"skills"`
 }
 
-type OpenCodeConfigManifest struct {
-	Permission any `json:"permission,omitempty"`
-}
-
 type RegistrySkill struct {
 	Name   string `json:"name"`
 	Source string `json:"source"`
@@ -103,6 +99,8 @@ type Context struct {
 	UserConfig    UserConfig
 	Report        StatusReporter
 	Update        bool
+	manifestCache map[string]any
+	seenDirs      map[string]bool
 }
 
 type AgentAdapter interface {
@@ -156,12 +154,7 @@ type InstallPresetTree struct {
 }
 
 func (op InstallPresetTree) Apply(ctx Context) error {
-	if op.Replace {
-		if err := backupAndRemove(ctx, op.DstRoot); err != nil {
-			return err
-		}
-	}
-	seen := map[string]bool{}
+	managed := map[string]bool{}
 	walkErr := fs.WalkDir(ctx.Presets, op.SrcRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -171,7 +164,7 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 			return err
 		}
 		dst := filepath.Join(op.DstRoot, rel)
-		seen[filepath.ToSlash(rel)] = true
+		managed[filepath.ToSlash(rel)] = true
 		if d.IsDir() {
 			return ensureDir(ctx, dst)
 		}
@@ -184,13 +177,11 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 	if walkErr != nil {
 		return walkErr
 	}
-	// Materialize user additions under this tree root. The user config can
-	// point at brand-new files (e.g. an extra skill) that do not exist in
-	// the embedded presets, so the tree walk above never visits them.
 	for _, rel := range ctx.UserConfig.EntriesUnder(op.SrcRoot) {
-		if seen[rel] {
+		if managed[rel] {
 			continue
 		}
+		managed[rel] = true
 		fullKey := filepath.ToSlash(filepath.Join(op.SrcRoot, rel))
 		data, err := readPresetFileFromUser(ctx, fullKey)
 		if err != nil {
@@ -202,6 +193,68 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		}
 		if err := writeFileManaged(ctx, dst, data, op.Replace); err != nil {
 			return err
+		}
+	}
+	if op.Replace {
+		if err := removeStaleEntries(ctx, op.DstRoot, managed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeStaleEntries(ctx Context, dstRoot string, managed map[string]bool) error {
+	entries, err := os.ReadDir(dstRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	return removeStaleRecursive(ctx, dstRoot, "", entries, managed)
+}
+
+func removeStaleRecursive(ctx Context, root, relPrefix string, entries []os.DirEntry, managed map[string]bool) error {
+	for _, entry := range entries {
+		rel := entry.Name()
+		if relPrefix != "" {
+			rel = relPrefix + "/" + entry.Name()
+		}
+		fullPath := filepath.Join(root, entry.Name())
+		if entry.IsDir() {
+			subEntries, err := os.ReadDir(fullPath)
+			if err != nil {
+				return err
+			}
+			if err := removeStaleRecursive(ctx, fullPath, rel, subEntries, managed); err != nil {
+				return err
+			}
+			remaining, _ := os.ReadDir(fullPath)
+			if len(remaining) == 0 {
+				hasManagedChild := false
+				for key := range managed {
+					if strings.HasPrefix(key, rel+"/") {
+						hasManagedChild = true
+						break
+					}
+				}
+				if !hasManagedChild {
+					ctx.Report.Line("remove empty dir: %s", fullPath)
+					if !ctx.DryRun {
+						os.Remove(fullPath)
+					}
+				}
+			}
+			continue
+		}
+		if !managed[rel] {
+			ctx.Report.Line("remove stale: %s", fullPath)
+			if !ctx.DryRun {
+				if err := backupPath(ctx, fullPath); err != nil {
+					return err
+				}
+				os.Remove(fullPath)
+			}
 		}
 	}
 	return nil
@@ -836,7 +889,7 @@ func (m Manager) context(opt Options) (Context, error) {
 	if err != nil {
 		return Context{}, err
 	}
-	return Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, UserConfig: userCfg, Report: stdoutReporter{}}, nil
+	return Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, UserConfig: userCfg, Report: stdoutReporter{}, manifestCache: map[string]any{}, seenDirs: map[string]bool{}}, nil
 }
 
 func (m Manager) adapters(ctx Context) []AgentAdapter {
@@ -885,6 +938,10 @@ func selected(opt Options, adapter AgentAdapter) bool {
 }
 
 func readMCPManifest(ctx Context) (MCPManifest, error) {
+	const cacheKey = "mcp-manifest"
+	if cached, ok := ctx.manifestCache[cacheKey]; ok {
+		return cached.(MCPManifest), nil
+	}
 	var manifest MCPManifest
 	path := filepath.Join(ctx.Options.AgentsDir, "mcp", "servers.json")
 	if !ctx.Update {
@@ -893,6 +950,7 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 			if err := json.Unmarshal(data, &manifest); err != nil {
 				return manifest, err
 			}
+			ctx.manifestCache[cacheKey] = manifest
 			return manifest, nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
@@ -906,18 +964,7 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return manifest, err
 	}
-	return manifest, nil
-}
-
-func readOpenCodeConfigManifest(ctx Context) (OpenCodeConfigManifest, error) {
-	var manifest OpenCodeConfigManifest
-	data, err := readPresetFile(ctx, "presets/opencode/opencode.json")
-	if err != nil {
-		return manifest, err
-	}
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return manifest, err
-	}
+	ctx.manifestCache[cacheKey] = manifest
 	return manifest, nil
 }
 
@@ -927,6 +974,10 @@ func readOpenCodeConfigManifest(ctx Context) (OpenCodeConfigManifest, error) {
 // `mcp` is intentionally stripped here because the opencode plugin layers
 // the shared MCP manifest on top after this call.
 func readOpenCodeConfigValues(ctx Context) (map[string]any, error) {
+	const cacheKey = "opencode-config"
+	if cached, ok := ctx.manifestCache[cacheKey]; ok {
+		return cached.(map[string]any), nil
+	}
 	data, err := readPresetFile(ctx, "presets/opencode/opencode.json")
 	if err != nil {
 		return nil, err
@@ -936,6 +987,7 @@ func readOpenCodeConfigValues(ctx Context) (map[string]any, error) {
 		return nil, err
 	}
 	delete(values, "mcp")
+	ctx.manifestCache[cacheKey] = values
 	return values, nil
 }
 
@@ -962,6 +1014,10 @@ func opencodeMCPManifest(manifest MCPManifest) MCPManifest {
 }
 
 func readSettingsManifest(ctx Context) (SettingsManifest, error) {
+	const cacheKey = "settings-manifest"
+	if cached, ok := ctx.manifestCache[cacheKey]; ok {
+		return cached.(SettingsManifest), nil
+	}
 	var manifest SettingsManifest
 	path := filepath.Join(ctx.Options.AgentsDir, "settings.json")
 	if !ctx.Update {
@@ -973,6 +1029,7 @@ func readSettingsManifest(ctx Context) (SettingsManifest, error) {
 			if manifest.Hooks == nil {
 				manifest.Hooks = map[string]any{}
 			}
+			ctx.manifestCache[cacheKey] = manifest
 			return manifest, nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
@@ -989,6 +1046,7 @@ func readSettingsManifest(ctx Context) (SettingsManifest, error) {
 	if manifest.Hooks == nil {
 		manifest.Hooks = map[string]any{}
 	}
+	ctx.manifestCache[cacheKey] = manifest
 	return manifest, nil
 }
 
@@ -1032,6 +1090,10 @@ func writeMCPReadme(ctx Context, replace bool) error {
 }
 
 func readRegistryManifest(ctx Context) (RegistryManifest, error) {
+	const cacheKey = "registry-manifest"
+	if cached, ok := ctx.manifestCache[cacheKey]; ok {
+		return cached.(RegistryManifest), nil
+	}
 	var manifest RegistryManifest
 	data, err := readPresetFile(ctx, "presets/registry/skills.json")
 	if err != nil {
@@ -1040,6 +1102,7 @@ func readRegistryManifest(ctx Context) (RegistryManifest, error) {
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return manifest, err
 	}
+	ctx.manifestCache[cacheKey] = manifest
 	return manifest, nil
 }
 
@@ -1055,6 +1118,11 @@ func installRegistrySkills(ctx Context) error {
 		installScript := filepath.Join(ctx.Options.AgentsDir, "registry", "install.sh")
 		return fmt.Errorf("npx is required to install registry skills; rerun with --no-registry or run %s later", installScript)
 	}
+	// Cache GitHub token once before the loop to avoid spawning gh N times.
+	baseEnv := append(os.Environ(), "AGENTS_HOME="+ctx.Options.AgentsDir)
+	if token, err := exec.Command("gh", "auth", "token").Output(); err == nil {
+		baseEnv = append(baseEnv, "GITHUB_TOKEN="+strings.TrimSpace(string(token)))
+	}
 	for _, skill := range manifest.Skills {
 		args := registryCommandArgs(skill, true, ctx.CopyMode)
 		ctx.Report.Line("registry: %s from %s@%s", skill.Name, skill.Source, skill.Skill)
@@ -1066,12 +1134,7 @@ func installRegistrySkills(ctx Context) error {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin
-		// Keep registry installs aligned with --agents-home instead of the CLI default.
-		cmd.Env = append(os.Environ(), "AGENTS_HOME="+ctx.Options.AgentsDir)
-		// Use GitHub token from gh CLI to avoid rate limits.
-		if token, err := exec.Command("gh", "auth", "token").Output(); err == nil {
-			cmd.Env = append(cmd.Env, "GITHUB_TOKEN="+strings.TrimSpace(string(token)))
-		}
+		cmd.Env = baseEnv
 		if err := cmd.Run(); err != nil {
 			ctx.Report.Line("warning: registry skill %s failed: %v", skill.Name, err)
 			continue
@@ -1301,6 +1364,10 @@ func ensureDir(ctx Context, path string) error {
 	if path == "" || path == "." {
 		return nil
 	}
+	if ctx.seenDirs[path] {
+		return nil
+	}
+	ctx.seenDirs[path] = true
 	ctx.Report.Line("mkdir: %s", path)
 	if ctx.DryRun {
 		return nil

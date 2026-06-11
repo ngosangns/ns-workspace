@@ -20,7 +20,5 @@
         }
       }
     }
-  },
-  "model": "woku/claude-opus-4-7",
-  "small_model": "woku/gpt-5.5"
+  }
 }
