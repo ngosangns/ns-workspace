@@ -1,154 +1,52 @@
 ---
 name: plan
-description: Tạo file kế hoạch trong `docs/specs/planning/` cho công việc lớn, phức tạp, liên quan kiến trúc/rủi ro, rồi chờ user phê duyệt trước khi sửa code. Dùng sau `research`; hỗ trợ suy ra kế hoạch từ tên branch hoặc commit/ref. Trigger: lập plan, viết spec, đề xuất thiết kế, refactor lớn, "lên kế hoạch", "phân tích trước".
+description: Tạo file kế hoạch trong `docs/specs/planning/` cho công việc lớn, rồi chờ user phê duyệt trước khi sửa code. Trigger: lập plan, viết spec, đề xuất thiết kế, refactor lớn.
 ---
 
 # Lập Kế Hoạch Và Xin Phép
 
-Dùng skill này sau `research` khi yêu cầu lớn, phức tạp, liên quan kiến trúc, rủi ro hoặc cần phối hợp thay đổi trên nhiều module. Giọng làm việc của skill này là điềm tĩnh và có cấu trúc: biến mơ hồ thành đường đi rõ, rồi dừng đúng lúc để user duyệt.
+Dùng sau `research` khi yêu cầu lớn, phức tạp, liên quan kiến trúc hoặc rủi ro. Công việc nhỏ và rõ ràng có thể bỏ qua.
 
-Các công việc nhỏ và rõ ràng có thể bỏ qua skill này.
+Quy tắc chung: đọc `_shared/CONVENTIONS.md`.
 
-## Ngôn Ngữ Và Cách Viết
+## Ngôn Ngữ
 
-- Luôn viết kế hoạch bằng tiếng Việt có dấu, đầy đủ, tự nhiên và rõ nghĩa.
-- Tránh pha tiếng Anh trừ tên riêng, thuật ngữ kỹ thuật bắt buộc, tên API, tên module, tên field hoặc đoạn code.
-- Viết kế hoạch như một tài liệu thiết kế triển khai, không viết như changelog, nhật ký Git hoặc danh sách diff.
-- Khi cấu trúc, luồng dữ liệu, mô hình C4, luồng quyết định hoặc quan hệ module khó hiểu bằng chữ, thêm Mermaid để làm rõ. Chỉ thêm Mermaid khi giúp người đọc hiểu nhanh hơn.
-- Nếu dùng Mermaid, giữ sơ đồ nhỏ, đúng trọng tâm và đặt cạnh phần giải thích liên quan.
+- Viết kế hoạch bằng tiếng Việt có dấu. Pha tiếng Anh chỉ cho tên riêng, thuật ngữ kỹ thuật, tên API/module/field.
+- Viết như tài liệu thiết kế, không như changelog hay nhật ký Git.
+- Thêm Mermaid khi cấu trúc, luồng dữ liệu, quan hệ module khó hiểu bằng chữ.
 
-## Nguyên Tắc Bắt Buộc
+## Nguyên Tắc
 
-- **Tìm nguyên nhân gốc rễ trước khi lập hướng đi:** Kế hoạch phải thể hiện vì sao vấn đề tồn tại hoặc vì sao thay đổi là cần thiết, phân biệt triệu chứng, nguyên nhân trực tiếp, nguyên nhân gốc rễ và động lực thiết kế.
-- **Nhìn tổng quát nhưng giữ trọng tâm:** Kế hoạch phải bao quát đủ context hệ thống, module boundary, contract, luồng dữ liệu và rủi ro liên quan, nhưng chỉ đề xuất công việc nằm trong phạm vi cần thiết để giải quyết mục tiêu.
-- **Hỏi lại khi vướng mắc:** Khi gặp điều chưa rõ, nghi ngờ mâu thuẫn giữa các nguồn (requirements, plan cũ, code hiện tại, prompt của user), phát hiện nhiều hướng kiến trúc/thiết kế hợp lý mà không rõ user prefer cái nào, hoặc cần ý kiến user để chốt phạm vi/scope/ngoài-scope → **dừng lại và hỏi cụ thể**, kèm context đã thu thập và các lựa chọn khả dĩ. Không tự đoán hoặc tự chọn hướng có rủi ro sai ý user.
+- **Tìm nguyên nhân gốc rễ trước:** Kế hoạch phải thể hiện vì sao vấn đề tồn tại, phân biệt triệu chứng vs nguyên nhân gốc rễ.
+- **Nhìn tổng quát, giữ trọng tâm:** Bao quát context, module boundary, contract, rủi ro; chỉ đề xuất công việc trong phạm vi mục tiêu.
 
-## Vị Trí Lưu Kế Hoạch
-
-Tạo file kế hoạch trong:
+## Vị Trí
 
 ```text
-docs/specs/planning/
+docs/specs/planning/<kebab-case-name>.md
 ```
 
-Dùng tên công việc dạng kebab-case rõ nghĩa, ví dụ:
+## Từ Branch Hoặc Commit
 
-```text
-docs/specs/planning/add-account-notifications.md
-```
+Khi user yêu cầu tạo plan từ branch/commit:
 
-## Nguồn Đầu Vào Từ Branch Hoặc Commit
-
-Skill này hỗ trợ tạo kế hoạch từ một tên branch hoặc commit/ref cụ thể khi user yêu cầu. Mục tiêu là suy ra thiết kế và kế hoạch triển khai từ thay đổi đã có, không phải tường thuật lại Git.
-
-### Từ Tên Branch
-
-- Đọc toàn bộ thay đổi của toàn bộ commit thuộc branch mà không switch branch.
-- Xác định merge-base với nhánh hiện tại hoặc upstream phù hợp, rồi đọc diff/log qua ref trực tiếp.
-- Ưu tiên các lệnh chỉ đọc, ví dụ:
-
-```sh
-git merge-base HEAD <branch>
-git log --oneline --decorate <merge-base>..<branch>
-git diff --stat <merge-base>..<branch>
-git diff <merge-base>..<branch>
-```
-
-- Nếu cần biết nội dung file tại branch, dùng `git show <branch>:<path>` thay vì checkout/switch.
-- Không dùng `git switch`, `git checkout`, `git reset` hoặc thao tác làm đổi worktree chỉ để đọc branch.
-
-### Từ Commit Hoặc Ref
-
-- Đọc commit/ref bằng lệnh chỉ đọc như:
-
-```sh
-git show --stat <commit>
-git show <commit>
-git diff <commit>^..<commit>
-```
-
-- Nếu commit là merge commit, xác định parent phù hợp trước khi kết luận phạm vi thay đổi.
-- Có thể đọc thêm docs/specs hoặc đường dẫn code liên quan ở trạng thái hiện tại để hiểu bối cảnh, nhưng phải phân biệt rõ đâu là suy luận từ thay đổi và đâu là bối cảnh hiện tại.
-
-### Quy Tắc Nội Dung Khi Kế Hoạch Được Tạo Từ Branch/Commit
-
-Khi tạo kế hoạch từ branch hoặc commit, file kế hoạch không được bao gồm:
-
-- Tên branch, mã hash commit, danh sách commit, tác giả, thời điểm commit hoặc siêu dữ liệu Git.
-- Bảng/file list kiểu "files changed", "diff summary", "stat", "added/removed lines".
-- Mô tả theo từng commit hoặc từng file nếu chỉ nhằm kể lại lịch sử thay đổi.
-
-Thay vào đó, kế hoạch phải chuyển hóa thông tin đã đọc thành:
-
-- Kế hoạch tổng thể và mục tiêu thiết kế.
-- Cấu trúc giải pháp, ranh giới module và mô hình C4 khi phù hợp.
-- Logic nghiệp vụ, quy tắc, invariant, dữ liệu đầu vào/đầu ra và các tình huống biên quan trọng.
-- Nguyên nhân vấn đề, bối cảnh nghiệp vụ/kỹ thuật và lý do chọn hướng triển khai.
-- Chi tiết triển khai theo luồng hành vi, contract, API, data model, UI/UX hoặc integration tùy công việc.
-- Mermaid nếu cần để làm rõ cấu trúc, sequence, state machine hoặc quan hệ module.
+- Dùng lệnh chỉ đọc: `git merge-base`, `git log`, `git diff --stat`, `git diff`, `git show`. Không switch branch.
+- Không đưa vào plan: tên branch, hash commit, danh sách commit, tác giả, "files changed" table.
+- Chuyển hóa thành: mục tiêu thiết kế, cấu trúc giải pháp, module boundary, logic nghiệp vụ, rủi ro, kiểm chứng.
 
 ## Quy Trình
 
-1. Đảm bảo bước nghiên cứu đã xác định docs/specs liên quan, đường dẫn code, ràng buộc và các giả định chưa được giải quyết. Khi kế hoạch phụ thuộc vào quan hệ symbol/call/reference, dùng skill `lsp-code-graph` để chạy Graph Query CLI; cú pháp đúng là từ checkout local của `ns-workspace`, không dùng `@latest`:
-
-   ```sh
-   cd /Users/ngosangns/Github/ns-workspace
-   go run . graph --project /path/to/project --query "<symbol-or-concept>" --json
-   ```
-
-   `graph --query` tự ensure/cài language server còn thiếu theo mặc định vào cache user của `ns-workspace`; chỉ dùng `--no-ensure-lsp` khi workflow bắt buộc read-only hoặc cần cấm network/install side effect. Đọc `warnings`, ưu tiên `panels.codeGraph` cho symbol/caller/callee/references và `panels.docsGraph` cho quan hệ tài liệu. Nếu install/prerequisite/relation expansion fail hoặc kết quả không đủ, ghi rõ fallback sang docs, diff và code inspection.
-
-2. Làm rõ nguyên nhân gốc rễ hoặc động lực thiết kế chính: vấn đề thật sự là gì, vì sao xảy ra, contract/invariant nào liên quan và hậu quả nếu chỉ vá triệu chứng.
-3. Xác định bức tranh tổng quan vừa đủ rồi thu hẹp trọng tâm: module boundary, luồng dữ liệu, API/contract, vùng bị ảnh hưởng, vùng ngoài phạm vi và tiêu chí giữ scope.
-4. Nếu user đưa tên branch hoặc commit/ref, đọc toàn bộ thay đổi liên quan bằng lệnh Git chỉ đọc, không switch branch và không làm đổi worktree.
-5. Tạo hoặc cập nhật một file kế hoạch tập trung trong `docs/specs/planning/`.
-6. Bao gồm bối cảnh, nguyên nhân gốc rễ, lý do chọn hướng đi, cấu trúc logic của giải pháp, logic nghiệp vụ, mô hình C4 khi phù hợp, khu vực bị ảnh hưởng, công việc triển khai, rủi ro, tiêu chí chấp nhận và cách kiểm chứng.
-7. Giữ kế hoạch theo trạng thái hiện tại hoặc trạng thái thiết kế suy ra từ branch/commit. Không viết changelog, bảng lịch sử commit, migration history, incremental sync log hoặc danh sách file changes.
-8. Trình bày tóm tắt kế hoạch cho user một cách cô đọng bằng tiếng Việt có dấu.
-9. Dừng lại và chờ user phê duyệt rõ ràng trước khi sửa mã nguồn cho công việc lớn.
-
-## Mẫu Kế Hoạch Gợi Ý
-
-````markdown
-# [Tên Công Việc]
-
-## Bối Cảnh
-
-## Nguyên Nhân Và Lý Do Thiết Kế
-
-## Góc Nhìn Tổng Quan Và Phạm Vi Tập Trung
-
-## Mục Tiêu
-
-## Ngoài Phạm Vi
-
-## Logic Nghiệp Vụ
-
-## Cấu Trúc Giải Pháp
-
-## Mô Hình C4
-
-```mermaid
-flowchart LR
-  A["Thành phần A"] --> B["Thành phần B"]
-```
-
-## Hướng Tiếp Cận Đề Xuất
-
-## Chi Tiết Triển Khai
-
-## Công Việc Cần Làm
-
-## Rủi Ro Và Ràng Buộc
-
-## Kiểm Chứng
-````
+1. Đảm bảo research đã xác định docs/specs, code path, ràng buộc. Dùng `lsp-code-graph` khi cần symbol/caller/callee context.
+2. Làm rõ nguyên nhân gốc rễ và động lực thiết kế.
+3. Xác định bức tranh tổng quan rồi thu hẹp: module boundary, data flow, API/contract, vùng ảnh hưởng, ngoài phạm vi.
+4. Nếu từ branch/commit, đọc thay đổi bằng Git chỉ đọc.
+5. Tạo file kế hoạch trong `docs/specs/planning/` theo mẫu `_shared/templates/plan-template.md`.
+6. Trình bày tóm tắt kế hoạch cô đọng bằng tiếng Việt.
+7. **Dừng lại và chờ user phê duyệt** trước khi sửa code.
 
 ## Ràng Buộc
 
-- Không bắt đầu triển khai mã nguồn cho công việc lớn trước khi user duyệt kế hoạch.
+- Không triển khai code cho công việc lớn trước khi user duyệt.
 - Không tạo placeholder docs không có nội dung hữu ích.
-- Không dùng browser tools.
-- Không chạy build chỉ để hoàn tất bước lập kế hoạch.
-- Không switch branch hoặc checkout commit khi chỉ cần tạo kế hoạch từ branch/commit.
-- Không đưa siêu dữ liệu Git, danh sách commit hoặc danh sách file changes vào kế hoạch được tạo từ branch/commit.
+- Không switch branch hoặc checkout commit chỉ để đọc.
+- Không đưa siêu dữ liệu Git vào kế hoạch.

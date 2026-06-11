@@ -1,62 +1,45 @@
 ---
 name: read-search-docs
-description: Đọc và tìm kiếm trong knowledge base của repo (`docs/`, `docs/specs/`, `docs/features/`, `docs/modules/`, `docs/architecture/`, `docs/shared/`, `docs/research/`, `docs/learnings/`, `docs/compliance/`) để trả lời câu hỏi mà không sửa file. Trigger: tìm tài liệu, search specs, giải thích docs, kiểm tra trạng thái sync, định vị tham chiếu kiến trúc/module.
+description: Đọc và tìm kiếm trong knowledge base (`docs/`) mà không sửa file. Trigger: tìm tài liệu, search specs, giải thích docs.
 ---
 
 # Đọc Và Tìm Kiếm Tài Liệu
 
-Dùng skill này cho các công việc chỉ đọc trên knowledge base của dự án. Không sửa docs bằng skill này; dùng `update-docs` cho mọi việc tạo, cập nhật hoặc đồng bộ. Giọng làm việc của skill này là kỹ, rõ nguồn, không phỏng đoán quá tay.
+Dùng cho công việc chỉ đọc trên knowledge base. Không sửa docs; dùng `update-docs` cho tạo/cập nhật.
 
-## Nguyên Tắc Bắt Buộc
+## Nguyên Tắc
 
-- **Đọc sâu và làm rõ ý định:** Phải nghiên cứu đủ vào codebase và docs/specs để hiểu bối cảnh. Nếu ý muốn của user chưa rõ, **bắt buộc đọc và tham khảo các file trong `docs/specs/` trước tiên**. Chỉ khi đã tự tìm hiểu qua specs mà vẫn không thể tự giải đáp, mới liệt kê câu hỏi cụ thể để hỏi lại user.
+- **Đọc sâu trước:** Nghiên cứu codebase và docs/specs để hiểu bối cảnh. Đọc `docs/specs/` trước tiên. Chỉ hỏi user khi đã tự tìm hiểu mà vẫn không giải đáp.
+- **Ưu tiên docs trước code** cho architecture, feature behavior, module relations, spec questions. Fallback sang code khi docs thiếu/stale/mơ hồ.
 
 ## Phạm Vi
 
-- Đọc và tìm kiếm trong `docs/`, `docs/specs/`, `docs/features/`, `docs/architecture/`, `docs/modules/`, `docs/shared/`, `docs/research/`, `docs/learnings/`, và `docs/compliance/`.
-- Ưu tiên hướng dẫn của chính repo trước: đọc `AGENTS.md` hoặc `presets/agents/AGENTS.md` khi có.
-- Ưu tiên docs trước code đối với architecture, hành vi feature, quan hệ module, phạm vi dự án và câu hỏi về spec.
-- Chỉ fallback sang code khi docs bị thiếu, stale, mơ hồ hoặc mâu thuẫn với implementation.
-- Khi cần code graph context, dùng skill `lsp-code-graph` để chạy Graph Query CLI; cú pháp đúng là từ checkout local của `ns-workspace`, không dùng `@latest`:
+`docs/`, `docs/specs/`, `docs/features/`, `docs/architecture/`, `docs/modules/`, `docs/shared/`, `docs/research/`, `docs/learnings/`, `docs/compliance/`.
 
-  ```sh
-  cd /Users/ngosangns/Github/ns-workspace
-  go run . graph --project /path/to/project --query "<symbol-or-concept>" --json
-  ```
-
-  `graph --query` tự ensure/cài language server còn thiếu theo mặc định vào cache user của `ns-workspace`; chỉ dùng `--no-ensure-lsp` khi workflow bắt buộc read-only hoặc cần cấm network/install side effect. Đọc `warnings` trước. Nếu install/prerequisite/relation expansion fail hoặc Code Graph không đủ kết quả, nói rõ fallback sang `rg`/code inspection.
+Đọc `AGENTS.md` hoặc `presets/agents/AGENTS.md` trước.
 
 ## Quy Trình
 
-1. Kiểm tra docs hiện có:
-   - `rg --files docs`
-   - Đọc `docs/README.md`, `docs/_index.md`, `docs/overview.md`, và `docs/_sync.md` khi có.
-2. Kiểm tra trạng thái sync trước khi tin docs:
-   - Trích xuất commit/HEAD đã sync từ `docs/_sync.md`.
-   - So sánh với `git rev-parse HEAD`.
-   - Nếu docs đang behind hoặc thiếu sync state, nói rõ điều đó và xem docs là bối cảnh thay vì chân lý tuyệt đối.
-3. Tìm kiếm hẹp trước:
-   - Dùng `rg -n "<keyword>" docs`.
-   - Dùng filter folder theo ý định: `docs/specs` cho hành vi dự kiến, `docs/features` cho hành vi đã shipped, `docs/modules` cho thiết kế module, `docs/architecture` cho boundary và pattern hệ thống.
-4. Theo các Markdown link thật đến file `.md` liên quan. Khi đã tìm được doc liên quan, ưu tiên docs được link hơn là search rộng.
-5. Nếu docs reference code paths, chỉ inspect các code path đó vừa đủ để verify hoặc làm rõ.
-6. Với code path có quan hệ symbol/call phức tạp, dùng skill `lsp-code-graph` (chạy `cd /Users/ngosangns/Github/ns-workspace && go run . graph --project <repo> --query "<symbol-or-concept>" --json`) và ưu tiên `panels.codeGraph` để kiểm tra symbol, caller/callee hoặc references trước khi kết luận; dùng `panels.docsGraph` khi cần quan hệ tài liệu/spec/module.
-7. Trả lời kèm file references và nói rõ câu trả lời dựa trên docs, LSP Code Graph, code, hay suy luận từ các nguồn đó.
+1. `rg --files docs` → đọc `docs/README.md`, `docs/_index.md`, `docs/_sync.md`.
+2. Kiểm tra sync state: trích commit từ `_sync.md`, so `git rev-parse HEAD`. Nếu behind → docs là bối cảnh.
+3. Search hẹp: `rg -n "<keyword>" docs/<folder>`.
+4. Theo Markdown link thật đến file liên quan.
+5. Inspect code path vừa đủ để verify nếu docs reference code.
+6. Dùng `lsp-code-graph` khi cần symbol/caller/callee context.
+7. Trả lời kèm file references, nói rõ dựa trên docs/code/suy luận.
 
 ## Mẫu Tìm Kiếm
 
-- Với feature plan: search `docs/specs` trước, rồi `docs/features`.
-- Với hành vi đã implement: search `docs/features`, rồi `docs/modules`, rồi code.
-- Với quyết định kiến trúc: search `docs/architecture/decisions` và `docs/architecture/patterns`.
-- Với thuật ngữ hoặc model dùng chung: search `docs/shared`.
-- Với investigation hoặc câu hỏi chưa giải quyết: search `docs/research`.
-- Với lesson learned từ công việc trước: search `docs/learnings`.
+- Feature plan → `docs/specs` → `docs/features`
+- Behavior đã implement → `docs/features` → `docs/modules` → code
+- Architecture decision → `docs/architecture/decisions` + `patterns`
+- Thuật ngữ chung → `docs/shared`
+- Investigation → `docs/research`
+- Lesson learned → `docs/learnings`
 
 ## Ràng Buộc
 
-- Không tạo, sửa, move hoặc xóa file.
-- Không cập nhật `docs/_sync.md`.
-- Không xem lịch sử commit là nội dung docs.
-- Nếu docs stale so với HEAD, nói rõ trước khi dựa vào chúng.
-- Nếu user yêu cầu cập nhật docs sau khi đọc/search, chuyển sang `update-docs`.
-- **Hỏi lại khi vướng mắc:** Sau khi đã đọc specs và code mà vẫn còn câu hỏi chưa giải đáp được từ knowledge base của repo (ý định user mơ hồ, nhiều cách hiểu khác nhau, thông tin mâu thuẫn giữa docs và code mà không có tín hiệu nào rõ ràng hơn) → **dừng lại và hỏi user cụ thể** thay vì phỏng đoán. Liệt kê các giả thuyết khả dĩ, file/đoạn đã đọc, và câu hỏi cần user quyết. Không suy luận quá tay khi repo không cho đủ bằng chứng.
+- Không tạo, sửa, move, xóa file.
+- Không cập nhật `_sync.md`.
+- Docs stale → nói rõ trước khi dựa vào.
+- User yêu cầu cập nhật docs → chuyển `update-docs`.

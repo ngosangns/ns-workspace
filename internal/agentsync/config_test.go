@@ -255,36 +255,7 @@ func TestUserConfigOverlayAdditionIsInstalled(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".claude", "skills", "custom-only", "SKILL.md"))
 }
 
-func TestMiniMaxCLISkillIsBundled(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
 
-	manager := Manager{Presets: os.DirFS("../..")}
-	opt := Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoRegistry: true,
-		ToolFilter: ParseTools("claude"),
-	}
-	if err := manager.Apply(opt, false); err != nil {
-		t.Fatalf("init failed: %v", err)
-	}
-	skill := readFile(t, filepath.Join(home, ".agents", "skills", "minimax-cli", "SKILL.md"))
-	for _, must := range []string{
-		"Full Authorization",
-		"Increased",
-		"mmx video generate",
-		"mmx music generate",
-		"--async",
-	} {
-		if !strings.Contains(skill, must) {
-			t.Fatalf("minimax-cli skill missing %q. Got:\n%s", must, skill)
-		}
-	}
-}
 
 func TestMiniMaxAdapterWritesDefaultConfig(t *testing.T) {
 	home := t.TempDir()

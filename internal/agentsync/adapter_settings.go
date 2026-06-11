@@ -185,17 +185,11 @@ func readAdapterSettingsPreset(ctx Context, presetPath string) (map[string]any, 
 }
 
 func readSharedMCPValues(ctx Context) (map[string]any, error) {
-	out := map[string]any{}
-	data, err := readPresetFile(ctx, "presets/mcp/servers.json")
+	manifest, err := readMCPManifest(ctx)
 	if err != nil {
-		return out, err
+		return nil, err
 	}
-	manifest := MCPManifest{}
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("adapter settings: invalid mcp manifest: %w", err)
-	}
-	out["mcpServers"] = manifest.MCPServers
-	return out, nil
+	return map[string]any{"mcpServers": manifest.MCPServers}, nil
 }
 
 func applyAdapterSettingsRaw(ctx Context, profile *AdapterSettingsProfile, dst string, replace bool) error {
