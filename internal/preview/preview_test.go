@@ -28,11 +28,8 @@ func previewUIText(t *testing.T) string {
 	t.Helper()
 	paths := []string{
 		"preview_ui_src/index.html",
-		"preview_ui_src/search.html",
 		"preview_ui_src/main.ts",
-		"preview_ui_src/search-main.ts",
 		"preview_ui_src/App.vue",
-		"preview_ui_src/SearchStandaloneApp.vue",
 		"preview_ui_src/js/code-preview.ts",
 		"preview_ui_src/js/diagrams.ts",
 		"preview_ui_src/js/html-doc.ts",
@@ -228,13 +225,16 @@ Hello **docs**.
 		t.Fatalf("preview app fallback should return HTML, got %s", got)
 	}
 
-	res, err = http.Get(ts.URL + "/search.html")
+	res, err = http.Get(ts.URL + "/search")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("standalone search app was not served: %s", res.Status)
+		t.Fatalf("search route fallback was not served: %s", res.Status)
+	}
+	if got := res.Header.Get("Content-Type"); !strings.Contains(got, "text/html") {
+		t.Fatalf("search route fallback should return HTML, got %s", got)
 	}
 
 	res, err = http.Get(ts.URL + "/favicon.svg")
@@ -268,7 +268,7 @@ Hello **docs**.
 func TestSearchLauncherWritesRedirectHTML(t *testing.T) {
 	root := t.TempDir()
 	out := filepath.Join(root, "search.html")
-	if err := writeSearchLauncher(out, "http://localhost:12345/search.html", root, filepath.Join(root, "docs")); err != nil {
+	if err := writeSearchLauncher(out, "http://localhost:12345/search", root, filepath.Join(root, "docs")); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(out)
@@ -276,13 +276,13 @@ func TestSearchLauncherWritesRedirectHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "http://localhost:12345/search.html") || !strings.Contains(text, root) {
+	if !strings.Contains(text, "http://localhost:12345/search") || !strings.Contains(text, root) {
 		t.Fatalf("search launcher did not include app URL and project metadata: %s", string(data))
 	}
-	if strings.Contains(text, `\"http://localhost:12345/search.html\"`) {
+	if strings.Contains(text, `\"http://localhost:12345/search\"`) {
 		t.Fatalf("search launcher should not add literal quotes to the redirect URL: %s", text)
 	}
-	if !strings.Contains(text, `window.location.replace("http:\/\/localhost:12345\/search.html")`) {
+	if !strings.Contains(text, `window.location.replace("http:\/\/localhost:12345\/search")`) {
 		t.Fatalf("search launcher should emit a valid JavaScript redirect string: %s", text)
 	}
 }
@@ -2180,9 +2180,7 @@ func TestPreviewUIHasTypeScriptToolchain(t *testing.T) {
 		"../../vite.config.ts",
 		"preview_ui_src/index.html",
 		"preview_ui_src/main.ts",
-		"preview_ui_src/search-main.ts",
 		"preview_ui_src/App.vue",
-		"preview_ui_src/SearchStandaloneApp.vue",
 		"preview_ui_src/js/code-preview.ts",
 		"preview_ui_src/js/diagrams.ts",
 		"preview_ui_src/js/html-doc.ts",

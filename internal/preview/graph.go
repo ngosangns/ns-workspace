@@ -127,7 +127,7 @@ func RunSearch(args []string) error {
 	if strings.HasPrefix(addr, "127.0.0.1:") || strings.HasPrefix(addr, "[::1]:") {
 		displayURL = "http://localhost:" + portOf(addr)
 	}
-	appURL := displayURL + "/search.html"
+	appURL := displayURL + "/search"
 	if err := writeSearchLauncher(opt.outPath, appURL, opt.projectRoot, docsRoot(opt.projectRoot, opt.docsDir)); err != nil {
 		_ = listener.Close()
 		return err

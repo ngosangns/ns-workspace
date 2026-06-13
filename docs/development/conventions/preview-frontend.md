@@ -9,7 +9,7 @@
 
 ## Quy Ước
 
-Source chính của frontend preview nằm trong `internal/preview/preview_ui_src/`. Entry `index.html` mount preview shell đầy đủ, còn `search.html` mount Search standalone cho lệnh `search`. Vue components và các shared module trong `preview_ui_src/js/` là nguồn sự thật cho UI logic; không giữ hoặc phục hồi shell TypeScript/vanilla JS cũ khi thay đổi preview.
+Source chính của frontend preview nằm trong `internal/preview/preview_ui_src/`. Entry `index.html` mount preview shell đầy đủ; route `/search` do SPA fallback xử lý và hiển thị tab Search trong cùng app. Vue components và các shared module trong `preview_ui_src/js/` là nguồn sự thật cho UI logic; không giữ hoặc phục hồi shell TypeScript/vanilla JS cũ khi thay đổi preview.
 
 Các renderer dùng chung nằm trong `internal/preview/preview_ui_src/js/`: `markdown.ts` cho Markdown/docs, `html-doc.ts` cho HTML document shell, `metadata.ts` cho metadata cards/links, `code-preview.ts` cho code/text preview, và `diagrams.ts` cho Mermaid. Khi Doc view và preview modal cần cùng hành vi render, cập nhật các module này trước thay vì nhân đôi logic trong component.
 
