@@ -2217,7 +2217,7 @@ func TestPreviewUIHasTypeScriptToolchain(t *testing.T) {
 
 func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
 	text := previewUIText(t)
-	for _, want := range []string{"cdn.tailwindcss.com", "daisyui", "lucide", "@toast-ui/editor", "toastui-editor-viewer", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
+	for _, want := range []string{"cdn.tailwindcss.com", "@fontsource/geist-sans", "@fontsource/geist-mono", "lucide", "@toast-ui/editor", "toastui-editor-viewer", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview UI missing %s integration", want)
 		}

@@ -26,6 +26,7 @@ Nếu không có, báo và dùng fallback khi user đồng ý.
 ## Lệnh Gọi
 
 Một lượt:
+
 ```bash
 opencode run --dir ABSOLUTE_PROJECT_PATH --dangerously-skip-permissions "FULL_PROMPT"
 ```
@@ -33,6 +34,7 @@ opencode run --dir ABSOLUTE_PROJECT_PATH --dangerously-skip-permissions "FULL_PR
 Flags hữu ích: `--model provider/model`, `--agent <name>`, `--file <path>`, `--format json`, `--title "..."`.
 
 Continue/fork session:
+
 ```bash
 opencode run --dir ... --dangerously-skip-permissions --continue "PROMPT"
 opencode run --dir ... --dangerously-skip-permissions --session SESSION_ID "PROMPT"
@@ -40,6 +42,7 @@ opencode run --dir ... --dangerously-skip-permissions --session SESSION_ID --for
 ```
 
 Server mode:
+
 ```bash
 opencode serve --hostname 127.0.0.1 --port 4096
 opencode run --attach http://127.0.0.1:4096 --dir ... --dangerously-skip-permissions "PROMPT"
@@ -53,17 +56,20 @@ Bạn là OpenCode sub-agent trong project: ABSOLUTE_PROJECT_PATH
 Nhiệm vụ: <one bounded task>
 
 Phạm vi:
+
 - Sở hữu file/module: <paths>
 - Không sửa ngoài phạm vi; nếu bị chặn, báo lại trước.
 - Không revert thay đổi không liên quan.
 - Full permission qua `--dangerously-skip-permissions`.
 
 Bối cảnh:
+
 - Mục tiêu: <goal>
 - Docs/specs/tests liên quan: <paths>
 - Triệu chứng/hành vi mong đợi: <details>
 
 Kết quả trả về:
+
 - Tìm thấy gì, file đã đọc/sửa, command đã chạy, rủi ro/follow-up
 ```
 

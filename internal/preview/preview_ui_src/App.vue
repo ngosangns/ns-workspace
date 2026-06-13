@@ -507,13 +507,13 @@ onUnmounted(() => {
 
     <main class="min-w-0">
       <header
-        class="bg-base-200/90 border-base-300 sticky top-0 z-10 flex flex-col gap-4 border-b px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between"
+        class="sticky top-0 z-10 flex flex-col gap-4 border-b border-c-border bg-c-bg/95 px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between"
       >
         <div class="min-w-0">
-          <h1 id="pageTitle" class="truncate text-2xl font-bold tracking-normal">
+          <h1 id="pageTitle" class="truncate text-xl font-semibold tracking-tight">
             {{ selectedFolderPath ? folderDisplayName(selectedFolderPath) : currentSpec?.title || "Doc" }}
           </h1>
-          <p id="pagePath" class="text-base-content/60 truncate text-sm">
+          <p id="pagePath" class="truncate text-xs text-c-text-secondary font-mono">
             {{ selectedFolderPath || currentSpec?.path || "" }}
           </p>
         </div>
@@ -579,46 +579,42 @@ onUnmounted(() => {
       </section>
 
       <section id="specTab" class="panel p-5" :class="{ active: tab === 'spec' }">
-        <article
-          v-if="selectedFolderPath"
-          class="card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"
-          :data-source-path="selectedFolderPath"
-        >
+        <article v-if="selectedFolderPath" class="card mx-auto max-w-5xl p-6" :data-source-path="selectedFolderPath">
           <div class="mb-5">
-            <p class="text-base-content/60 text-sm font-medium">{{ selectedFolderPath }}</p>
-            <h1 class="mt-1 text-3xl font-semibold tracking-normal">{{ folderDisplayName(selectedFolderPath) }}</h1>
+            <p class="text-xs font-mono text-c-text-tertiary">{{ selectedFolderPath }}</p>
+            <h1 class="mt-1 text-2xl font-semibold tracking-tight">{{ folderDisplayName(selectedFolderPath) }}</h1>
           </div>
-          <div>
+          <div class="space-y-1.5">
             <button
               v-for="folder in selectedFolderListing.folders"
               :key="folder.path"
-              class="btn btn-ghost h-auto min-h-12 w-full justify-start gap-3 rounded border border-base-300 px-3 py-2 text-left"
+              class="flex h-auto min-h-[2.75rem] w-full items-center gap-3 rounded-lg border border-c-border px-3 py-2 text-left text-sm transition-colors hover:bg-c-surface-hover"
               type="button"
               @click="selectSpecFolder(folder.path, true)"
             >
-              <Icon name="folder" class="h-4 w-4 shrink-0 text-base-content/60" />
+              <Icon name="folder" class="h-4 w-4 shrink-0 text-c-text-tertiary" />
               <span class="min-w-0">
                 <span class="block truncate font-medium">{{ folder.name }}</span>
-                <span class="text-base-content/55 block text-xs">{{ folder.count }} docs</span>
+                <span class="block text-xs text-c-text-tertiary">{{ folder.count }} docs</span>
               </span>
             </button>
             <button
               v-for="doc in selectedFolderListing.docs"
               :key="doc.id"
-              class="btn btn-ghost h-auto min-h-12 w-full justify-start gap-3 rounded border border-base-300 px-3 py-2 text-left"
+              class="flex h-auto min-h-[2.75rem] w-full items-center gap-3 rounded-lg border border-c-border px-3 py-2 text-left text-sm transition-colors hover:bg-c-surface-hover"
               type="button"
               @click="selectSpec(doc.id, true)"
             >
-              <Icon name="file-text" class="h-4 w-4 shrink-0 text-base-content/60" />
+              <Icon name="file-text" class="h-4 w-4 shrink-0 text-c-text-tertiary" />
               <span class="min-w-0">
                 <span class="block truncate font-medium">{{ doc.title || doc.path }}</span>
-                <span class="text-base-content/55 block truncate text-xs">{{ doc.path }}</span>
+                <span class="block truncate text-xs text-c-text-tertiary font-mono">{{ doc.path }}</span>
               </span>
             </button>
           </div>
           <div
             v-if="!selectedFolderListing.folders.length && !selectedFolderListing.docs.length"
-            class="bg-base-200/50 border-base-300 text-base-content/65 rounded border p-4 text-sm"
+            class="rounded-lg border border-dashed border-c-border p-4 text-center text-sm text-c-text-tertiary"
           >
             No docs in this folder.
           </div>

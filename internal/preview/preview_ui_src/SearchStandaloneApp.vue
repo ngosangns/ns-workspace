@@ -193,12 +193,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="min-h-screen bg-base-200 text-base-content">
-    <header class="border-base-300 bg-base-100/95 sticky top-0 z-20 border-b px-4 py-4 backdrop-blur">
+  <main class="min-h-screen bg-c-bg text-c-text">
+    <header class="sticky top-0 z-20 border-b border-c-border bg-c-surface/95 px-4 py-4 backdrop-blur">
       <div class="mx-auto flex max-w-7xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div class="min-w-0">
-          <h1 class="truncate text-xl font-semibold tracking-normal">Graph search</h1>
-          <p class="text-base-content/60 truncate text-sm">
+          <h1 class="truncate text-lg font-semibold tracking-tight">Graph search</h1>
+          <p class="truncate text-xs text-c-text-secondary font-mono">
             {{ project?.projectRoot || project?.name || "Project" }}
           </p>
         </div>

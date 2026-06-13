@@ -156,11 +156,11 @@ onUnmounted(() => {
 
 <template>
   <div v-if="isOpen" id="previewDialog" class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="previewDialogTitle">
-    <div class="modal-box preview-modal border-base-300 bg-base-100 border p-0">
-      <div class="preview-modal-header border-base-300 border-b">
+    <div class="modal-box preview-modal">
+      <div class="preview-modal-header">
         <div class="min-w-0">
-          <h2 id="previewDialogTitle" class="truncate text-base font-semibold">{{ dialogTitle }}</h2>
-          <p id="previewDialogPath" class="text-base-content/60 truncate text-xs">{{ dialogPath }}</p>
+          <h2 id="previewDialogTitle" class="truncate text-sm font-semibold">{{ dialogTitle }}</h2>
+          <p id="previewDialogPath" class="truncate text-xs text-c-text-secondary font-mono">{{ dialogPath }}</p>
         </div>
         <div class="flex items-center gap-1">
           <button
