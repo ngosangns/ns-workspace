@@ -188,29 +188,29 @@ watch(
 
 <template>
   <aside
-    class="preview-sidebar border-base-300 bg-base-100 max-h-[46vh] overflow-auto border-b p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:max-h-none lg:border-b-0 lg:border-r"
+    class="preview-sidebar max-h-[46vh] overflow-auto border-b border-c-border bg-c-surface p-4 lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:max-h-none lg:border-b-0 lg:border-r"
   >
-    <div class="mb-4 flex items-center gap-3">
-      <div class="grid h-10 w-10 place-items-center rounded-lg bg-neutral text-neutral-content">
+    <div class="mb-5 flex items-center gap-3">
+      <div class="grid h-9 w-9 place-items-center rounded-lg bg-c-accent text-c-accent-text">
         <Icon name="book-open-text" class="h-5 w-5" />
       </div>
       <div class="min-w-0">
-        <div class="font-bold">Docs Preview</div>
-        <div id="projectName" class="text-base-content/60 truncate text-sm">
+        <div class="text-sm font-semibold tracking-tight">Docs Preview</div>
+        <div id="projectName" class="truncate text-xs text-c-text-secondary">
           {{ project?.name || "Loading" }}
         </div>
-        <div id="projectPath" class="text-base-content/50 truncate text-xs">
+        <div id="projectPath" class="truncate text-[0.6875rem] text-c-text-tertiary font-mono">
           {{ project?.projectRoot || "" }}
         </div>
       </div>
     </div>
 
-    <label class="input input-bordered mb-3 flex h-10 items-center gap-2">
-      <Icon name="search" class="text-base-content/50 h-4 w-4" />
+    <label class="input mb-4 flex h-9 items-center gap-2">
+      <Icon name="search" class="h-3.5 w-3.5 text-c-text-tertiary" />
       <input id="search" v-model="search" class="grow" placeholder="Doc name, path, status" />
     </label>
 
-    <nav id="specList" class="space-y-1">
+    <nav id="specList" class="space-y-0.5">
       <TreeNode
         v-for="[name, node] in Array.from(tree.children as Map<string, any>)"
         :key="name"

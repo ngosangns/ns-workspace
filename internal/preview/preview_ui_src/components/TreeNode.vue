@@ -52,30 +52,30 @@ function isExpanded(path: string): boolean {
   <div>
     <button
       v-if="node.type === 'folder'"
-      class="tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 overflow-hidden px-2 text-left font-medium"
-      :class="{ 'btn-active': selectedFolderPath === node.path }"
+      class="tree-row min-h-[2rem] w-full justify-start gap-1 overflow-hidden rounded-md px-2 text-left text-[0.8125rem] font-medium transition-colors hover:bg-c-surface-hover"
+      :class="{ 'bg-c-accent-soft text-c-accent': selectedFolderPath === node.path }"
       :style="{ paddingLeft: paddingLeft }"
       :title="node.path"
       @click="handleFolderClick(node.path)"
     >
       <Icon
         name="chevron-right"
-        class="tree-chevron h-4 w-4 shrink-0 transition-transform"
+        class="h-3.5 w-3.5 shrink-0 text-c-text-tertiary transition-transform"
         :class="{ 'rotate-90': isExpanded(node.path) }"
         @click="handleToggleFolder(node.path, $event)"
       />
-      <Icon name="folder" class="h-4 w-4 shrink-0 text-base-content/60" />
+      <Icon name="folder" class="h-3.5 w-3.5 shrink-0 text-c-text-tertiary" />
       <span class="min-w-0 flex-1 truncate">{{ node.name }}</span>
     </button>
     <button
       v-else-if="node.spec"
-      class="tree-row btn btn-ghost btn-sm min-h-8 w-full justify-start gap-1 overflow-hidden px-2 text-left font-normal"
-      :class="{ 'btn-active': selectedId === node.spec.id }"
+      class="tree-row min-h-[2rem] w-full justify-start gap-1 overflow-hidden rounded-md px-2 text-left text-[0.8125rem] font-normal transition-colors hover:bg-c-surface-hover"
+      :class="{ 'bg-c-accent-soft text-c-accent font-medium': selectedId === node.spec.id }"
       :style="{ paddingLeft: `${(depth || 0) * 16 + 24}px` }"
       :title="node.spec.path"
       @click="emit('selectSpec', node.spec.id)"
     >
-      <Icon name="file-text" class="h-4 w-4 shrink-0 text-base-content/55" />
+      <Icon name="file-text" class="h-3.5 w-3.5 shrink-0 text-c-text-tertiary" />
       <span class="min-w-0 flex-1 truncate">{{ displaySpecName(node.spec) }}</span>
     </button>
 

@@ -33,26 +33,31 @@ docs/
 ## Quy Tắc Viết Docs
 
 ### Nội Dung
+
 - Viết như tài liệu vận hành hiện tại. Tránh "trước đây", "vừa thêm", "sẽ đổi".
 - Mỗi doc có phạm vi rõ: feature = hành vi đã shipped; module = boundary/API/rules; spec = yêu cầu chưa/đang triển khai.
 - Ưu tiên câu ngắn, heading rõ. Xóa mô tả lặp, wrapper văn xuôi, câu chung chung.
 - Ghi rõ constraint, assumption, failure mode, security/compliance rule nếu ảnh hưởng vận hành.
 
 ### Liên Kết
+
 - Dùng link tương đối thật: `[Tên](../path/doc.md)`. Không tạo link placeholder.
 - Source/related references nằm trong metadata (frontmatter hoặc `## Meta`), không tạo section tham khảo riêng trong body.
 - Giữ quan hệ hai chiều khi cần: kiểm tra doc đích có cần link ngược.
 
 ### Markdown
+
 - Frontmatter YAML + `## Meta` khi cần. Xem `_shared/templates/frontmatter-schema.md`.
 - Mermaid/diagram chỉ khi giúp giải thích nhanh hơn văn bản.
 
 ### HTML
+
 - Output là fragment, không full document shell.
 - Dùng custom semantic tags (`doc-meta`, `doc-title`, `doc-description`) khi repo hỗ trợ.
 - Không inline script/style, event handler, framework attributes, id tự sinh, class rỗng.
 
 ### Chất Lượng Diff
+
 - Giữ diff nhỏ, có chủ đích. Không rewrite hàng loạt chỉ đổi style.
 - Sau khi edit, đọc lại diff bắt link sai, stale statement, duplicate section.
 - Chạy `npm run format:docs` rồi `npm run lint:docs` khi repo có script.
@@ -74,11 +79,12 @@ docs/
 ## Templates
 
 Khi tạo docs mới, dùng templates trong `_shared/templates/`:
+
 - `spec-template.md` cho specs
 - `requirements-template.md` cho requirements.md
 - `module-template.md` cho module docs
 - `frontmatter-schema.md` cho metadata
-- `sync-state-template.md` cho _sync.md
+- `sync-state-template.md` cho \_sync.md
 
 ## Phản Hồi Cuối
 

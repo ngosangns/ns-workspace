@@ -31,20 +31,20 @@ async function renderSpecDocumentContent(root: HTMLElement, spec: SpecDocument):
   root.dataset.sourcePath = spec.path || spec.id || "";
 
   if (language === "markdown") {
-    root.className = "markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6";
+    root.className = "markdown card mx-auto max-w-5xl p-6";
     await renderMarkdownPreview(root, spec.raw || "", props.theme);
     await decorateRenderedDoc(root, spec, "markdown");
     return;
   }
 
   if (language === "html") {
-    root.className = "markdown html-doc card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6";
+    root.className = "markdown html-doc card mx-auto max-w-5xl p-6";
     await renderHTMLPreview(root, spec.raw || "");
     await decorateRenderedDoc(root, spec, "html");
     return;
   }
 
-  root.className = "card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6";
+  root.className = "card mx-auto max-w-5xl p-6";
   root.innerHTML = renderCodePreview(spec.raw || "", language);
 }
 
@@ -82,5 +82,5 @@ watch(
 </script>
 
 <template>
-  <article ref="specContent" class="markdown card border-base-300 bg-base-100 mx-auto max-w-5xl border p-6"></article>
+  <article ref="specContent" class="markdown card mx-auto max-w-5xl p-6"></article>
 </template>

@@ -171,13 +171,13 @@ function renderSearchSummary(): string {
   if (searchLoading.value) {
     return `
       <div class="flex flex-wrap items-center gap-2" aria-live="polite">
-        <span class="loading loading-spinner loading-sm text-primary"></span>
-        <span class="text-sm text-base-content/70">Searching docs, code, and graphs...</span>
+        <span class="loading loading-spinner loading-sm"></span>
+        <span class="text-sm text-c-text-secondary">Searching docs, code, and graphs...</span>
       </div>
     `;
   }
   if (!searchData.value) {
-    return '<span class="text-sm text-base-content/60">Search across docs, code, and graph context.</span>';
+    return '<span class="text-sm text-c-text-tertiary">Search across docs, code, and graph context.</span>';
   }
   const stats = searchData.value.stats || {};
   const total = Object.values(stats).reduce((sum, v) => sum + Number(v || 0), 0);
@@ -359,7 +359,7 @@ function renderSearchGraphDetails(name: string, graph: NetworkGraphData, details
   const selected = searchGraphSelections.get(name) || "";
   const node = graph.nodes.find((item) => item.id === selected) || graph.nodes[0];
   if (!node) {
-    details.innerHTML = '<div class="p-4 text-sm text-base-content/60">No graph results.</div>';
+    details.innerHTML = '<div class="p-3 text-xs text-c-text-tertiary">No graph results.</div>';
     return;
   }
 
@@ -370,20 +370,20 @@ function renderSearchGraphDetails(name: string, graph: NetworkGraphData, details
   details.innerHTML = `
     <div class="grid gap-3 p-3">
       <div>
-        <div class="text-xs uppercase tracking-wide text-base-content/50">${escapeHTML(node.type || "node")}</div>
+        <div class="text-[0.625rem] uppercase tracking-wider font-mono text-c-text-tertiary">${escapeHTML(node.type || "node")}</div>
         <h3 class="mt-1 text-sm font-semibold">${escapeHTML(node.label || node.id)}</h3>
-        <p class="break-words text-xs text-base-content/60">${escapeHTML(node.path || node.id)}</p>
+        <p class="break-words text-[0.6875rem] text-c-text-secondary font-mono">${escapeHTML(node.path || node.id)}</p>
       </div>
       <div class="flex flex-wrap gap-2">
         ${node.specId ? `<button class="btn btn-primary btn-xs" type="button" data-preview-spec="${escapeHTML(node.specId)}">Preview doc</button>` : ""}
         ${previewPath ? `<button class="btn btn-outline btn-xs" type="button" data-preview-file="${escapeHTML(previewPath)}" data-preview-line="${previewLine}">Open file</button>` : ""}
       </div>
       <div>
-        <h4 class="mb-1 text-xs font-semibold">Outgoing flows (${outgoing.length})</h4>
+        <h4 class="mb-1 text-xs font-semibold text-c-text-secondary">Outgoing flows (${outgoing.length})</h4>
         ${renderSearchGraphEdgeList(outgoing, "target")}
       </div>
       <div>
-        <h4 class="mb-1 text-xs font-semibold">Incoming flows (${incoming.length})</h4>
+        <h4 class="mb-1 text-xs font-semibold text-c-text-secondary">Incoming flows (${incoming.length})</h4>
         ${renderSearchGraphEdgeList(incoming, "source")}
       </div>
     </div>
@@ -426,7 +426,7 @@ function codeGraphMemberLabel(title: string): string {
 }
 
 function renderSearchGraphEdgeList(edges: NetworkGraphLink[], side: "source" | "target"): string {
-  if (!edges.length) return '<div class="text-xs text-base-content/50">None</div>';
+  if (!edges.length) return '<div class="text-xs text-c-text-tertiary">None</div>';
   return `
     <div class="grid gap-1">
       ${edges
@@ -532,24 +532,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="search-shell border-base-300 bg-base-100 border">
-    <div class="search-toolbar border-base-300 border-b">
-      <label class="input input-bordered flex min-h-11 flex-1 items-center gap-2">
-        <Icon name="search" class="text-base-content/50 h-4 w-4" />
+  <div class="search-shell">
+    <div class="search-toolbar">
+      <label class="input flex min-h-[2.75rem] flex-1 items-center gap-2">
+        <Icon name="search" class="h-4 w-4 text-c-text-tertiary" />
         <input v-model="searchQuery" class="grow" placeholder="Search docs, code, graph nodes; separate keywords with commas" />
       </label>
-      <select
-        v-model="keywordOperator"
-        class="select select-bordered min-h-11"
-        aria-label="Keyword result operator"
-        title="Keyword result operator"
-      >
+      <select v-model="keywordOperator" class="select min-h-[2.75rem]" aria-label="Keyword result operator" title="Keyword result operator">
         <option value="sum">Sum keywords</option>
         <option value="difference">Difference keywords</option>
       </select>
     </div>
-    <div id="searchSummary" class="search-summary border-base-300 border-b" v-html="renderSearchSummary()"></div>
-    <div class="search-domain-tabs border-base-300 border-b" role="tablist" aria-label="Search result type">
+    <div id="searchSummary" class="search-summary" v-html="renderSearchSummary()"></div>
+    <div class="search-domain-tabs" role="tablist" aria-label="Search result type">
       <button
         class="search-domain-tab"
         :class="{ 'is-active': activeSearchDomain === 'docs' }"
@@ -624,7 +619,7 @@ onUnmounted(() => {
               :class="{ 'is-fullscreen': fullscreenSearchGraph === 'docsGraph' }"
               data-search-graph-shell="docsGraph"
             >
-              <div class="search-graph-toolbar border-base-300 border-b">
+              <div class="search-graph-toolbar">
                 <div class="min-w-0">
                   <h3>Docs Graph</h3>
                   <p>{{ panelResults("docsGraph").length }} results</p>
@@ -704,7 +699,7 @@ onUnmounted(() => {
               :class="{ 'is-fullscreen': fullscreenSearchGraph === 'codeGraph' }"
               data-search-graph-shell="codeGraph"
             >
-              <div class="search-graph-toolbar border-base-300 border-b">
+              <div class="search-graph-toolbar">
                 <div class="min-w-0">
                   <h3>Code Graph</h3>
                   <p>{{ panelResults("codeGraph").length }} results</p>

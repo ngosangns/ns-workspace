@@ -132,10 +132,10 @@ Hạn chế:
 
 ### Vị Trí Mặc Định
 
-| Nền tảng | Đường dẫn |
-| --- | --- |
+| Nền tảng    | Đường dẫn                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------- |
 | Linux/macOS | `$XDG_CONFIG_HOME/ns-workspace/config.json` (mặc định `~/.config/ns-workspace/config.json`) |
-| Windows | `%AppData%\ns-workspace\config.json` |
+| Windows     | `%AppData%\ns-workspace\config.json`                                                        |
 
 Env var `NS_WORKSPACE_CONFIG` override vị trí. Flag `--config <file>` override cả env var và default.
 

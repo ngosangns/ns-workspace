@@ -139,7 +139,7 @@ function renderDetails(data: NetworkGraphData, nodeId: string) {
   if (!graphDetails.value) return;
   const node = data.nodes.find((n) => n.id === nodeId) || data.nodes[0];
   if (!node) {
-    graphDetails.value.innerHTML = '<div class="p-4 text-sm text-base-content/60">No graph nodes.</div>';
+    graphDetails.value.innerHTML = '<div class="p-4 text-xs text-c-text-tertiary">No graph nodes.</div>';
     return;
   }
   const incoming = data.links.filter((edge) => endpointID(edge.target) === node.id);
@@ -148,17 +148,17 @@ function renderDetails(data: NetworkGraphData, nodeId: string) {
   graphDetails.value.innerHTML = `
     <div class="grid gap-4 p-4">
       <div>
-        <div class="text-xs uppercase tracking-wide text-base-content/50">${escapeHTML(node.type || "node")}</div>
-        <h3 class="mt-1 text-lg font-semibold">${escapeHTML(node.label || node.id)}</h3>
-        <p class="break-words text-sm text-base-content/60">${escapeHTML(node.path || node.id)}</p>
+        <div class="text-[0.625rem] uppercase tracking-wider font-mono text-c-text-tertiary">${escapeHTML(node.type || "node")}</div>
+        <h3 class="mt-1 text-sm font-semibold">${escapeHTML(node.label || node.id)}</h3>
+        <p class="break-words text-xs text-c-text-secondary font-mono">${escapeHTML(node.path || node.id)}</p>
       </div>
-      ${node.specId ? `<button class="btn btn-primary btn-sm" type="button" data-preview-spec="${escapeHTML(node.specId)}">Preview doc</button>` : ""}
+      ${node.specId ? `<button class="btn btn-primary btn-xs" type="button" data-preview-spec="${escapeHTML(node.specId)}">Preview doc</button>` : ""}
       <div>
-        <h4 class="mb-2 text-sm font-semibold">Outgoing refs (${outgoing.length})</h4>
+        <h4 class="mb-2 text-xs font-semibold text-c-text-secondary">Outgoing refs (${outgoing.length})</h4>
         ${renderEdgeList(outgoing.slice(0, 12), "target")}
       </div>
       <div>
-        <h4 class="mb-2 text-sm font-semibold">Incoming refs (${incoming.length})</h4>
+        <h4 class="mb-2 text-xs font-semibold text-c-text-secondary">Incoming refs (${incoming.length})</h4>
         ${renderEdgeList(incoming.slice(0, 12), "source")}
       </div>
     </div>
@@ -177,15 +177,15 @@ function renderDetails(data: NetworkGraphData, nodeId: string) {
 }
 
 function renderEdgeList(edges: NetworkGraphLink[], side: "source" | "target"): string {
-  if (!edges.length) return '<div class="text-sm text-base-content/50">None</div>';
+  if (!edges.length) return '<div class="text-xs text-c-text-tertiary">None</div>';
   return `
     <div class="grid gap-1">
       ${edges
         .map((edge) => {
           const related = endpointID(edge[side]);
           return `<button class="graph-ref-row" type="button" data-select-node="${escapeHTML(related)}">
-          <span class="badge badge-ghost badge-sm">${escapeHTML(edge.type || "references")}</span>
-          <span class="min-w-0 truncate">${escapeHTML(related)}</span>
+          <span class="badge badge-ghost badge-xs">${escapeHTML(edge.type || "references")}</span>
+          <span class="min-w-0 truncate text-xs">${escapeHTML(related)}</span>
         </button>`;
         })
         .join("")}
@@ -256,16 +256,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="graph-shell border-base-300 bg-base-100 border" :class="{ 'is-fullscreen': graphFullscreen }">
-    <div class="graph-toolbar border-base-300 border-b">
+  <div class="graph-shell" :class="{ 'is-fullscreen': graphFullscreen }">
+    <div class="graph-toolbar">
       <div class="min-w-0">
-        <h2 class="text-base font-semibold">Docs Graph</h2>
-        <p id="graphStats" class="text-base-content/60 text-sm">{{ graphStats }}</p>
+        <h2 class="text-sm font-semibold">Docs Graph</h2>
+        <p id="graphStats" class="text-xs text-c-text-secondary">{{ graphStats }}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <label class="input input-bordered input-sm flex items-center gap-2">
-          <Icon name="search" class="text-base-content/50 h-4 w-4" />
-          <input id="graphSearch" v-model="graphSearch" class="w-40 sm:w-56" placeholder="Find node" />
+        <label class="input input-sm flex w-40 items-center gap-2 sm:w-56">
+          <Icon name="search" class="h-3.5 w-3.5 text-c-text-tertiary" />
+          <input id="graphSearch" v-model="graphSearch" class="w-full" placeholder="Find node" />
         </label>
         <button
           id="graphFit"
