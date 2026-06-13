@@ -34,6 +34,9 @@ func run(args []string) error {
 	if synccli.IsAgentSyncCommand(cmd) {
 		return synccli.RunAgentSync(cmd, args[1:], presetFS)
 	}
+	if synccli.IsHarnessCommand(cmd) {
+		return synccli.RunHarness(args[1:])
+	}
 	switch cmd {
 	case "preview":
 		return preview.Run(args[1:])
@@ -59,6 +62,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest doctor [flags]
   go run github.com/ngosangns/ns-workspace@latest registry [flags]
   go run github.com/ngosangns/ns-workspace@latest agents [flags]
+  go run github.com/ngosangns/ns-workspace@latest harness <list|run|eval|status|resume|stop> [flags]
   go run github.com/ngosangns/ns-workspace@latest preview [flags]
   go run github.com/ngosangns/ns-workspace@latest search [flags]
   go run github.com/ngosangns/ns-workspace@latest graph [flags]
@@ -78,6 +82,11 @@ Flags:
   --copy              copy instead of symlink
   --no-mcp            skip MCP config
   --no-registry       skip skills registry installation
+
+Harness flags:
+  --project PATH      project root to inspect, default current directory
+  --task ID           task id for run/eval/status/resume/stop
+  --dry-run           show planned actions without running
 
 Preview flags:
   --project PATH      project root to inspect, default current directory

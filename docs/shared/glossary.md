@@ -32,3 +32,13 @@ Module doc là tài liệu mô tả API, data model, quan hệ và ràng buộc 
 Metadata doc là section `## Meta` với các dòng `- **Status**:`, `- **Description**:`, `- **Compliance**:` và `- **Links**:` để preview scan được tóm tắt, trạng thái và quan hệ graph.
 
 Aspect inventory là bản đồ onboarding trong `docs/research/` liệt kê các aspect chính, source paths, docs hiện có, docs gaps và target cập nhật.
+
+Harness là bộ kiểm chứng gồm task file, evaluator, loop controller và memory store để tự động hóa workflow dev.
+
+Task file là file YAML/JSON trong `.harness/tasks/` định nghĩa requirements, scope, acceptance criteria, routing và stopping rules cho một harness task.
+
+Looping agentic là vòng lặp tự động `plan → execute → verify → diagnose` cho đến khi đạt điều kiện dừng dựa trên tiến triển thay vì timeout hay max iterations.
+
+Subagent dispatcher là abstraction gọi các coding agent backend (OpenCode, Claude Code, Codex, ...) để thực hiện phase của loop.
+
+Dual memory store là cơ chế lưu harness state ở cả project path và shared path để resume và share giữa các môi trường.
