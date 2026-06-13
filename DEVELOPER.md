@@ -19,7 +19,7 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 | `internal/preview/`                | Backend preview docs, API, search, graph và hot reload supervisor.                                                                                     |
 | `internal/graphquery/`             | Registry/setup/cache LSP cho Search/LSP Code Graph, CLI `lsp`, installer npm/go/archive và warning dùng chung.                                         |
 | `internal/preview/preview_ui_src/` | Source Vue 3/TypeScript của preview UI.                                                                                                                |
-| `internal/preview/preview_ui/`     | Static build output được Go embed; `index.html`, `search.html`, `style.css`, `favicon.svg` và bundle JS hashed là artifact release của preview/search. |
+| `internal/preview/preview_ui/`     | Static build output được Go embed; `index.html`, `style.css`, `favicon.svg` và bundle JS hashed là artifact release của preview. |
 | `presets/`                         | Preset embedded cho agents, skills, settings, subagents, registry, OpenCode và MCP servers.                                                            |
 | `docs/`                            | Knowledge base hiện trạng của repo, gồm index, sync snapshot, architecture, modules, features, specs.                                                  |
 
@@ -98,7 +98,7 @@ Không cần chạy full build chỉ để sửa docs thuần. Với thay đổi
 2. Nếu đổi behavior API/search/graph, cập nhật backend trong `internal/preview/` và test tương ứng.
 3. Nếu đổi setup/cache/installer LSP, cập nhật `internal/graphquery/`, adapter trong `internal/preview/preview_lsp_setup.go` và test CLI `lsp`/`graph`.
 4. Chạy `npm run check:preview`, `npm run lint:preview` và `npm run build:preview`.
-5. Review static output trong `internal/preview/preview_ui/`; nếu hashed JS filename đổi, đảm bảo file mới trong `assets/` được track cùng `index.html` hoặc `search.html`.
+5. Review static output trong `internal/preview/preview_ui/`; nếu hashed JS filename đổi, đảm bảo file mới trong `assets/` được track cùng `index.html`.
 6. Chạy test Go liên quan, thường là `go test ./internal/preview`; với LSP setup chạy thêm `go test ./internal/graphquery`.
 7. Nếu behavior user-facing đổi, cập nhật docs trong `docs/features/`, `docs/modules/` hoặc `docs/specs/planning/`.
 
