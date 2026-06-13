@@ -22,6 +22,8 @@ go run github.com/ngosangns/ns-workspace@latest doctor
 go run github.com/ngosangns/ns-workspace@latest init --dry-run
 go run github.com/ngosangns/ns-workspace@latest init
 go run github.com/ngosangns/ns-workspace@latest update
+go run github.com/ngosangns/ns-workspace@latest harness list
+go run github.com/ngosangns/ns-workspace@latest harness run --task <id> --project .
 ```
 
 Trong checkout local:
@@ -55,6 +57,7 @@ Không dùng dạng `go run /Users/ngosangns/Github/ns-workspace ...` từ một
 | `registry` | Cài các skill lấy từ registry.                                                                                                                 |
 | `agents`   | Liệt kê adapter được hỗ trợ, support tier và artifact support.                                                                                 |
 | `catalog`  | Alias của `agents`.                                                                                                                            |
+| `harness`  | Chạy harness task: list, run, eval, status, resume, stop. Hỗ trợ self-correct loop, multi-agent routing và memory persistence.                 |
 | `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                                                     |
 | `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                                                        |
 | `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                                                   |
@@ -76,6 +79,14 @@ Không dùng dạng `go run /Users/ngosangns/Github/ns-workspace ...` từ một
 --copy
 --no-mcp
 --no-registry
+```
+
+Harness flags:
+
+```bash
+--project PATH   project root to inspect, default current directory
+--task ID        task id for run/eval/status/resume/stop
+--dry-run        show planned actions without running
 ```
 
 Dùng `--copy` nếu không muốn tạo symlink. Dùng `--config <file>` trỏ tới file JSON user-level để override hoặc bổ sung embedded preset (xem [User Config Overlay](#user-config-overlay)).
@@ -131,26 +142,28 @@ MiniMax CLI (`mmx`) được hỗ trợ như một stable adapter, chọn bằng
 
 Stable adapters ghi vào các user-level path đã biết:
 
-| Agent | User-level targets |
-| --- | --- |
-| Claude Code | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
-| OpenCode | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP |
-| Grok Build | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build |
-| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json` |
-| Kiro / CLI | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`; `--tools kiro-cli` là alias của `kiro` |
-| Qwen Code | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP |
-| Gemini CLI | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với hooks và MCP |
-| Codex CLI | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml` |
-| Cline | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json` |
-| Windsurf | `~/.codeium/windsurf/memories/global_rules.md` |
-| Aider | Managed conventions block trong `~/.aider.conf.yml` |
-| MiniMax CLI | `~/.mmx/config.json` (default model presets); alias `minimax-cli` / `mmx` qua `--tools` |
+| Agent         | User-level targets                                                                                                         |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands |
+| OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                |
+| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build          |
+| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                  |
+| Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`; `--tools kiro-cli` là alias của `kiro`        |
+| Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                              |
+| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với hooks và MCP                                      |
+| Codex CLI     | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml`                                    |
+| Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                           |
+| Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                             |
+| Aider         | Managed conventions block trong `~/.aider.conf.yml`                                                                        |
+| MiniMax CLI   | `~/.mmx/config.json` (default model presets); alias `minimax-cli` / `mmx` qua `--tools`                                    |
 
 Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<agent>/` thay vì ghi trực tiếp vào native path chưa chắc chắn. Nhóm này hiện gồm Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 
-## Preview, Search Và Graph
+## Preview, Search, Graph Và Harness
 
 `preview` chạy localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph index symbol từ LSP trên file code tracked bởi Git, bỏ qua generated preview UI artifacts của repo, rồi mở rộng caller/callee hoặc references khi language server hỗ trợ.
+
+`harness` chạy task tự động hóa workflow dev với self-correct loop. Mỗi task là file YAML/JSON trong `.harness/tasks/`, định nghĩa requirements, scope, acceptance criteria, routing và stopping rules. Loop đi qua các phase plan → execute → verify → diagnose, lưu checkpoint sau mỗi phase và dừng khi verify pass, state lặp, hết hypothesis, hoặc phát hiện ambiguity. Xem thêm [docs/features/agentic-loop.md](docs/features/agentic-loop.md) và [docs/modules/harness.md](docs/modules/harness.md).
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass --open

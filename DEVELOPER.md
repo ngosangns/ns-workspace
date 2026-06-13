@@ -12,9 +12,10 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 
 | Path                               | Vai trò                                                                                                                                                |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `main.go`                          | CLI entrypoint, route nhóm lệnh agentsync, preview/search, graph và lsp.                                                                               |
-| `internal/cli/`                    | Parse flags và dispatch nhóm lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`/`catalog`.                                                |
+| `main.go`                          | CLI entrypoint, route nhóm lệnh agentsync, harness, preview/search, graph và lsp.                                                                      |
+| `internal/cli/`                    | Parse flags và dispatch nhóm lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`/`catalog`, `harness`.                                       |
 | `internal/agentsync/`              | Logic adapter sync, `SyncPlan`, path native của từng agent, backup và operation apply/status/doctor.                                                   |
+| `internal/harness/`                | Engine, task registry, evaluator, loop controller, subagent dispatcher và memory store cho lệnh `harness`.                                              |
 | `internal/preview/`                | Backend preview docs, API, search, graph và hot reload supervisor.                                                                                     |
 | `internal/graphquery/`             | Registry/setup/cache LSP cho Search/LSP Code Graph, CLI `lsp`, installer npm/go/archive và warning dùng chung.                                         |
 | `internal/preview/preview_ui_src/` | Source Vue 3/TypeScript của preview UI.                                                                                                                |
@@ -32,6 +33,8 @@ go run . init --dry-run
 go run . preview --project . --open
 go run . graph --project . --query buildPreviewSearchResponse --json
 go run . lsp list --project .
+go run . harness list
+go run . harness run --task <id> --project . --dry-run
 ```
 
 Khi chạy preview từ chính checkout này, supervisor sẽ build frontend bằng `npm run build:preview`, giữ một port ổn định rồi restart child process khi source thay đổi. Dùng `--no-reload` khi cần chạy server trực tiếp bằng static assets hiện có. Khi chạy `go run github.com/ngosangns/ns-workspace@latest preview` từ project khác, preview dùng static UI đã embed trong module và không chạy Node/npm ở runtime.
@@ -48,6 +51,7 @@ go test ./internal/preview
 go test ./internal/graphquery
 go test ./internal/cli
 go test ./internal/agentsync
+go test ./internal/harness
 ```
 
 Preview frontend:
@@ -79,13 +83,14 @@ npm run format:preview
 
 Không cần chạy full build chỉ để sửa docs thuần. Với thay đổi nhỏ, chọn validation sát phạm vi thay đổi.
 
-## Workflow Sửa Preset Và Adapter
+## Workflow Sửa Preset, Adapter Và Harness
 
 1. Dùng `go run . status` để xem output hiện tại.
 2. Chạy `go run . init --dry-run` hoặc `go run . update --dry-run` trước khi ghi file user-level.
 3. Khi sửa adapter stable trong `internal/agentsync/`, kiểm tra cả path create/update, backup, symlink/copy mode và filter `--tools`.
 4. Khi thêm agent mới, cập nhật catalog/support tier, preset materialization và test liên quan.
-5. Sau khi chỉnh preset trong `presets/`, kiểm tra command tương ứng bằng `--dry-run` trước khi apply thật.
+5. Khi sửa harness trong `internal/harness/`, chạy `go test ./internal/harness/...` và thử `go run . harness run --task <id> --project . --dry-run`.
+6. Sau khi chỉnh preset trong `presets/`, kiểm tra command tương ứng bằng `--dry-run` trước khi apply thật.
 
 ## Workflow Sửa Preview Web
 

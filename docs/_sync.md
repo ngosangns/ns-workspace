@@ -12,5 +12,5 @@
 - **Last Synced Commit**: a6beaf5a37d08b02feaf7310b3aaeee939c281f9
 - **Branch**: current worktree
 - **Sync Date**: 2026-06-03T10:11:31Z
-- **Scope**: Current worktree docs sync for agent preset trigger surface, local skill inventory, agentsync preset materialization behavior, Preview/Search/LSP Code Graph docs, Preview Web cleanup behavior and docs index coverage.
+- **Scope**: Harness and looping agentic implementation, including internal/harness package, harness CLI command, preset skills/subagents, docs updates and AGENTS.md trigger additions.
 - **Known Unsynced**: Current worktree contains uncommitted cleanup skill preset/local changes, trigger instruction updates, tests and architecture docs.
