@@ -65,3 +65,84 @@ Các trigger ghép thường dùng:
 
 Nếu trigger ghép có `plan` đứng trước `execution` cho task lớn, dừng lại sau
 bước plan và chờ user duyệt rõ ràng trước khi sửa source code.
+
+## Hướng Dẫn Sử Dụng Harness, Loop Và Eval
+
+### Khi nào dùng cái gì
+
+| Trigger | Pipeline | Khi nào dùng |
+| ------- | -------- | ------------ |
+| `//h` | harness | Cần chạy kiểm chứng một task cụ thể theo acceptance criteria. |
+| `//l` | loop | Kích hoạt self-correct loop (plan → execute → verify → diagnose). |
+| `//hl` | harness + loop | Task đã có task file `.harness/tasks/<id>.yaml`, cần loop tự chạy. |
+| `//hv` | harness + eval | Đánh giá kết quả cuối theo tiêu chí khách quan. |
+| `//hlv` | harness + loop + eval | Vừa chạy loop vừa eval tổng thể sau mỗi iteration. |
+| `//hle` | harness + loop + execution | Nếu loop dừng ở trạng thái pause, tiếp tục execution trực tiếp. |
+
+### Task file
+
+Định nghĩa task trong `.harness/tasks/<id>.yaml`:
+
+```yaml
+id: refactor-auth
+description: Refactor auth module
+requirements:
+  - id: REQ-1
+    text: Extract password hashing to separate package
+scope:
+  include:
+    - internal/auth/**
+acceptance:
+  - command: go test ./internal/auth/...
+    must_pass: true
+phases:
+  - plan
+  - execute
+  - verify
+routing:
+  default: opencode
+  plan:
+    agent: opencode-planner
+  execute:
+    agent: opencode-executor
+  verify:
+    agent: eval-judge
+stopping:
+  max_consecutive_failures: 3
+  require_human_on_ambiguity: true
+```
+
+Acceptance criteria hỗ trợ command/script hoặc tham chiếu `package.json` scripts
+(`test`, `lint`, `typecheck`, `build`).
+
+### Các lệnh harness
+
+```bash
+go run . harness list --project .
+go run . harness run --task refactor-auth --project .
+go run . harness status --task refactor-auth --project .
+go run . harness resume --task refactor-auth --project .
+go run . harness stop --task refactor-auth --project .
+go run . harness run --task refactor-auth --project . --dry-run
+```
+
+State lưu ở `.harness/state/<id>.json` (project) và `~/.agents/harness/<project>/<id>.json`
+(shared), giúp resume giữa các môi trường.
+
+### Luồng loop
+
+```text
+Plan → Execute → Verify → [PASS] → Finalize
+                |
+                [FAIL] → Diagnose/Research/Fix → Execute
+```
+
+Loop dừng khi: verify pass, state lặp lại, hết hypothesis, vượt
+`max_consecutive_failures`, phát hiện ambiguity, hoặc acceptance criteria thỏa
+mãn.
+
+### Human-in-the-loop
+
+- **Interactive**: pause terminal, in câu hỏi, chờ user trả lờirồi resume.
+- **CI/non-interactive**: ghi `.harness/decision-request.md` và dừng, user chỉnh
+  rồi `harness resume`.
