@@ -105,7 +105,7 @@ func artifactsFromSpec(spec AdapterSpec) []ArtifactKind {
 	if t.Subagents != "" {
 		artifacts = append(artifacts, ArtifactSubagents)
 	}
-	if t.Settings != "" {
+	if t.Settings != "" || (t.AgentConfigSrc != "" && t.AgentConfigDst != "") {
 		artifacts = append(artifacts, ArtifactSettings)
 	}
 	if t.Settings != "" || t.HooksPath != "" {
@@ -171,6 +171,9 @@ func (b *BaseAdapter) fileLinkOps(ctx Context, replace bool) []Operation {
 	}
 	if t.Subagents != "" {
 		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSubagents, DstRoot: t.Subagents, Replace: replace})
+	}
+	if t.AgentConfigSrc != "" && t.AgentConfigDst != "" {
+		ops = append(ops, InstallPresetFile{Src: t.AgentConfigSrc, Dst: t.AgentConfigDst, Replace: replace})
 	}
 	return ops
 }
