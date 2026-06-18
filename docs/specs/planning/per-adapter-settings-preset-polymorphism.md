@@ -41,11 +41,11 @@ Plan này tập trung vào nhánh settings/config, làm tiền đề cho các pl
 
 **Triệu chứng 2**: Format config khác nhau giữa các provider nhưng bị gộp vào cùng abstraction:
 
-- Claude Code: `permissions.defaultMode`, `hooks`, `mcpServers` ở root.
-- OpenCode: `permission` (string "allow"/"ask"/"deny"), `mcp`, `provider`, `model`.
-- Qwen: `hooks`, `mcpServers` ở root.
-- Gemini: `hooks`, `mcpServers` ở root.
-- Cline: `mcpServers` ở root, không có `hooks`.
+- Claude Code: `permissions.defaultMode`, `hooks`, `mcpServers` ở root. MCP server dùng `type: "http"` + `url` hoặc `command`+`args`.
+- OpenCode: `permission` (string "allow" hoặc object map tool → action), `mcp`, `provider`, `model`. MCP server dùng `type: "remote"` + `url` hoặc `type: "local"` + `command`.
+- Qwen: `hooks`, `mcpServers` ở root. MCP HTTP server dùng `httpUrl` (không `type`), SSE dùng `url`, stdio dùng `command`+`args`.
+- Gemini: `mcpServers` ở root. KHÔNG có `hooks` ở root và không có `permissions.defaultMode` (Gemini dùng `general.defaultApprovalMode`). MCP server dùng `httpUrl`/`url`/`command` như Qwen.
+- Cline: `mcpServers` ở root, không có `hooks` ở root. MCP server dùng `url` (HTTP/SSE) hoặc `command`+`args` (stdio). Cline docs không document field `type`.
 
 `SettingsManifest` hiện chỉ biết `hooks`; mọi field khác bị ignore hoặc nằm ngoài shared preset.
 

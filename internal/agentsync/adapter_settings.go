@@ -184,14 +184,6 @@ func readAdapterSettingsPreset(ctx Context, presetPath string) (map[string]any, 
 	return out, nil
 }
 
-func readSharedMCPValues(ctx Context) (map[string]any, error) {
-	manifest, err := readMCPManifest(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"mcpServers": manifest.MCPServers}, nil
-}
-
 func applyAdapterSettingsRaw(ctx Context, profile *AdapterSettingsProfile, dst string, replace bool) error {
 	if profile.Preset == "" {
 		return fmt.Errorf("adapter settings %s: raw profile requires preset", profile.ID)
@@ -252,79 +244,3 @@ func mapsEqualAdapterSettings(a, b map[string]any) bool {
 	return string(abytes) == string(bbytes)
 }
 
-func resolveHomeRelative(home, target string) (string, error) {
-	if target == "" {
-		return "", fmt.Errorf("empty target")
-	}
-	if !strings.HasPrefix(target, ".") {
-		return "", fmt.Errorf("target %q must start with . or .. (relative to home)", target)
-	}
-	return filepath.Join(home, target), nil
-}
-
-func asMap(v any) map[string]any {
-	if v == nil {
-		return map[string]any{}
-	}
-	if m, ok := v.(map[string]any); ok {
-		return m
-	}
-	return map[string]any{}
-}
-
-func mergeShallow(base, overlay map[string]any) map[string]any {
-	out := map[string]any{}
-	for k, v := range base {
-		out[k] = v
-	}
-	for k, v := range overlay {
-		out[k] = v
-	}
-	return out
-}
-
-func mergeDeep(base, overlay map[string]any) map[string]any {
-	out := map[string]any{}
-	for k, v := range base {
-		out[k] = v
-	}
-	for k, v := range overlay {
-		if existing, ok := out[k].(map[string]any); ok {
-			if overMap, ok2 := v.(map[string]any); ok2 {
-				out[k] = mergeDeep(existing, overMap)
-				continue
-			}
-		}
-		out[k] = v
-	}
-	return out
-}
-
-// loadAdapterSettingsManifest đọc manifest để tra cứu profile path theo adapter id.
-// Helper này dùng cho plan phase, không dùng trong apply.
-func loadAdapterSettingsManifest(ctx Context) (map[string]string, error) {
-	data, err := readPresetFile(ctx, "presets/manifest.json")
-	if err != nil {
-		return nil, err
-	}
-	manifest := AdapterSettingsManifest{}
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("adapter settings manifest: invalid JSON: %w", err)
-	}
-	out := map[string]string{}
-	for _, row := range manifest.Adapters {
-		if row.SettingsProfile != "" {
-			out[row.ID] = row.SettingsProfile
-		}
-	}
-	return out, nil
-}
-
-// resolveAdapterSettingsTarget đọc profile và resolve target path từ homeDir.
-func resolveAdapterSettingsTarget(ctx Context, profilePath, homeDir string) (string, error) {
-	profile, err := readAdapterSettingsProfile(ctx, profilePath)
-	if err != nil {
-		return "", err
-	}
-	return resolveHomeRelative(homeDir, profile.Target)
-}

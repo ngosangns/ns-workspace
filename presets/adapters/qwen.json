@@ -8,6 +8,10 @@
       "strategy": "merge-deep",
       "from": "default"
     },
+    "permissions": {
+      "strategy": "replace",
+      "from": "preset"
+    },
     "mcpServers": {
       "strategy": "merge-shallow",
       "from": "shared"

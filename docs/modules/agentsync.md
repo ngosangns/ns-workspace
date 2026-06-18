@@ -49,7 +49,7 @@ Các command `init`, `update`, `status`, `doctor`, `registry`, `agents` và alia
 - `InstallPresetFile` ghi một file preset vào shared/native path.
 - `InstallPresetTree` ghi cả cây preset, dùng cho skills và subagents.
 - `LinkOrCopy` link hoặc copy file từ shared home sang native path tùy `--copy` hoặc Windows.
-- `LinkSkillDirs` link/copy từng skill/subagent dir; trong dry-run có thể đọc embedded preset names khi source shared chưa tồn tại.
+- `LinkSkillDirs` link/copy từng skill/subagent dir; trong dry-run có thể đọc embedded preset names khi source shared chưa tồn tại. Mỗi entry preset luôn ghi đè entry cùng tên trong provider target (per-entry replace), kể cả khi `init` không `--force`, nên toàn bộ skill trong preset luôn override skill trong provider target; entry cũ được backup trước khi thay.
 - `MergeJSON` merge JSON vào key path cụ thể và có thể rewrite object managed khi update.
 - `AppendManagedBlock` thay managed block có label trong file text như Codex config hoặc Aider config.
 - `ManualStep` ghi guidance vào `~/.agents/generated/<agent>/README.md` cho adapter chưa có native write path chắc chắn.
@@ -59,7 +59,7 @@ Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `
 
 ## Adapter Catalog
 
-Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Windsurf và Aider. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
+Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Qoder CLI, Windsurf và Aider. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
 
 Manual adapters hiện gồm Cursor, GitHub Copilot và JetBrains AI. Experimental/manual guarded adapters hiện gồm Antigravity, Trae và Roo. Nhóm này chỉ tạo helper trong `~/.agents/generated/<agent>/` vì native path hoặc support contract chưa đủ ổn định.
 
@@ -69,6 +69,7 @@ Plugin adapter hiện có:
 - Claude tạo script helper `~/.agents/generated/claude/mcp.commands.sh` để add MCP bằng CLI user scope.
 - Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers.
 - Aider append managed conventions block vào `~/.aider.conf.yml`.
+- Qoder CLI (`qodercli`, alias `qoder-cli`) link AGENTS.md/skills/subagents vào `~/.qoder` và ghi MCP servers + full-bypass mode vào `~/.qoder/settings.json`; MCP giữ shape chuẩn Claude (`type:http`/`url`).
 - Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`.
 
 ## Preset Và Registry Rules
@@ -106,25 +107,61 @@ Cấu trúc preset settings:
 
 - `presets/settings/default.json`: hooks cross-cutting rỗng `{}`, làm source `default` cho mọi provider.
 - `presets/settings/claude.json`: `{ "permissions": { "defaultMode": "bypassPermissions" } }` chỉ dùng cho Claude Code, merge strategy `replace`.
-- `presets/settings/qwen.json`, `gemini.json`, `cline.json`: `{}`, mỗi provider có thể extend sau.
+- `presets/settings/qwen.json`: `{ "permissions": { "defaultMode": "yolo", "confirmShellCommands": false, "confirmFileEdits": false } }` — full bypass mọi confirm cho Qwen Code.
+- `presets/settings/gemini.json`: `{ "general": { "defaultApprovalMode": "auto_edit" } }` — auto-approve edit tools (Gemini CLI YOLO mode chỉ enable qua CLI flag `--yolo`/`--approval-mode=yolo`, không ghi được từ settings.json).
+- `presets/settings/cline.json`: `{}` (Cline lưu YOLO mode trong `~/.cline/data/settings/global-settings.json` qua UI; preset chỉ set `trust: true` cho từng MCP server ở transform step để auto-approve MCP tool calls).
+- `presets/settings/qoder.json`: `{ "general": { "defaultPermissionMode": "bypass_permissions" } }` — full bypass (YOLO) mọi permission prompt cho Qoder CLI.
 
 Cấu trúc adapter profiles:
 
 - `presets/adapters/claude.json`: target `.claude/settings.json`, merge `hooks` (deep, từ default), `permissions` (replace, từ claude.json), `mcpServers` (shallow, từ shared).
-- `presets/adapters/qwen.json`, `gemini.json`: target `.qwen/settings.json` / `.gemini/settings.json`, merge `hooks` (deep, từ default) và `mcpServers` (shallow, từ shared), không có `permissions`.
-- `presets/adapters/cline.json`: target `.cline/data/settings/cline_mcp_settings.json`, chỉ merge `mcpServers`.
+- `presets/adapters/qwen.json`: target `.qwen/settings.json`, merge `hooks` (deep, từ default), `permissions` (replace, từ qwen.json), `mcpServers` (shallow, từ shared).
+- `presets/adapters/gemini.json`: target `.gemini/settings.json`, merge `general` (replace, từ gemini.json), `mcpServers` (shallow, từ shared).
+- `presets/adapters/cline.json`: target `.cline/data/settings/cline_mcp_settings.json`, chỉ merge `mcpServers` (transform set `trust: true` cho mỗi server).
+- `presets/adapters/qoder.json`: target `.qoder/settings.json`, merge `hooks` (deep, từ default), `general` (replace, từ qoder.json), `mcpServers` (shallow, từ shared). MCP MergeJSON giữ shape chuẩn (`type:http`/`url`).
 - `presets/adapters/opencode.json`: profile raw, copy thẳng `presets/opencode/opencode.json` sang `~/.config/opencode/opencode.json` (opencodePlugin xử lý MCP merge ở apply phase).
+
+### Full Bypass / Auto-Approve Per Provider
+
+Mỗi provider CLI có field riêng để enable auto-approve, preset đã được cấu hình sẵn cho full bypass:
+
+| Provider    | Field trong settings            | Value preset           | Ghi chú                                                                                |
+| ----------- | ------------------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
+| Claude Code | `permissions.defaultMode`       | `"bypassPermissions"`  | Bypass mọi permission prompt.                                                          |
+| OpenCode    | `permission`                    | `"allow"`              | Allow mọi tool call mà không prompt.                                                   |
+| Qwen Code   | `permissions.defaultMode`       | `"yolo"`               | Full bypass mode. Cộng thêm `confirmShellCommands: false` + `confirmFileEdits: false`. |
+| Gemini CLI  | `general.defaultApprovalMode`   | `"auto_edit"`          | Auto-approve edit tools (YOLO mode chỉ enable qua CLI flag).                           |
+| Cline       | per-MCP-server `trust`          | `true`                 | Auto-approve MCP tool calls. YOLO mode riêng quản lý qua UI (global-settings.json).    |
+| Qoder CLI   | `general.defaultPermissionMode` | `"bypass_permissions"` | YOLO mode: skip mọi permission prompt, allow mọi tool call.                            |
+
+Test `TestProviderFullBypassConfig` assert cả 5 provider đều sinh ra config full bypass đúng schema docs.
+
+### MCP Server Shape Per Provider
+
+Shared manifest `presets/mcp/servers.json` dùng shape chuẩn MCP (`type`/`url` cho HTTP, `command`/`args` cho stdio). Mỗi provider CLI lại đọc field khác nhau, nên trước khi merge settings hoặc MCP, hàm `transformMCPServersForAdapter` (trong `internal/agentsync/agentsync.go`) rewrite từng server entry theo schema của provider đích:
+
+- **claude**: giữ nguyên `type: "http"` + `url` (Claude Code chấp nhận shape này).
+- **opencode**: đổi `type: "http"` thành `type: "remote"` (OpenCode dùng literal "remote" cho HTTP transport).
+- **qwen**: drop `type`, đổi `url` → `httpUrl` cho HTTP servers. SSE giữ `url`, stdio giữ `command`+`args`. Theo [Qwen MCP docs](https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/).
+- **gemini**: cùng rule với qwen (`httpUrl`, không `type`). Theo [Gemini CLI MCP docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md).
+- **cline**: drop `type` (Cline docs không document field này). Giữ `url` (HTTP/SSE) hoặc `command`+`args` (stdio).
+- **qoder**: giữ nguyên shape chuẩn (`type: "http"` + `url`). Qoder CLI đọc `mcpServers` trong `~/.qoder/settings.json` theo schema kiểu Claude. Theo [Qoder MCP docs](https://docs.qoder.com/en/cli/mcp-servers).
+- **kimi** và các provider khác: giữ nguyên shape chuẩn MCP.
+
+Transform này áp dụng cho cả hai đường materialization: profile-based (`ApplyAdapterSettings` → `buildAdapterSettings`) và inline merge (`MergeJSON` trong `specAdapter.Plan`). Test `TestProviderMCPServerShapeMatchesVendorDocs` và `TestTransformMCPServersForAdapter` lock-in contract để schema sai provider nào sẽ fail ngay khi test.
 
 Ưu điểm:
 
 - Thêm field mới cho provider X không leak sang provider Y.
 - Thêm provider mới không cần đụng Go code, chỉ cần thêm profile + preset + manifest row.
 - Tách rõ field cross-cutting (`default.json`) khỏi field provider-specific.
+- MCP server shape luôn khớp docs chính thức của từng provider.
 
 Hạn chế:
 
 - Một số provider cần logic đặc biệt (opencode merge top-level object) vẫn dùng plugin riêng, không qua `ApplyAdapterSettings`.
 - File name `default.json` thay vì `_default.json` vì `embed.FS` skip file bắt đầu `_`.
+- MCP schema của mỗi provider có thể đổi theo version; `transformMCPServersForAdapter` cần được cập nhật và test khi vendor phát hành breaking change.
 
 ## User Config Overlay
 
@@ -194,7 +231,7 @@ Sau `ns-workspace init` hoặc `ns-workspace update`, `~/.config/opencode/openco
 ## Safety Rules
 
 - Luôn dùng `--dry-run` trước khi áp dụng lên môi trường quan trọng vì module này có thể ghi vào user-level config thật.
-- `init` không overwrite path có sẵn nếu không có `--force`; `update` dùng replace mode cho output managed.
+- `init` không overwrite path có sẵn nếu không có `--force`; ngoại lệ: skill/subagent entry trong provider target luôn bị preset ghi đè (backup trước) để đảm bảo preset là source of truth cho skills. `update` dùng replace mode cho output managed.
 - Replace mode backup file/tree cũ trước khi ghi hoặc remove.
 - JSON native bị invalid làm command fail sớm để tránh ghi chồng lên config không parse được.
 - `--copy` tránh symlink khi người dùng muốn snapshot file hoặc khi platform không dùng symlink.

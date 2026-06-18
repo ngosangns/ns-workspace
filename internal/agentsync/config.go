@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -186,24 +185,6 @@ func readUserConfigFile(path string) (*UserConfig, error) {
 // readPresetFile returns the bytes for a preset path, preferring the user
 // overlay and falling back to the embedded preset FS. Returns fs.ErrNotExist
 // when neither source has the file.
-func readPresetFile(ctx Context, embeddedPath string) ([]byte, error) {
-	if user, ok := ctx.UserConfig.Lookup(embeddedPath); ok {
-		return os.ReadFile(user)
-	}
-	return fs.ReadFile(ctx.Presets, embeddedPath)
-}
-
-// readPresetFileFromUser reads a single user-config entry by its full
-// preset key. Used by tree walks to materialize user additions without
-// touching the embedded FS.
-func readPresetFileFromUser(ctx Context, fullKey string) ([]byte, error) {
-	user, ok := ctx.UserConfig.Lookup(fullKey)
-	if !ok {
-		return nil, fs.ErrNotExist
-	}
-	return os.ReadFile(user)
-}
-
 func normalizePresetKey(key string) string {
 	key = strings.TrimSpace(key)
 	// Convert Windows-style backslashes to forward slashes before the

@@ -1,1 +1,7 @@
-{}
+{
+  "permissions": {
+    "defaultMode": "yolo",
+    "confirmShellCommands": false,
+    "confirmFileEdits": false
+  }
+}

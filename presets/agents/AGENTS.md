@@ -70,14 +70,14 @@ bước plan và chờ user duyệt rõ ràng trước khi sửa source code.
 
 ### Khi nào dùng cái gì
 
-| Trigger | Pipeline | Khi nào dùng |
-| ------- | -------- | ------------ |
-| `//h` | harness | Cần chạy kiểm chứng một task cụ thể theo acceptance criteria. |
-| `//l` | loop | Kích hoạt self-correct loop (plan → execute → verify → diagnose). |
-| `//hl` | harness + loop | Task đã có task file `.harness/tasks/<id>.yaml`, cần loop tự chạy. |
-| `//hv` | harness + eval | Đánh giá kết quả cuối theo tiêu chí khách quan. |
-| `//hlv` | harness + loop + eval | Vừa chạy loop vừa eval tổng thể sau mỗi iteration. |
-| `//hle` | harness + loop + execution | Nếu loop dừng ở trạng thái pause, tiếp tục execution trực tiếp. |
+| Trigger | Pipeline                   | Khi nào dùng                                                       |
+| ------- | -------------------------- | ------------------------------------------------------------------ |
+| `//h`   | harness                    | Cần chạy kiểm chứng một task cụ thể theo acceptance criteria.      |
+| `//l`   | loop                       | Kích hoạt self-correct loop (plan → execute → verify → diagnose).  |
+| `//hl`  | harness + loop             | Task đã có task file `.harness/tasks/<id>.yaml`, cần loop tự chạy. |
+| `//hv`  | harness + eval             | Đánh giá kết quả cuối theo tiêu chí khách quan.                    |
+| `//hlv` | harness + loop + eval      | Vừa chạy loop vừa eval tổng thể sau mỗi iteration.                 |
+| `//hle` | harness + loop + execution | Nếu loop dừng ở trạng thái pause, tiếp tục execution trực tiếp.    |
 
 ### Task file
 
