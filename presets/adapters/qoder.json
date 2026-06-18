@@ -1,9 +1,13 @@
 {
-  "id": "gemini",
-  "target": ".gemini/settings.json",
+  "id": "qoder",
+  "target": ".qoder/settings.json",
   "defaultPreset": "presets/settings/default.json",
-  "preset": "presets/settings/gemini.json",
+  "preset": "presets/settings/qoder.json",
   "merge": {
+    "hooks": {
+      "strategy": "merge-deep",
+      "from": "default"
+    },
     "general": {
       "strategy": "replace",
       "from": "preset"

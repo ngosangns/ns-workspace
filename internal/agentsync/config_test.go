@@ -466,14 +466,14 @@ func TestMiniMaxCatalogReportsStableWithSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var found *specAdapter
+	var found *MiniMaxAdapter
 	for _, a := range manager.adapters(ctx) {
 		if a.Name() == "minimax" {
-			sa, ok := a.(specAdapter)
+			mm, ok := a.(*MiniMaxAdapter)
 			if !ok {
-				t.Fatalf("minimax adapter is not a specAdapter: %T", a)
+				t.Fatalf("minimax adapter is not a MiniMaxAdapter: %T", a)
 			}
-			found = &sa
+			found = mm
 			break
 		}
 	}
