@@ -1,0 +1,19 @@
+{
+  "name": "ns-full",
+  "description": "ns-workspace managed agent: every tool available and pre-approved (full permissions).",
+  "prompt": null,
+  "mcpServers": {},
+  "tools": [
+    "*"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "@builtin",
+    "@*"
+  ],
+  "resources": [],
+  "hooks": {},
+  "toolsSettings": {},
+  "includeMcpJson": true,
+  "model": null
+}

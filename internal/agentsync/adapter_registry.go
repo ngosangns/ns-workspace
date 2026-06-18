@@ -87,13 +87,15 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 		Spec: AdapterSpec{
 			ID: "kiro", Aliases: []string{"kiro-cli"}, Tier: TierStable, Executables: []string{"kiro", "kiro-cli"},
 			Targets: AdapterTargets{
-				Instruction: filepath.Join(kiro, "steering", "AGENTS.md"),
-				Skills:      filepath.Join(kiro, "skills"),
-				MCPPath:     filepath.Join(kiro, "settings", "mcp.json"),
-				MCPKeyPath:  []string{"mcpServers"},
+				Instruction:    filepath.Join(kiro, "steering", "AGENTS.md"),
+				Skills:         filepath.Join(kiro, "skills"),
+				MCPPath:        filepath.Join(kiro, "settings", "mcp.json"),
+				MCPKeyPath:     []string{"mcpServers"},
+				AgentConfigSrc: "presets/settings/kiro.json",
+				AgentConfigDst: filepath.Join(kiro, "agents", "ns-full.json"),
 			},
-			Docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/", "https://kiro.dev/docs/cli/skills/"},
-			Notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; skills sync to Kiro global skills; MCP presets sync to the shared Kiro settings path.",
+			Docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/", "https://kiro.dev/docs/cli/skills/", "https://kiro.dev/docs/cli/custom-agents/creating/"},
+			Notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; skills sync to Kiro global skills; MCP presets sync to the shared Kiro settings path. A full-permissions custom agent (tools:* + permissions allow capability:all) is written to ~/.kiro/agents/ns-full.json so `kiro --agent ns-full` runs without per-tool approval prompts.",
 		},
 		Plugin: NoopPlugin{},
 	}})

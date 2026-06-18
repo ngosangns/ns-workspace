@@ -31,6 +31,13 @@ type AdapterTargets struct {
 	HooksKeyPath []string
 	MCPPath      string
 	MCPKeyPath   []string
+	// AgentConfigSrc is an embedded preset path (e.g.
+	// "presets/settings/kiro.json") whose contents are written verbatim
+	// to AgentConfigDst. Used by providers like Kiro that materialize a
+	// full custom-agent config file rather than merging into a shared
+	// settings.json. Both fields must be set for the write to happen.
+	AgentConfigSrc string
+	AgentConfigDst string
 }
 
 // AdapterSpec is the data-driven half of an adapter: identity, native
@@ -95,6 +102,7 @@ func nativePaths(spec AdapterSpec, homeDir string) []string {
 		expandHome(homeDir, t.Settings),
 		expandHome(homeDir, t.HooksPath),
 		expandHome(homeDir, t.MCPPath),
+		expandHome(homeDir, t.AgentConfigDst),
 	}
 	return compact(paths)
 }
