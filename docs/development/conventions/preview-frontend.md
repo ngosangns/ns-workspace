@@ -1,3 +1,13 @@
+---
+type: development
+title: "Quy Ước Frontend Preview"
+description: "Quy ước phát triển frontend preview, gồm source TypeScript, generated assets, lệnh kiểm tra và metadata docs được preview scan."
+tags: ["development", "preview-frontend"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Quy Ước Frontend Preview
 
 ## Meta

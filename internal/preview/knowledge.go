@@ -31,6 +31,7 @@ type KnowledgeDocument struct {
 	Type        string   `json:"type,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	Timestamp   string   `json:"timestamp,omitempty"`
+	Resource    string   `json:"resource,omitempty"`
 	Raw         string   `json:"raw,omitempty"`
 }
 
@@ -109,6 +110,7 @@ func toKnowledgeDocument(doc specDocument) KnowledgeDocument {
 		Type:        doc.Type,
 		Tags:        doc.Tags,
 		Timestamp:   doc.Timestamp,
+		Resource:    doc.Resource,
 		Raw:         doc.Raw,
 	}
 }

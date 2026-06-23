@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Mở Rộng LSP Coverage Cho Web, Go Và Kotlin"
+description: "Kế hoạch đảm bảo LSP Code Graph và flow `lsp install` hỗ trợ HTML, CSS, SCSS, JavaScript, TypeScript, Go/Golang và Kotlin."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: current-state
+---
+
 # Mở Rộng LSP Coverage Cho Web, Go Và Kotlin
 
 ## Meta

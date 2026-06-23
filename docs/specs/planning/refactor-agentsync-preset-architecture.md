@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Tối Ưu Agentsync, Preset Và Cấu Trúc CLI"
+description: "Kế hoạch review và tái cấu trúc tính năng `update`, cấu trúc preset và cấu trúc dự án CLI ngoài preview web, với trọng tâm rút gọn, tăng tính đa hình và giữ an toàn khi ghi user-level config."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: in-progress
+compliance: planning
+---
+
 # Tối Ưu Agentsync, Preset Và Cấu Trúc CLI
 
 ## Meta

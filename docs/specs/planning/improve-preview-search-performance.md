@@ -1,3 +1,11 @@
+---
+type: spec
+title: "Cải Thiện Tốc Độ Preview Search"
+description: "Kế hoạch giảm độ trễ Preview Search bằng cache snapshot docs/code và precompute, áp dụng cho docs/code semantic search và embedding index."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+---
+
 # Cải Thiện Tốc Độ Preview Search
 
 > Ghi chú 2026-05-27: phần Code Graph/Graphify trong kế hoạch này là bối cảnh lịch sử. Thiết kế hiện tại thay Code Graph bằng LSP runtime trong [Thay Code Graph Graphify Bằng LSP](./lsp-code-graph-search.md); các ý tưởng cache còn lại chỉ áp dụng cho docs/code semantic search và embedding index.

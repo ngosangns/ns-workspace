@@ -57,6 +57,7 @@ type specDocument struct {
 	Type        string   `json:"type,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	Timestamp   string   `json:"timestamp,omitempty"`
+	Resource    string   `json:"resource,omitempty"`
 	Raw         string   `json:"raw,omitempty"`
 	HTML        string   `json:"html,omitempty"`
 	SearchText  string   `json:"-"`
@@ -114,6 +115,7 @@ type moduleMeta struct {
 	Type        string
 	Tags        []string
 	Timestamp   string
+	Resource    string
 }
 
 type semanticSpecRef struct {
@@ -240,6 +242,7 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 			Type:        meta.Type,
 			Tags:        meta.Tags,
 			Timestamp:   meta.Timestamp,
+			Resource:    meta.Resource,
 			Raw:         raw,
 			SearchText:  searchTextForDocument(raw, format),
 		})
@@ -268,6 +271,7 @@ func mergeModuleMeta(docMeta, tableMeta moduleMeta) moduleMeta {
 		Description: internalutil.FirstNonEmpty(tableMeta.Description, docMeta.Description),
 		Type:        internalutil.FirstNonEmpty(tableMeta.Type, docMeta.Type),
 		Timestamp:   internalutil.FirstNonEmpty(tableMeta.Timestamp, docMeta.Timestamp),
+		Resource:    internalutil.FirstNonEmpty(tableMeta.Resource, docMeta.Resource),
 		Tags:        firstNonEmptyTags(tableMeta.Tags, docMeta.Tags),
 	}
 }
@@ -433,6 +437,8 @@ func parseMetaSection(raw string) moduleMeta {
 			meta.Type = stripMarkdown(entry.Value)
 		case "timestamp":
 			meta.Timestamp = stripMarkdown(entry.Value)
+		case "resource":
+			meta.Resource = stripMarkdown(entry.Value)
 		case "tags":
 			meta.Tags = parseTagsValue(entry.Value)
 		}
@@ -509,6 +515,7 @@ func mergeFrontmatterMeta(base, fm moduleMeta) moduleMeta {
 	base.Description = internalutil.FirstNonEmpty(fm.Description, base.Description)
 	base.Type = internalutil.FirstNonEmpty(fm.Type, base.Type)
 	base.Timestamp = internalutil.FirstNonEmpty(fm.Timestamp, base.Timestamp)
+	base.Resource = internalutil.FirstNonEmpty(fm.Resource, base.Resource)
 	if len(fm.Tags) > 0 {
 		base.Tags = fm.Tags
 	}
@@ -527,6 +534,7 @@ func fillEmptyMeta(base, fill moduleMeta) moduleMeta {
 	base.Description = internalutil.FirstNonEmpty(base.Description, fill.Description)
 	base.Type = internalutil.FirstNonEmpty(base.Type, fill.Type)
 	base.Timestamp = internalutil.FirstNonEmpty(base.Timestamp, fill.Timestamp)
+	base.Resource = internalutil.FirstNonEmpty(base.Resource, fill.Resource)
 	if len(base.Tags) == 0 {
 		base.Tags = fill.Tags
 	}
@@ -598,6 +606,7 @@ type frontmatterMeta struct {
 	Description string          `yaml:"description"`
 	Tags        frontmatterTags `yaml:"tags"`
 	Timestamp   string          `yaml:"timestamp"`
+	Resource    string          `yaml:"resource"`
 	Status      string          `yaml:"status"`
 	Version     string          `yaml:"version"`
 	Compliance  string          `yaml:"compliance"`
@@ -627,6 +636,7 @@ func parseFrontmatter(raw string) (meta moduleMeta, ok bool, err error) {
 		Description: strings.TrimSpace(fm.Description),
 		Tags:        normalizeTags(fm.Tags),
 		Timestamp:   strings.TrimSpace(fm.Timestamp),
+		Resource:    strings.TrimSpace(fm.Resource),
 		Status:      strings.TrimSpace(fm.Status),
 		Version:     strings.TrimSpace(fm.Version),
 		Compliance:  strings.TrimSpace(fm.Compliance),

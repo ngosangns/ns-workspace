@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Tối Ưu Và Rút Gọn Preview Web"
+description: "Kế hoạch rà soát, tối ưu và rút gọn toàn bộ preview web, bao gồm frontend Vue, renderer tài liệu, search/graph, cache backend và test guard."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: current-state
+---
+
 # Tối Ưu Và Rút Gọn Preview Web
 
 ## Meta

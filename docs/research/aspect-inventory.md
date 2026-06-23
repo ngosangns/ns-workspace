@@ -1,3 +1,13 @@
+---
+type: research
+title: "Aspect Inventory"
+description: "Inventory các aspect chính của `ns-workspace` để người mới hiểu domain, module boundary, workflow, invariants và docs gaps hiện tại."
+tags: ["research", "aspect-inventory"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Aspect Inventory
 
 ## Meta

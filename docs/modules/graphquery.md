@@ -1,3 +1,13 @@
+---
+type: module
+title: "Module Graph Query"
+description: "Tài liệu module `internal/graphquery`, mô tả registry/setup/cache LSP dùng cho Search/LSP Code Graph và CLI `lsp`."
+tags: ["module", "graphquery"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Module Graph Query
 
 ## Meta

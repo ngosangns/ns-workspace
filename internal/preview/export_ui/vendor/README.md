@@ -5,6 +5,11 @@ These files are committed to the repo on purpose so that the static HTML export
 over `file://` with **no network requests**. This is a deliberate tradeoff: the
 export must not depend on the Vite build pipeline used by `preview_ui_src/`.
 
+The export viewer itself (`../viz.html.tmpl`, `../viz.css`, `../viz.js`) is the
+**OKF Bundle Viewer**, ported from
+[GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog)
+(`okf/src/reference_agent/viewer/`), Apache License 2.0. See `COPYRIGHT.md`.
+
 | File | Library | Version | License |
 | --- | --- | --- | --- |
 | `cytoscape.min.js` | [Cytoscape.js](https://js.cytoscape.org/) | 3.30.2 | MIT |

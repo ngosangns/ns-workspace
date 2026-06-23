@@ -1,3 +1,11 @@
+---
+type: spec
+title: "Tách Search Page Thành Frontend Standalone Và Thêm Lệnh Graph"
+description: "Kế hoạch tách Search page thành frontend standalone qua HTML launcher và thêm lệnh graph chạy query terminal trên cùng backend."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+---
+
 # Tách Search Page Thành Frontend Standalone Và Thêm Lệnh Graph
 
 > Ghi chú 2026-05-27: kế hoạch này mô tả bối cảnh trước khi Code Graph chuyển khỏi Graphify. Search standalone vẫn đúng, nhưng Code Graph hiện lấy symbol/relations từ LSP runtime theo [Thay Code Graph Graphify Bằng LSP](./lsp-code-graph-search.md).

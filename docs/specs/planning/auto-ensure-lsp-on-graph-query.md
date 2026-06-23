@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Tự Động Ensure LSP Khi Query Graph"
+description: "Kế hoạch đổi `graph --query` thành workflow tự chuẩn bị LSP mặc định, để agent không phải nhớ thêm `--ensure-lsp` khi cần Code Graph."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: current-state
+---
+
 # Tự Động Ensure LSP Khi Query Graph
 
 ## Meta

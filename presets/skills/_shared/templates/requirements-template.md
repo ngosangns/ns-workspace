@@ -4,22 +4,17 @@ Dùng cho `docs/features/<feature>/requirements.md` hoặc `docs/modules/<module
 
 ```markdown
 ---
+type: feature | module
 title: "[Feature/Module] Requirements"
 description: "Critical requirements that must always be followed for [feature/module]."
-type: feature | module
-status: active
 tags: ["requirements", "[domain]"]
-related:
-  - "./overview.md"
+timestamp: <ISO 8601>
+status: active
 ---
 
 # [Feature/Module] Requirements
 
-## Meta
-
-- Trạng thái: active
-- Phạm vi: [feature/module boundary]
-- Links: [Overview](./overview.md)
+Phạm vi: [feature/module boundary]. Liên quan: [Overview](./overview.md).
 
 ## Critical Requirements
 

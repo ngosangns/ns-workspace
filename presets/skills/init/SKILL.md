@@ -33,5 +33,6 @@ Dùng khi user muốn khởi tạo hoặc làm mới knowledge base từ gần n
 ## Nguyên Tắc
 
 - Docs-first. Source code chỉ đọc để hiểu, không sửa.
+- OKF-first: mọi doc tạo mới theo Open Knowledge Format — markdown + YAML frontmatter với `type` bắt buộc (xem `_shared/templates/frontmatter-schema.md`). Cross-link dùng dạng bundle-relative `/path/doc.md`.
 - Docs stale → coi là bối cảnh, không phải chân lý.
 - Không tạo placeholder rỗng. Mỗi doc phải giúp người mới hiểu aspect cụ thể.

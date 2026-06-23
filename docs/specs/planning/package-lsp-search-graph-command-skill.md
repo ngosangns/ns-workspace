@@ -1,3 +1,11 @@
+---
+type: spec
+title: "Đóng Gói LSP Search Graph Thành Command Và Skill"
+description: "Kế hoạch đóng gói pipeline LSP Search/Code Graph thành lệnh CLI và skill agent dùng lại được."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+---
+
 # Đóng Gói LSP Search Graph Thành Command Và Skill
 
 ## Bối Cảnh
