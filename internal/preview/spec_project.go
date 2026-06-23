@@ -14,6 +14,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"golang.org/x/net/html"
+	"gopkg.in/yaml.v3"
 
 	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
@@ -42,20 +43,23 @@ type projectSummary struct {
 }
 
 type specDocument struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Path        string `json:"path"`
-	Language    string `json:"language,omitempty"`
-	Format      string `json:"format,omitempty"`
-	Category    string `json:"category"`
-	Status      string `json:"status,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Compliance  string `json:"compliance,omitempty"`
-	Priority    string `json:"priority,omitempty"`
-	Description string `json:"description,omitempty"`
-	Raw         string `json:"raw,omitempty"`
-	HTML        string `json:"html,omitempty"`
-	SearchText  string `json:"-"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Path        string   `json:"path"`
+	Language    string   `json:"language,omitempty"`
+	Format      string   `json:"format,omitempty"`
+	Category    string   `json:"category"`
+	Status      string   `json:"status,omitempty"`
+	Version     string   `json:"version,omitempty"`
+	Compliance  string   `json:"compliance,omitempty"`
+	Priority    string   `json:"priority,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Timestamp   string   `json:"timestamp,omitempty"`
+	Raw         string   `json:"raw,omitempty"`
+	HTML        string   `json:"html,omitempty"`
+	SearchText  string   `json:"-"`
 }
 
 type specGraph struct {
@@ -107,6 +111,9 @@ type moduleMeta struct {
 	Compliance  string
 	Priority    string
 	Description string
+	Type        string
+	Tags        []string
+	Timestamp   string
 }
 
 type semanticSpecRef struct {
@@ -230,6 +237,9 @@ func scanSpecDocuments(root string, table map[string]moduleMeta) ([]specDocument
 			Compliance:  meta.Compliance,
 			Priority:    meta.Priority,
 			Description: meta.Description,
+			Type:        meta.Type,
+			Tags:        meta.Tags,
+			Timestamp:   meta.Timestamp,
 			Raw:         raw,
 			SearchText:  searchTextForDocument(raw, format),
 		})
@@ -256,7 +266,21 @@ func mergeModuleMeta(docMeta, tableMeta moduleMeta) moduleMeta {
 		Compliance:  internalutil.FirstNonEmpty(tableMeta.Compliance, docMeta.Compliance),
 		Priority:    internalutil.FirstNonEmpty(tableMeta.Priority, docMeta.Priority),
 		Description: internalutil.FirstNonEmpty(tableMeta.Description, docMeta.Description),
+		Type:        internalutil.FirstNonEmpty(tableMeta.Type, docMeta.Type),
+		Timestamp:   internalutil.FirstNonEmpty(tableMeta.Timestamp, docMeta.Timestamp),
+		Tags:        firstNonEmptyTags(tableMeta.Tags, docMeta.Tags),
 	}
+}
+
+// firstNonEmptyTags returns the first non-empty tag slice from the supplied
+// lists, or nil when none have entries.
+func firstNonEmptyTags(lists ...[]string) []string {
+	for _, list := range lists {
+		if len(list) > 0 {
+			return list
+		}
+	}
+	return nil
 }
 
 func buildSummary(projectRoot, docsRoot, agentsPath, indexPath, syncPath string, docs []specDocument, sync map[string]string) projectSummary {
@@ -349,14 +373,50 @@ func parseModuleTable(markdown string) map[string]moduleMeta {
 	return out
 }
 
+// parseDocumentMeta resolves a document's metadata by merging two sources, with
+// the OKF YAML frontmatter taking precedence over the legacy `## Meta` prose
+// block. The merge follows three rules (Requirements 4.1, 4.2, 4.3):
+//   - Frontmatter values win for any overlapping key.
+//   - The `## Meta` prose only fills fields the frontmatter left empty.
+//   - A malformed frontmatter block never panics: it logs a warning and falls
+//     back entirely to the `## Meta` prose.
+//
+// When a document only has a `## Meta` block (no frontmatter), the result is
+// identical to the previous behavior.
 func parseDocumentMeta(rel, raw string) moduleMeta {
 	if documentFormatForPath(rel) == "html" {
 		meta := parseHTMLDocumentData(raw).Meta
 		meta.Path = rel
 		return meta
 	}
-	meta := moduleMeta{Title: titleFromMarkdown(raw), Path: rel}
-	block := metadataBlock(raw)
+
+	base := moduleMeta{Title: titleFromMarkdown(raw), Path: rel}
+
+	// 1. YAML frontmatter (OKF) — highest precedence when present and valid.
+	if fm, ok, err := parseFrontmatter(raw); ok {
+		if err != nil {
+			// Fail-open: malformed frontmatter falls back to `## Meta` (Req 4.3).
+			fmt.Fprintf(os.Stderr, "preview: frontmatter parse failed for %s, falling back to ## Meta: %v\n", rel, err)
+		} else {
+			base = mergeFrontmatterMeta(base, fm)
+		}
+	}
+
+	// 2. Legacy `## Meta` prose — only fills fields left empty by frontmatter.
+	legacy := parseMetaSection(raw)
+	base = fillEmptyMeta(base, legacy)
+
+	return base
+}
+
+// parseMetaSection parses the legacy `## Meta` prose block into a moduleMeta. It
+// operates only on the `## Meta` section (skipping any leading frontmatter) so
+// it can be merged independently of the frontmatter. When there is no `## Meta`
+// block, the prose scan falls back to the whole document, preserving the
+// previous behavior for docs that declared metadata inline.
+func parseMetaSection(raw string) moduleMeta {
+	meta := moduleMeta{}
+	block := metaSectionBlock(raw)
 	for _, entry := range metadataEntries(block) {
 		switch strings.ToLower(strings.TrimSpace(entry.Key)) {
 		case "status":
@@ -369,6 +429,12 @@ func parseDocumentMeta(rel, raw string) moduleMeta {
 			meta.Priority = stripMarkdown(entry.Value)
 		case "description":
 			meta.Description = stripMarkdown(entry.Value)
+		case "type":
+			meta.Type = stripMarkdown(entry.Value)
+		case "timestamp":
+			meta.Timestamp = stripMarkdown(entry.Value)
+		case "tags":
+			meta.Tags = parseTagsValue(entry.Value)
 		}
 	}
 	for _, line := range strings.Split(internalutil.FirstNonEmpty(block, raw), "\n") {
@@ -393,6 +459,189 @@ func parseDocumentMeta(rel, raw string) moduleMeta {
 		}
 	}
 	return meta
+}
+
+// metaSectionBlock returns the content of the legacy `## Meta` prose section,
+// skipping any leading YAML frontmatter so the section can be parsed
+// independently of the frontmatter block. When no frontmatter is present this
+// returns exactly what metadataBlock would for the `## Meta` section.
+func metaSectionBlock(raw string) string {
+	lines := strings.Split(raw, "\n")
+	// Skip leading frontmatter if present so we only consider `## Meta`.
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				lines = lines[i+1:]
+				break
+			}
+		}
+	}
+	inMeta := false
+	var buf strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			level := headingLevel(trimmed)
+			title := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			if level <= 2 && strings.EqualFold(title, "Meta") {
+				inMeta = true
+				continue
+			}
+			if inMeta && level <= 2 {
+				break
+			}
+		}
+		if inMeta {
+			buf.WriteString(line)
+			buf.WriteByte('\n')
+		}
+	}
+	return buf.String()
+}
+
+// mergeFrontmatterMeta overlays frontmatter values onto base; frontmatter wins
+// for every overlapping key (Req 4.2). Title/Path on base are preserved.
+func mergeFrontmatterMeta(base, fm moduleMeta) moduleMeta {
+	base.Status = internalutil.FirstNonEmpty(fm.Status, base.Status)
+	base.Version = internalutil.FirstNonEmpty(fm.Version, base.Version)
+	base.Compliance = internalutil.FirstNonEmpty(fm.Compliance, base.Compliance)
+	base.Priority = internalutil.FirstNonEmpty(fm.Priority, base.Priority)
+	base.Description = internalutil.FirstNonEmpty(fm.Description, base.Description)
+	base.Type = internalutil.FirstNonEmpty(fm.Type, base.Type)
+	base.Timestamp = internalutil.FirstNonEmpty(fm.Timestamp, base.Timestamp)
+	if len(fm.Tags) > 0 {
+		base.Tags = fm.Tags
+	}
+	return base
+}
+
+// fillEmptyMeta fills only the fields left empty on base using values from fill.
+// It never overrides a field base already has, so callers can use it to let a
+// lower-precedence source (the `## Meta` prose) complete the frontmatter.
+func fillEmptyMeta(base, fill moduleMeta) moduleMeta {
+	base.Title = internalutil.FirstNonEmpty(base.Title, fill.Title)
+	base.Status = internalutil.FirstNonEmpty(base.Status, fill.Status)
+	base.Version = internalutil.FirstNonEmpty(base.Version, fill.Version)
+	base.Compliance = internalutil.FirstNonEmpty(base.Compliance, fill.Compliance)
+	base.Priority = internalutil.FirstNonEmpty(base.Priority, fill.Priority)
+	base.Description = internalutil.FirstNonEmpty(base.Description, fill.Description)
+	base.Type = internalutil.FirstNonEmpty(base.Type, fill.Type)
+	base.Timestamp = internalutil.FirstNonEmpty(base.Timestamp, fill.Timestamp)
+	if len(base.Tags) == 0 {
+		base.Tags = fill.Tags
+	}
+	return base
+}
+
+// parseTagsValue normalizes a `## Meta` prose tags value (e.g. "a, b, c" or
+// "[a, b]") into a []string, returning nil when no usable tags remain.
+func parseTagsValue(value string) []string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "[")
+	value = strings.TrimSuffix(value, "]")
+	out := []string{}
+	for _, part := range strings.Split(value, ",") {
+		tag := strings.Trim(strings.TrimSpace(stripMarkdown(part)), "\"'")
+		if tag != "" {
+			out = append(out, tag)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// frontmatterTags normalizes a YAML `tags` value that may be declared either as
+// a single scalar string (`tags: preview`) or as a sequence (`tags: [a, b]`)
+// into a flat []string. It is a permissive consumer: malformed shapes yield an
+// empty slice instead of an error so frontmatter parsing never fails on tags.
+type frontmatterTags []string
+
+func (t *frontmatterTags) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		return nil
+	}
+	switch value.Kind {
+	case yaml.ScalarNode:
+		trimmed := strings.TrimSpace(value.Value)
+		if trimmed == "" {
+			*t = nil
+			return nil
+		}
+		*t = frontmatterTags{trimmed}
+	case yaml.SequenceNode:
+		out := make(frontmatterTags, 0, len(value.Content))
+		for _, item := range value.Content {
+			if item == nil {
+				continue
+			}
+			trimmed := strings.TrimSpace(item.Value)
+			if trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		*t = out
+	default:
+		// Permissive consumer: unexpected shapes (mapping, alias, ...) are ignored.
+		*t = nil
+	}
+	return nil
+}
+
+// frontmatterMeta is the intermediate struct used to decode the YAML frontmatter
+// block. Only known keys are mapped; any unknown key in the frontmatter is
+// silently ignored by yaml.Unmarshal (KnownFields is left disabled on purpose so
+// the parser stays permissive per the OKF "permissive consumer" principle).
+type frontmatterMeta struct {
+	Type        string          `yaml:"type"`
+	Description string          `yaml:"description"`
+	Tags        frontmatterTags `yaml:"tags"`
+	Timestamp   string          `yaml:"timestamp"`
+	Status      string          `yaml:"status"`
+	Version     string          `yaml:"version"`
+	Compliance  string          `yaml:"compliance"`
+	Priority    string          `yaml:"priority"`
+}
+
+// parseFrontmatter parses a leading YAML frontmatter block (delimited by `---`)
+// into a moduleMeta. It returns ok=false (and no error) when the document does
+// not begin with a frontmatter block, so the caller can fall back to `## Meta`
+// prose. When the block exists but the YAML is malformed, it returns ok=true and
+// a non-nil error so the caller can log a warning and still fall back.
+func parseFrontmatter(raw string) (meta moduleMeta, ok bool, err error) {
+	lines := strings.Split(raw, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return moduleMeta{}, false, nil
+	}
+
+	block := metadataBlock(raw)
+
+	var fm frontmatterMeta
+	if unmarshalErr := yaml.Unmarshal([]byte(block), &fm); unmarshalErr != nil {
+		return moduleMeta{}, true, unmarshalErr
+	}
+
+	meta = moduleMeta{
+		Type:        strings.TrimSpace(fm.Type),
+		Description: strings.TrimSpace(fm.Description),
+		Tags:        normalizeTags(fm.Tags),
+		Timestamp:   strings.TrimSpace(fm.Timestamp),
+		Status:      strings.TrimSpace(fm.Status),
+		Version:     strings.TrimSpace(fm.Version),
+		Compliance:  strings.TrimSpace(fm.Compliance),
+		Priority:    strings.TrimSpace(fm.Priority),
+	}
+	return meta, true, nil
+}
+
+// normalizeTags converts the decoded frontmatter tags into a clean []string,
+// returning nil when there are no usable tags.
+func normalizeTags(tags frontmatterTags) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	return []string(tags)
 }
 
 func documentFormatForPath(path string) string {

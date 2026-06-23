@@ -24,6 +24,14 @@ type State struct {
 	Paused              bool              `json:"paused"`
 	PausedReason        string            `json:"paused_reason"`
 	ContextNotes        map[string]string `json:"context_notes"`
+	Warnings            []string          `json:"warnings,omitempty"`
+}
+
+// AddWarning ghi một warning vào state (fail-open traceability).
+// Dùng bởi enrichment loop khi fetch lỗi / skip URL ngoài allowlist
+// để tiếp tục loop mà vẫn giữ lại dấu vết (Requirements 5.5).
+func (s *State) AddWarning(msg string) {
+	s.Warnings = append(s.Warnings, msg)
 }
 
 type StateSnapshot struct {

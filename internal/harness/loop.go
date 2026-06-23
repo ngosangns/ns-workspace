@@ -161,6 +161,13 @@ func (lc *LoopController) pickPhase(phases []string, state *State) string {
 }
 
 func (lc *LoopController) runPlan(ctx context.Context, task *Task, state *State) error {
+	// Enrich-docs tasks run the full plan→fetch→execute→write flow in a single
+	// call (runEnrich). Drive it from the plan phase so it executes exactly once;
+	// the execute phase is a no-op for these tasks (see runExecute). The verify
+	// phase still runs afterwards to evaluate acceptance commands (Req 5.1, 6.4).
+	if task.Type == "enrich-docs" {
+		return lc.runEnrich(ctx, task, state)
+	}
 	agent := task.SelectAgent("plan")
 	prompt := buildPlanPrompt(task, state)
 	res, err := lc.Dispatcher.Resolve(agent).Dispatch(WithProjectRoot(ctx, lc.Engine.ProjectRoot), agent, prompt)
@@ -175,6 +182,12 @@ func (lc *LoopController) runPlan(ctx context.Context, task *Task, state *State)
 }
 
 func (lc *LoopController) runExecute(ctx context.Context, task *Task, state *State) error {
+	// Enrich-docs tasks complete their work during the plan phase via runEnrich,
+	// so the execute phase is intentionally a no-op to avoid re-running the LLM
+	// enrichment (Req 5.1).
+	if task.Type == "enrich-docs" {
+		return nil
+	}
 	agent := task.SelectAgent("execute")
 	prompt := buildExecutePrompt(task, state)
 	res, err := lc.Dispatcher.Resolve(agent).Dispatch(WithProjectRoot(ctx, lc.Engine.ProjectRoot), agent, prompt)
