@@ -49,6 +49,8 @@ func run(args []string) error {
 		return preview.RunGraph(args[1:])
 	case "mcp":
 		return kbmcp.Run(args[1:])
+	case "kb":
+		return preview.RunKB(args[1:])
 	case "lsp":
 		return graphquery.RunLSP(args[1:], preview.GraphQueryLSPDetector{})
 	default:
@@ -73,6 +75,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest export [flags]
   go run github.com/ngosangns/ns-workspace@latest graph [flags]
   go run github.com/ngosangns/ns-workspace@latest mcp [flags]
+  go run github.com/ngosangns/ns-workspace@latest kb <validate|index> [flags]
   go run github.com/ngosangns/ns-workspace@latest lsp <list|install> [flags]
 
 Local checkout usage:
@@ -112,13 +115,25 @@ Export flags:
   --project PATH      project root to export, default current directory
   --docs PATH         docs directory, default docs
   --out PATH          output HTML file path, default ./ns-workspace-kb.html
-  --no-graph          export documents only, without the graph
+  --name NAME         display name in the viewer header, default project name
+  --no-graph          export documents only, without the relationship edges
   --inline-assets     inline render libraries for fully offline output, default true
   --open              open the generated file after writing
 
 MCP flags:
   --project PATH      project root to expose, default current directory
   --docs PATH         docs directory, default docs
+
+KB commands:
+  validate            check OKF conformance of docs (frontmatter + non-empty type)
+  index               regenerate per-directory index.md progressive-disclosure listings
+
+KB flags:
+  --project PATH      project root, default current directory
+  --docs PATH         docs directory, default docs
+  --json              (validate) print the conformance report as JSON
+  --strict            (validate) treat recommended-key warnings as failures
+  --dry-run           (index) print directories that would be written without writing
 
 Graph flags:
   --project PATH      project root to inspect, default current directory

@@ -1,3 +1,13 @@
+---
+type: feature
+title: "Preview Web"
+description: "Mô tả hành vi shipped của preview web, bao gồm Doc view read-only, Markdown/HTML rendering, Graph view, Search tab, routing nội bộ và các API frontend."
+tags: ["feature", "preview-web"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Preview Web
 
 ## Meta

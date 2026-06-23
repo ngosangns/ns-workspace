@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Thay Code Graph Graphify Bằng LSP"
+description: "Kế hoạch thay Code Graph Search đang dựa vào `graphify-out/graph.json` bằng graph được truy vấn từ LSP, tham khảo hướng Code Intelligence của `knowns-dev/knowns`."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: planning
+---
+
 # Thay Code Graph Graphify Bằng LSP
 
 ## Meta

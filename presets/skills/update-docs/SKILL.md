@@ -13,6 +13,7 @@ Quy tắc chung: đọc `_shared/CONVENTIONS.md`.
 
 - **Chỉ mô tả trạng thái hiện tại.** Không lưu history, changelog, version snapshot trong docs.
 - **Root docs cố định:** Mọi tài liệu nằm trong `./docs` tính từ project root. Không ghi ra ngoài.
+- **OKF-first:** Docs theo Open Knowledge Format — markdown + YAML frontmatter. Mọi doc mới hoặc doc đang sửa metadata **bắt buộc** có frontmatter với `type` (xem `_shared/templates/frontmatter-schema.md`). Không tạo mới block `## Meta`; chỉ giữ `## Meta` cũ để tương thích ngược.
 - **Cập nhật tinh gọn:** Sửa statement cũ tại chỗ khi behavior thay đổi. Không thêm correction bên cạnh nội dung stale.
 - **Requirements theo feature/module:** Mỗi feature/module folder nên có `requirements.md` chứa critical requirements. Tạo/cập nhật khi user yêu cầu hoặc khi implementation thay đổi business rule, contract, invariant.
 
@@ -42,12 +43,14 @@ docs/
 ### Liên Kết
 
 - Dùng link tương đối thật: `[Tên](../path/doc.md)`. Không tạo link placeholder.
-- Source/related references nằm trong metadata (frontmatter hoặc `## Meta`), không tạo section tham khảo riêng trong body.
+- Ưu tiên dạng OKF bundle-relative `[Tên](/modules/preview.md)` (bắt đầu bằng `/`, tính từ docs root) cho cross-link giữa các doc — ổn định khi di chuyển file và được viewer/export hiểu để điều hướng nội bộ.
+- Source/related references nằm trong metadata frontmatter (`resource`, `tags`) hoặc link trong body, không tạo section tham khảo riêng. Citation nguồn ngoài đặt dưới heading `# Citations` ở cuối doc khi cần.
 - Giữ quan hệ hai chiều khi cần: kiểm tra doc đích có cần link ngược.
 
 ### Markdown
 
-- Frontmatter YAML + `## Meta` khi cần. Xem `_shared/templates/frontmatter-schema.md`.
+- **Frontmatter YAML là bắt buộc** cho doc mới, theo `_shared/templates/frontmatter-schema.md`: `type` (required) + `title`/`description`/`tags`/`timestamp` (+ `resource` khi mô tả asset có URI). Không tạo mới `## Meta`.
+- Reserved filenames theo OKF: `index.md` (directory listing, không frontmatter trừ `okf_version` ở root), `log.md` (history — không dùng trong repo này vì docs chỉ mô tả hiện trạng).
 - Mermaid/diagram chỉ khi giúp giải thích nhanh hơn văn bản.
 
 ### HTML
@@ -61,6 +64,7 @@ docs/
 - Giữ diff nhỏ, có chủ đích. Không rewrite hàng loạt chỉ đổi style.
 - Sau khi edit, đọc lại diff bắt link sai, stale statement, duplicate section.
 - Chạy `npm run format:docs` rồi `npm run lint:docs` khi repo có script.
+- Khi repo có CLI `ns-workspace`, chạy `kb validate` để xác nhận docs còn OKF-conformant (mọi doc có frontmatter + `type`).
 
 ## Quy Trình
 

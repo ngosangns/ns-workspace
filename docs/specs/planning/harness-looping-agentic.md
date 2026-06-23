@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Bộ Harness Và Looping Agentic"
+description: "Thiết kế và triển khai bộ harness và looping agentic cho `ns-workspace`, hỗ trợ self-correct loop, multi-agent routing, eval harness và memory persistence."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: current-state
+---
+
 # Bộ Harness Và Looping Agentic
 
 ## Meta

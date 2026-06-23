@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Tái Thiết Kế Preset Settings/Config Theo Provider"
+description: "Tách preset `settings.json` dùng chung hiện tại thành preset per-adapter, bổ sung manifest catalog và transform layer, đảm bảo mỗi provider (Claude Code, OpenCode, Qwen, Gemini, Cline...) có config format riêng nhưng vẫn đi qua một pipeline thống nhất."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: current-state
+---
+
 # Tái Thiết Kế Preset Settings/Config Theo Provider
 
 ## Meta

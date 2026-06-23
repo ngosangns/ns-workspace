@@ -10,10 +10,9 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
-	"time"
-
-	"golang.org/x/net/html"
 
 	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
@@ -22,8 +21,9 @@ import (
 const defaultExportOutputName = "ns-workspace-kb.html"
 
 // RunExport parse flags và ghi MỘT file HTML tĩnh self-contained chứa toàn bộ
-// docs + graph của project. Tái dùng knowledge core (normalizePreviewProjectRoot,
-// scanSpecProject, docsRoot) thay vì nhân đôi logic.
+// docs + graph của project, render bằng OKF Bundle Viewer (ported từ
+// GoogleCloudPlatform/knowledge-catalog). Tái dùng knowledge core
+// (normalizePreviewProjectRoot, scanSpecProject, docsRoot) thay vì nhân đôi logic.
 //
 // Validate trước khi ghi: nếu project root / docs dir không hợp lệ thì trả lỗi
 // rõ ràng và KHÔNG ghi bất kỳ file nào (Req 1.5). Chỉ khi scanSpecProject thành
@@ -47,7 +47,8 @@ func RunExport(args []string) error {
 	fs.StringVar(&opt.projectRoot, "project", opt.projectRoot, "project root to export")
 	fs.StringVar(&opt.docsDir, "docs", opt.docsDir, "docs directory relative to project root, or absolute path")
 	fs.StringVar(&opt.outPath, "out", opt.outPath, "output HTML file path")
-	noGraph := fs.Bool("no-graph", false, "export documents only, without the graph")
+	fs.StringVar(&opt.name, "name", opt.name, "display name shown in the viewer header (default project name)")
+	noGraph := fs.Bool("no-graph", false, "export documents only, without the relationship edges")
 	fs.BoolVar(&opt.inlineAssets, "inline-assets", opt.inlineAssets, "inline render libraries for fully offline output (false references CDN)")
 	fs.BoolVar(&opt.openBrowser, "open", opt.openBrowser, "open the generated file after writing")
 	if err := fs.Parse(args); err != nil {
@@ -105,223 +106,21 @@ func normalizeExportOutputPath(cwd, out string) string {
 	return filepath.Join(cwd, out)
 }
 
-// exportUIFS embeds the static export UI assets (template, vanilla JS/CSS, and
+// exportUIFS embeds the static OKF viewer assets (template, viz.js/viz.css, and
 // vendored render libraries) so that `export --inline-assets=true` produces a
 // fully self-contained HTML file that opens over file:// with no network
-// requests. The assets live under export_ui/ and are hand-written (no Vite
+// requests. The assets live under export_ui/ and are hand-maintained (no Vite
 // build), keeping the export independent of the preview_ui_src/ pipeline.
-//
-// NOTE: exportStaticBundle, injectBundle and RunExport are added by subsequent
-// tasks (1.3–1.4); this file currently provides the embed directive, the export
-// data models, and the per-document renderer + metadata collector.
 //
 //go:embed export_ui
 var exportUIFS embed.FS
 
-// exportBundle là toàn bộ knowledge base được serialize vào file tĩnh.
-// Đây là JSON blob nhúng vào HTML (window.__NS_KB__); Graph tái dùng nguyên
-// specGraph nên export không nhân đôi logic dựng graph của knowledge core.
-type exportBundle struct {
-	Schema    string            `json:"schema"`    // "ns-workspace/export@1"
-	Generated string            `json:"generated"` // RFC3339
-	Project   exportProjectMeta `json:"project"`
-	Documents []exportDocument  `json:"documents"`
-	Graph     specGraph         `json:"graph"` // tái dùng struct sẵn có
-}
-
-// exportProjectMeta là metadata cấp project nhúng vào bundle.
-type exportProjectMeta struct {
-	Name     string   `json:"name"`
-	DocsRoot string   `json:"docsRoot"`
-	Total    int      `json:"total"`
-	Warnings []string `json:"warnings,omitempty"`
-}
-
-// exportDocument là specDocument đã render sang HTML an toàn để hiển thị offline.
-type exportDocument struct {
-	ID           string            `json:"id"`
-	Title        string            `json:"title"`
-	Path         string            `json:"path"`
-	Format       string            `json:"format"` // markdown | html | text
-	Category     string            `json:"category"`
-	Meta         map[string]string `json:"meta,omitempty"` // status, version, tags...
-	RenderedHTML string            `json:"renderedHtml"`   // markdown→HTML đã sanitize
-}
-
-// exportRenderPlaceholder là nội dung thay thế khi render một doc thất bại.
-// Permissive consumer: một doc lỗi không được làm hỏng toàn bộ export.
-const exportRenderPlaceholder = "<p>(render failed)</p>"
-
-// renderDocumentHTML chuyển raw markdown/html của doc sang HTML đã sanitize cho
-// viewer tĩnh. Markdown render bằng goldmark (renderMarkdown, đã là dependency);
-// HTML doc đi qua sanitizer dựa trên golang.org/x/net/html (đã có). Hàm fail-open:
-// mọi lỗi (kể cả panic) được nuốt và trả về placeholder thay vì lan ra ngoài, kèm
-// error để caller có thể ghi warning.
-func renderDocumentHTML(doc specDocument) (rendered string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			rendered = exportRenderPlaceholder
-			err = fmt.Errorf("render panic for %s: %v", doc.ID, r)
-		}
-	}()
-
-	switch strings.ToLower(strings.TrimSpace(doc.Format)) {
-	case "html":
-		out, sanitizeErr := sanitizeExportHTML(doc.Raw)
-		if sanitizeErr != nil {
-			return exportRenderPlaceholder, fmt.Errorf("sanitize html for %s: %w", doc.ID, sanitizeErr)
-		}
-		return out, nil
-	case "markdown", "":
-		out, convErr := renderMarkdown([]byte(doc.Raw))
-		if convErr != nil {
-			return exportRenderPlaceholder, fmt.Errorf("render markdown for %s: %w", doc.ID, convErr)
-		}
-		return out, nil
-	default:
-		// Plain text (hoặc format không biết): escape và bọc trong <pre>.
-		return "<pre>" + exportEscapeText(doc.Raw) + "</pre>", nil
-	}
-}
-
-// collectDocMeta map metadata của doc (status/version/tags...) thành map[string]string
-// cho viewer tĩnh. Chỉ giữ các field không rỗng để bundle gọn.
-func collectDocMeta(doc specDocument) map[string]string {
-	meta := map[string]string{}
-	set := func(key, value string) {
-		if strings.TrimSpace(value) != "" {
-			meta[key] = value
-		}
-	}
-	set("status", doc.Status)
-	set("version", doc.Version)
-	set("compliance", doc.Compliance)
-	set("priority", doc.Priority)
-	set("type", doc.Type)
-	set("timestamp", doc.Timestamp)
-	set("description", doc.Description)
-	set("category", doc.Category)
-	set("language", doc.Language)
-	if len(doc.Tags) > 0 {
-		set("tags", strings.Join(doc.Tags, ", "))
-	}
-	if len(meta) == 0 {
-		return nil
-	}
-	return meta
-}
-
-// exportBlockedHTMLTags là các phần tử bị loại bỏ hoàn toàn khỏi HTML doc khi
-// export tĩnh (script/style/embed... có thể chạy code hoặc gọi mạng).
-var exportBlockedHTMLTags = map[string]bool{
-	"script": true,
-	"style":  true,
-	"iframe": true,
-	"object": true,
-	"embed":  true,
-	"link":   true,
-	"meta":   true,
-	"base":   true,
-	"form":   true,
-}
-
-// sanitizeExportHTML parse HTML doc bằng golang.org/x/net/html, loại bỏ các tag
-// nguy hiểm + attribute event handler (on*) + URL scheme nguy hiểm, rồi render
-// lại body. Permissive: nội dung hợp lệ được giữ nguyên.
-func sanitizeExportHTML(raw string) (string, error) {
-	root, err := html.Parse(strings.NewReader(raw))
-	if err != nil {
-		return "", err
-	}
-	sanitizeHTMLChildren(root)
-
-	body := findHTMLBody(root)
-	var buf bytes.Buffer
-	if body != nil {
-		for child := body.FirstChild; child != nil; child = child.NextSibling {
-			if err := html.Render(&buf, child); err != nil {
-				return "", err
-			}
-		}
-		return buf.String(), nil
-	}
-	if err := html.Render(&buf, root); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-// sanitizeHTMLChildren duyệt và làm sạch các node con của node hiện tại tại chỗ.
-func sanitizeHTMLChildren(node *html.Node) {
-	var toRemove []*html.Node
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if child.Type == html.ElementNode && exportBlockedHTMLTags[strings.ToLower(child.Data)] {
-			toRemove = append(toRemove, child)
-			continue
-		}
-		if child.Type == html.ElementNode {
-			child.Attr = sanitizeHTMLAttrs(child.Attr)
-		}
-		sanitizeHTMLChildren(child)
-	}
-	for _, child := range toRemove {
-		node.RemoveChild(child)
-	}
-}
-
-// sanitizeHTMLAttrs loại bỏ event handler (on*) và URL scheme nguy hiểm.
-func sanitizeHTMLAttrs(attrs []html.Attribute) []html.Attribute {
-	cleaned := make([]html.Attribute, 0, len(attrs))
-	for _, attr := range attrs {
-		key := strings.ToLower(attr.Key)
-		if strings.HasPrefix(key, "on") {
-			continue
-		}
-		if (key == "href" || key == "src" || key == "xlink:href" || key == "action" || key == "formaction") && hasDangerousURLScheme(attr.Val) {
-			continue
-		}
-		cleaned = append(cleaned, attr)
-	}
-	return cleaned
-}
-
-// hasDangerousURLScheme kiểm tra URL có scheme thực thi script / nhúng HTML.
-func hasDangerousURLScheme(value string) bool {
-	lower := strings.ToLower(strings.TrimLeft(value, "\t\n\r\f\v "))
-	return strings.HasPrefix(lower, "javascript:") ||
-		strings.HasPrefix(lower, "vbscript:") ||
-		strings.HasPrefix(lower, "data:text/html")
-}
-
-// findHTMLBody tìm phần tử <body> đầu tiên trong cây đã parse.
-func findHTMLBody(root *html.Node) *html.Node {
-	var body *html.Node
-	walkHTML(root, func(node *html.Node) {
-		if body == nil && node.Type == html.ElementNode && strings.EqualFold(node.Data, "body") {
-			body = node
-		}
-	})
-	return body
-}
-
-// exportEscapeText escape các ký tự HTML nhạy cảm cho nội dung plain text.
-var exportTextEscaper = strings.NewReplacer(
-	"&", "&amp;",
-	"<", "&lt;",
-	">", "&gt;",
-)
-
-func exportEscapeText(value string) string {
-	return exportTextEscaper.Replace(value)
-}
-
-// exportOptions gom các tham số điều khiển một lần export tĩnh. RunExport (task
-// 1.4) parse flags vào struct này, exportStaticBundle/injectBundle đọc nó để
-// quyết định nhúng graph và inline/CDN assets.
+// exportOptions gom các tham số điều khiển một lần export tĩnh.
 type exportOptions struct {
 	projectRoot  string
 	docsDir      string
 	outPath      string
+	name         string
 	includeGraph bool
 	inlineAssets bool
 	openBrowser  bool
@@ -330,9 +129,9 @@ type exportOptions struct {
 // Đường dẫn asset trong embed FS (export_ui/...). Tách thành hằng để inject và
 // loader template dùng chung, tránh lệch path.
 const (
-	exportTemplatePath  = "export_ui/export.html.tmpl"
-	exportStylePath     = "export_ui/export.css"
-	exportAppScriptPath = "export_ui/export.js"
+	exportTemplatePath  = "export_ui/viz.html.tmpl"
+	exportStylePath     = "export_ui/viz.css"
+	exportAppScriptPath = "export_ui/viz.js"
 	exportCytoscapePath = "export_ui/vendor/cytoscape.min.js"
 	exportMarkedPath    = "export_ui/vendor/marked.min.js"
 )
@@ -349,63 +148,365 @@ const (
 // chỉ panic khi asset bị hỏng/thiếu (lỗi lập trình, không phải input runtime).
 var exportTemplate = template.Must(template.ParseFS(exportUIFS, exportTemplatePath))
 
-// exportTemplateData khớp các field mà export.html.tmpl tham chiếu. Các kiểu
+// exportTemplateData khớp các field mà viz.html.tmpl tham chiếu. Các kiểu
 // template.CSS/HTML/JS đánh dấu nội dung đã tin cậy (asset tĩnh + JSON đã escape)
 // nên html/template chèn verbatim thay vì escape lần nữa.
 type exportTemplateData struct {
 	Title      string
 	StyleCSS   template.CSS
 	VendorHead template.HTML
+	BundleName template.JS
 	BundleJSON template.JS
 	AppJS      template.JS
 }
 
-// exportStaticBundle build exportBundle từ specProject rồi render HTML hoàn chỉnh.
-// Chỉ nhúng docs + graph + meta của CHÍNH project được truyền vào (Req 2.5): không
-// đọc thêm file hay nguồn nào ngoài project.Documents/project.Graph/project.Summary.
-// Graph chỉ được gắn khi opt.includeGraph (Req 2.2/2.3), ngược lại để rỗng.
-func exportStaticBundle(project specProject, opt exportOptions) ([]byte, error) {
-	bundle := exportBundle{
-		Schema:    "ns-workspace/export@1",
-		Generated: time.Now().UTC().Format(time.RFC3339),
-		Project: exportProjectMeta{
-			Name:     project.Summary.Name,
-			DocsRoot: project.Summary.DocsRoot,
-			Total:    project.Summary.TotalSpecs,
-			Warnings: project.Summary.Warnings,
-		},
-	}
+// ---------------------------------------------------------------------------
+// OKF bundle model.
+//
+// The shapes below mirror the JSON that the OKF Bundle Viewer (viz.js) reads
+// from window.BUNDLE: a Cytoscape-style elements graph (nodes/edges) plus a map
+// of raw markdown bodies, the sorted set of concept types, and a type→color
+// palette. Building this shape in Go is a faithful port of the reference
+// generator (okf/src/reference_agent/viewer/generator.py).
+// ---------------------------------------------------------------------------
 
-	// Mọi doc của project đều có mặt trong bundle (Req 2.1). Render permissive:
-	// lỗi một doc trả placeholder thay vì làm hỏng cả export (Req 2.4).
-	for _, doc := range project.Documents {
-		rendered, err := renderDocumentHTML(doc)
-		if err != nil {
-			rendered = exportRenderPlaceholder
-		}
-		bundle.Documents = append(bundle.Documents, exportDocument{
-			ID:           doc.ID,
-			Title:        doc.Title,
-			Path:         doc.Path,
-			Format:       doc.Format,
-			Category:     doc.Category,
-			Meta:         collectDocMeta(doc),
-			RenderedHTML: rendered,
-		})
-	}
-
-	if opt.includeGraph {
-		bundle.Graph = project.Graph // tái dùng nguyên specGraph
-	}
-
-	return injectBundle(exportTemplate, bundle, opt)
+// okfBundle is the full knowledge base serialized for the static viewer.
+type okfBundle struct {
+	Nodes   []okfNode         `json:"nodes"`
+	Edges   []okfEdge         `json:"edges"`
+	Bodies  map[string]string `json:"bodies"`
+	Types   []string          `json:"types"`
+	Palette map[string]string `json:"palette"`
 }
 
-// injectBundle nhúng bundle (JSON blob → window.__NS_KB__) + assets vào template.
-// inlineAssets=true: inline export.css, export.js và vendor libs từ embed FS để
-// file mở offline qua file:// (Req 2 self-contained). inlineAssets=false: vendor
-// libs tham chiếu CDN, vẫn inline CSS/JS của UI export.
-func injectBundle(tmpl *template.Template, bundle exportBundle, opt exportOptions) ([]byte, error) {
+type okfNode struct {
+	Data okfNodeData `json:"data"`
+}
+
+type okfNodeData struct {
+	ID          string   `json:"id"`
+	Label       string   `json:"label"`
+	Type        string   `json:"type"`
+	Description string   `json:"description"`
+	Resource    string   `json:"resource"`
+	Tags        []string `json:"tags"`
+	Color       string   `json:"color"`
+	Size        int      `json:"size"`
+}
+
+type okfEdge struct {
+	Data okfEdgeData `json:"data"`
+}
+
+type okfEdgeData struct {
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+// exportConcept is the intermediate per-document model used to build the bundle,
+// mirroring generator.py's Concept dataclass.
+type exportConcept struct {
+	id          string
+	conceptType string
+	title       string
+	description string
+	resource    string
+	tags        []string
+	body        string
+	linksTo     []string
+}
+
+// okfTypePalette maps the doc types this repo uses to stable node colors. Types
+// outside the palette fall back to okfDefaultNodeColor; the viewer tolerates any
+// type (permissive consumer), so the palette is presentation-only.
+var okfTypePalette = map[string]string{
+	"module":       "#3b82f6",
+	"feature":      "#10b981",
+	"spec":         "#f59e0b",
+	"architecture": "#8b5cf6",
+	"decision":     "#a855f7",
+	"pattern":      "#ec4899",
+	"reference":    "#14b8a6",
+	"research":     "#0ea5e9",
+	"shared":       "#64748b",
+	"index":        "#0f172a",
+}
+
+const okfDefaultNodeColor = "#94a3b8"
+
+// exportMarkdownLinkRe extracts markdown links whose target ends in ".md"
+// (optionally with a "#anchor"), e.g. `](../modules/preview.md#meta)`. It mirrors
+// the link regex in generator.py and drives both edge construction and the
+// rewrite to OKF bundle-relative form.
+var exportMarkdownLinkRe = regexp.MustCompile(`\]\(([^)\s]+\.md)(#[A-Za-z0-9_\-]*)?\)`)
+
+// conceptID converts a docs-root-relative document id/path into an OKF concept
+// id by stripping a trailing markdown extension. e.g. "modules/preview.md" →
+// "modules/preview". The viewer keys bodies and nodes on this id.
+func conceptID(docID string) string {
+	id := strings.TrimSpace(docID)
+	for _, ext := range []string{".md", ".markdown"} {
+		if strings.HasSuffix(strings.ToLower(id), ext) {
+			return id[:len(id)-len(ext)]
+		}
+	}
+	return id
+}
+
+// exportStaticBundle builds the OKF bundle from a scanned project and renders the
+// complete self-contained HTML. Only this project's documents/graph/metadata are
+// embedded (Req 2.5); rendering is permissive (a single bad doc never aborts the
+// export — Req 2.4). Edges are included only when opt.includeGraph (Req 2.2/2.3).
+func exportStaticBundle(project specProject, opt exportOptions) ([]byte, error) {
+	bundle := buildOKFBundle(project, opt.includeGraph)
+	name := strings.TrimSpace(opt.name)
+	if name == "" {
+		name = exportPageTitle(project.Summary.Name)
+	}
+	return injectBundle(exportTemplate, bundle, name, opt)
+}
+
+// buildOKFBundle ports generator.py: walk the project's documents into concepts,
+// derive links between them, and assemble the Cytoscape-shaped graph plus the
+// body/type/palette side tables the viewer consumes. Every document becomes a
+// node (Req 2.1). When includeGraph is false, edges are omitted (Req 2.3).
+func buildOKFBundle(project specProject, includeGraph bool) okfBundle {
+	concepts := walkConcepts(project)
+
+	ids := make(map[string]bool, len(concepts))
+	for _, c := range concepts {
+		ids[c.id] = true
+	}
+
+	nodes := make([]okfNode, 0, len(concepts))
+	bodies := make(map[string]string, len(concepts))
+	typeSet := map[string]bool{}
+	for _, c := range concepts {
+		nodes = append(nodes, c.toNode())
+		bodies[c.id] = c.body
+		typeSet[c.conceptType] = true
+	}
+
+	edges := []okfEdge{}
+	if includeGraph {
+		seen := map[string]bool{}
+		for _, c := range concepts {
+			for _, target := range c.linksTo {
+				if target == c.id || !ids[target] {
+					continue
+				}
+				key := c.id + "\x00" + target
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				edges = append(edges, okfEdge{Data: okfEdgeData{
+					ID:     c.id + "__" + target,
+					Source: c.id,
+					Target: target,
+				}})
+			}
+		}
+	}
+
+	types := make([]string, 0, len(typeSet))
+	for t := range typeSet {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+
+	return okfBundle{
+		Nodes:   nodes,
+		Edges:   edges,
+		Bodies:  bodies,
+		Types:   types,
+		Palette: okfTypePalette,
+	}
+}
+
+// walkConcepts converts each scanned document into an exportConcept with its
+// frontmatter-derived metadata, a markdown body (frontmatter stripped so the
+// detail panel does not show it twice) whose internal links are rewritten to OKF
+// bundle-relative form, and the list of concepts it links to.
+func walkConcepts(project specProject) []exportConcept {
+	known := make(map[string]bool, len(project.Documents))
+	dirByID := make(map[string]string, len(project.Documents))
+	for _, doc := range project.Documents {
+		id := conceptID(doc.ID)
+		known[id] = true
+		dirByID[id] = pathDir(id)
+	}
+
+	concepts := make([]exportConcept, 0, len(project.Documents))
+	for _, doc := range project.Documents {
+		id := conceptID(doc.ID)
+		rawBody := stripFrontmatter(doc.Raw)
+		body := scrubDangerousMarkup(rawBody)
+		linksTo := extractConceptLinks(body, dirByID[id], known)
+		body = rewriteBodyLinks(body, dirByID[id], known)
+
+		conceptType := internalutil.FirstNonEmpty(doc.Type, doc.Category, "Concept")
+		concepts = append(concepts, exportConcept{
+			id:          id,
+			conceptType: conceptType,
+			title:       internalutil.FirstNonEmpty(doc.Title, id),
+			description: doc.Description,
+			resource:    doc.Resource,
+			tags:        doc.Tags,
+			body:        body,
+			linksTo:     linksTo,
+		})
+	}
+	return concepts
+}
+
+// toNode renders a concept as a Cytoscape node, mirroring Concept.to_node():
+// color comes from the type palette and size scales gently with body length.
+func (c exportConcept) toNode() okfNode {
+	color := okfTypePalette[strings.ToLower(c.conceptType)]
+	if color == "" {
+		color = okfDefaultNodeColor
+	}
+	size := 30 + len(c.body)/200
+	if size > 90 {
+		size = 90
+	}
+	label := c.title
+	if strings.TrimSpace(label) == "" {
+		label = c.id
+	}
+	tags := c.tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return okfNode{Data: okfNodeData{
+		ID:          c.id,
+		Label:       label,
+		Type:        c.conceptType,
+		Description: c.description,
+		Resource:    c.resource,
+		Tags:        tags,
+		Color:       color,
+		Size:        size,
+	}}
+}
+
+// extractConceptLinks resolves every ".md" markdown link in a body to a concept
+// id, returning the unique set of in-bundle targets. Mirrors generator.py's
+// _extract_links: external/anchor-only links are ignored, relative and
+// bundle-relative paths are resolved against docDir, and only links that land on
+// a known concept are kept.
+func extractConceptLinks(body, docDir string, known map[string]bool) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, m := range exportMarkdownLinkRe.FindAllStringSubmatch(body, -1) {
+		target := resolveConceptLink(m[1], docDir, known)
+		if target == "" || seen[target] {
+			continue
+		}
+		seen[target] = true
+		out = append(out, target)
+	}
+	return out
+}
+
+// rewriteBodyLinks rewrites in-bundle ".md" links to OKF bundle-relative form
+// (`/<concept-id>.md`) so the unmodified viewer's rewriteInternalLinks can turn
+// them into in-page navigation. Links that do not resolve to a known concept are
+// left untouched (the viewer treats them as external).
+func rewriteBodyLinks(body, docDir string, known map[string]bool) string {
+	return exportMarkdownLinkRe.ReplaceAllStringFunc(body, func(match string) string {
+		sub := exportMarkdownLinkRe.FindStringSubmatch(match)
+		if sub == nil {
+			return match
+		}
+		target := resolveConceptLink(sub[1], docDir, known)
+		if target == "" {
+			return match
+		}
+		return "](/" + target + ".md)"
+	})
+}
+
+// resolveConceptLink turns a single markdown link target into a concept id, or
+// returns "" when it is external, absolute-URL, or does not resolve to a known
+// concept. A leading "/" is treated as bundle-relative (from the docs root);
+// other paths are relative to docDir.
+func resolveConceptLink(target, docDir string, known map[string]bool) string {
+	target = strings.TrimSpace(target)
+	if target == "" || strings.Contains(target, "://") {
+		return ""
+	}
+
+	var joined string
+	if strings.HasPrefix(target, "/") {
+		joined = strings.TrimPrefix(target, "/")
+	} else {
+		joined = pathJoin(docDir, target)
+	}
+	id := conceptID(filepath.ToSlash(filepath.Clean(joined)))
+	if id == "" || strings.HasPrefix(id, "..") {
+		return ""
+	}
+	if !known[id] {
+		return ""
+	}
+	return id
+}
+
+// pathDir returns the slash-style directory of a concept id ("" for root docs).
+func pathDir(id string) string {
+	dir := filepath.ToSlash(filepath.Dir(id))
+	if dir == "." {
+		return ""
+	}
+	return dir
+}
+
+// pathJoin joins a slash-style dir and a relative target, returning a clean
+// slash path.
+func pathJoin(dir, target string) string {
+	if dir == "" {
+		return filepath.ToSlash(filepath.Clean(target))
+	}
+	return filepath.ToSlash(filepath.Clean(dir + "/" + target))
+}
+
+// scrubDangerousMarkupRe removes <script>/<style> blocks from a markdown body so
+// embedded raw HTML cannot execute when the viewer renders the body via marked
+// (marked does not sanitize). This is a defensive measure on top of the OKF
+// viewer; it does not affect ordinary markdown.
+var scrubDangerousMarkupRe = regexp.MustCompile(`(?is)<(script|style)\b[^>]*>.*?</\s*(script|style)\s*>`)
+
+func scrubDangerousMarkup(body string) string {
+	return scrubDangerousMarkupRe.ReplaceAllString(body, "")
+}
+
+// stripFrontmatter loại bỏ block YAML frontmatter `---...---` ở đầu body (nếu có)
+// để detail panel của viewer không hiển thị metadata hai lần. Permissive: không
+// có frontmatter thì trả nguyên body.
+func stripFrontmatter(content string) string {
+	trimmed := strings.TrimLeft(content, "\ufeff")
+	if !strings.HasPrefix(trimmed, "---\n") && !strings.HasPrefix(trimmed, "---\r\n") {
+		return content
+	}
+	rest := trimmed[strings.IndexByte(trimmed, '\n')+1:]
+	lines := strings.Split(rest, "\n")
+	for i, line := range lines {
+		if strings.TrimRight(line, "\r") == "---" {
+			return strings.TrimLeft(strings.Join(lines[i+1:], "\n"), "\n")
+		}
+	}
+	// Không tìm thấy dấu đóng → trả nguyên content (permissive).
+	return content
+}
+
+// injectBundle nhúng bundle (JSON blob → window.BUNDLE) + tên + assets vào
+// template. inlineAssets=true: inline viz.css, viz.js và vendor libs từ embed FS
+// để file mở offline qua file://. inlineAssets=false: vendor libs tham chiếu CDN,
+// vẫn inline CSS/JS của viewer.
+func injectBundle(tmpl *template.Template, bundle okfBundle, name string, opt exportOptions) ([]byte, error) {
 	if tmpl == nil {
 		return nil, fmt.Errorf("export template is nil")
 	}
@@ -430,11 +531,16 @@ func injectBundle(tmpl *template.Template, bundle exportBundle, opt exportOption
 	if err != nil {
 		return nil, fmt.Errorf("marshal export bundle: %w", err)
 	}
+	nameJSON, err := json.Marshal(name)
+	if err != nil {
+		return nil, fmt.Errorf("marshal bundle name: %w", err)
+	}
 
 	data := exportTemplateData{
-		Title:      exportPageTitle(bundle.Project.Name),
+		Title:      exportPageTitle(name),
 		StyleCSS:   template.CSS(styleCSS),
 		VendorHead: vendorHead,
+		BundleName: template.JS(nameJSON),
 		BundleJSON: template.JS(bundleJSON),
 		AppJS:      template.JS(appJS),
 	}

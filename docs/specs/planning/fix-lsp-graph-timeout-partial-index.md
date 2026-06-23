@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Sửa Timeout Làm LSP Code Graph Trả Thiếu Kết Quả"
+description: "Kế hoạch sửa tình trạng `graph --query` không có đủ LSP Code Graph vì timeout khi index symbol hoặc mở rộng quan hệ caller/callee."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: planning
+---
+
 # Sửa Timeout Làm LSP Code Graph Trả Thiếu Kết Quả
 
 ## Meta

@@ -1,3 +1,13 @@
+---
+type: sync
+title: "Trạng Thái Sync Tài Liệu"
+description: "Snapshot sync hiện tại của knowledge base, ghi commit phản ánh, phạm vi kiểm tra và trạng thái worktree còn chưa commit."
+tags: ["sync"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Trạng Thái Sync Tài Liệu
 
 ## Meta

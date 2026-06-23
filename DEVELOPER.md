@@ -12,11 +12,12 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 
 | Path                               | Vai trò                                                                                                                                                |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `main.go`                          | CLI entrypoint, route nhóm lệnh agentsync, harness, preview/search, graph và lsp.                                                                      |
+| `main.go`                          | CLI entrypoint, route nhóm lệnh agentsync, harness, preview/search, graph, export, mcp và lsp.                                                          |
 | `internal/cli/`                    | Parse flags và dispatch nhóm lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`/`catalog`, `harness`.                                       |
 | `internal/agentsync/`              | Logic adapter sync, `SyncPlan`, path native của từng agent, backup và operation apply/status/doctor.                                                   |
-| `internal/harness/`                | Engine, task registry, evaluator, loop controller, subagent dispatcher và memory store cho lệnh `harness`.                                              |
-| `internal/preview/`                | Backend preview docs, API, search, graph và hot reload supervisor.                                                                                     |
+| `internal/harness/`                | Engine, task registry, evaluator, loop controller, subagent dispatcher, memory store và enrichment task `enrich-docs` (`enrich.go`) cho lệnh `harness`. |
+| `internal/preview/`                | Backend preview docs, API, search, graph, static export (`export.go` + `export_ui/`), knowledge façade (`knowledge.go`), lệnh `kb` validate/index OKF (`kb.go`) và hot reload supervisor. |
+| `internal/kbmcp/`                  | MCP server stdio local expose `docs/` cho agent: transport JSON-RPC (`server.go`) và tool handlers list/lookup/search/modify (`tools.go`).               |
 | `internal/graphquery/`             | Registry/setup/cache LSP cho Search/LSP Code Graph, CLI `lsp`, installer npm/go/archive và warning dùng chung.                                         |
 | `internal/preview/preview_ui_src/` | Source Vue 3/TypeScript của preview UI.                                                                                                                |
 | `internal/preview/preview_ui/`     | Static build output được Go embed; `index.html`, `style.css`, `favicon.svg` và bundle JS hashed là artifact release của preview. |
@@ -32,6 +33,8 @@ go run . agents
 go run . init --dry-run
 go run . preview --project . --open
 go run . graph --project . --query buildPreviewSearchResponse --json
+go run . export --project . --out ./kb.html
+go run . mcp --project .
 go run . lsp list --project .
 go run . harness list
 go run . harness run --task <id> --project . --dry-run
@@ -39,7 +42,7 @@ go run . harness run --task <id> --project . --dry-run
 
 Khi chạy preview từ chính checkout này, supervisor sẽ build frontend bằng `npm run build:preview`, giữ một port ổn định rồi restart child process khi source thay đổi. Dùng `--no-reload` khi cần chạy server trực tiếp bằng static assets hiện có. Khi chạy `go run github.com/ngosangns/ns-workspace@latest preview` từ project khác, preview dùng static UI đã embed trong module và không chạy Node/npm ở runtime.
 
-Lệnh `search` sinh HTML launcher vào current working directory, start local API server và mở Search standalone từ static entry `search.html`. Dùng `--no-open` khi kiểm tra command trong script hoặc test thủ công mà không muốn mở browser. Lệnh `graph --query <text> --json` chạy cùng Search/LSP Code Graph pipeline ở chế độ terminal non-interactive; chế độ này không sinh launcher, tự ensure LSP theo mặc định và phải giữ JSON sạch trên stdout. Lệnh `lsp list/install` đi qua `internal/graphquery` để quản lý language server cache dùng cho Code Graph.
+Lệnh `search` sinh HTML launcher vào current working directory, start local API server và mở Search standalone từ static entry `search.html`. Dùng `--no-open` khi kiểm tra command trong script hoặc test thủ công mà không muốn mở browser. Lệnh `graph --query <text> --json` chạy cùng Search/LSP Code Graph pipeline ở chế độ terminal non-interactive; chế độ này không sinh launcher, tự ensure LSP theo mặc định và phải giữ JSON sạch trên stdout. Lệnh `export` ghi một file HTML tĩnh self-contained (docs + graph nhúng client-side) qua knowledge core dùng chung, validate docs dir trước khi ghi và fail-open khi một doc render lỗi. Lệnh `mcp` start MCP server JSON-RPC qua stdio (local-only, không bind port) để agent gọi các tool đọc/sửa docs; vì giao tiếp qua stdin/stdout, test thủ công bằng cách pipe JSON-RPC request vào lệnh. Lệnh `lsp list/install` đi qua `internal/graphquery` để quản lý language server cache dùng cho Code Graph.
 
 ## Test Và Validation
 
@@ -52,6 +55,7 @@ go test ./internal/graphquery
 go test ./internal/cli
 go test ./internal/agentsync
 go test ./internal/harness
+go test ./internal/kbmcp
 ```
 
 Preview frontend:
@@ -104,12 +108,12 @@ Không cần chạy full build chỉ để sửa docs thuần. Với thay đổi
 
 ## Quy Ước Docs
 
-Docs trong `docs/` mô tả trạng thái hiện tại, không giữ changelog dài. File quan trọng nên có `## Meta` với:
+Docs trong `docs/` mô tả trạng thái hiện tại, không giữ changelog dài. File quan trọng nên có metadata, khai báo bằng một trong hai cách:
 
-- `**Status**`
-- `**Description**`
-- `**Compliance**`
-- `**Links**`
+- YAML frontmatter chuẩn OKF ở đầu file (`---`) với `type`, `description`, `tags`, `timestamp` cùng các key tương thích (`status`, `version`, `compliance`, `priority`, `links`).
+- Section `## Meta` dạng prose (tương thích ngược) với `**Status**`, `**Description**`, `**Compliance**`, `**Links**`.
+
+Khi một doc có cả hai, frontmatter thắng ở key trùng và `## Meta` điền các field còn trống; frontmatter lỗi cú pháp sẽ fallback sang `## Meta` kèm warning. Parser là permissive consumer: key lạ hoặc link gãy bị bỏ qua, không crash.
 
 `docs/_index.md` là entrypoint graph của knowledge base. `docs/_sync.md` ghi snapshot sync và những thay đổi worktree đã biết. Khi docs đang behind HEAD, xem docs như bối cảnh cần verify lại bằng code.
 

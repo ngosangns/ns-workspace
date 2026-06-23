@@ -1,3 +1,13 @@
+---
+type: feature
+title: "Agentic Loop"
+description: "Feature looping agentic cho phép chạy self-correct loop với multi-agent routing và memory persistence."
+tags: ["feature", "agentic-loop"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Agentic Loop
 
 ## Meta

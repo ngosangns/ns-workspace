@@ -4,11 +4,12 @@ Dùng cho `docs/specs/*.md`:
 
 ```markdown
 ---
+type: spec
 title: "[Tính năng hoặc thay đổi]"
 description: "[Mô tả ngắn]"
-type: spec
-status: draft | approved | implemented
 tags: [spec]
+timestamp: <ISO 8601>
+status: draft | approved | implemented
 ---
 
 # [Tính năng hoặc thay đổi]

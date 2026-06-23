@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent nhận cùng workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có các lệnh đọc knowledge base: `preview` chạy web dashboard local cho `docs/`, `search` mở Search/Code Graph standalone, `graph` chạy query terminal dạng text/JSON, còn `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
+Repo cũng có các lệnh đọc knowledge base: `preview` chạy web dashboard local cho `docs/`, `search` mở Search/Code Graph standalone, `graph` chạy query terminal dạng text/JSON, `export` dump docs + graph thành một file HTML tĩnh self-contained, `mcp` expose `docs/` cho AI agent qua MCP server stdio local, còn `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
 
 ## Trạng Thái
 
@@ -34,6 +34,8 @@ go run . doctor
 go run . preview --project . --open
 go run . search --project .
 go run . graph --project . --query buildPreviewSearchResponse --json
+go run . export --project . --out ./kb.html --open
+go run . mcp --project .
 go run . lsp list --project .
 ```
 
@@ -61,6 +63,9 @@ Không dùng dạng `go run ~/path/to/ns-workspace ...` từ một repo không c
 | `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                                                     |
 | `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                                                        |
 | `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                                                   |
+| `export`   | Xuất toàn bộ docs + graph thành một file HTML tĩnh self-contained, mở offline qua `file://`.                                                   |
+| `mcp`      | Khởi động MCP server stdio local expose `docs/` cho agent (list/lookup/search/modify).                                                         |
+| `kb`       | Thao tác OKF trên docs: `kb validate` kiểm conformance, `kb index` sinh lại `index.md` từng thư mục.                                           |
 | `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                                                       |
 
 ## Flag Hay Dùng
@@ -163,7 +168,7 @@ Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<a
 
 `preview` chạy localhost web server để đọc thư mục `docs/` của project. Dashboard có sidebar tài liệu, Markdown/HTML preview, Graph tab và Search tab. Search có các panel Docs Semantic, Docs Graph, Code Semantic và Code Graph; Code Graph index symbol từ LSP trên file code tracked bởi Git, bỏ qua generated preview UI artifacts của repo, rồi mở rộng caller/callee hoặc references khi language server hỗ trợ.
 
-`harness` chạy task tự động hóa workflow dev với self-correct loop. Mỗi task là file YAML/JSON trong `.harness/tasks/`, định nghĩa requirements, scope, acceptance criteria, routing và stopping rules. Loop đi qua các phase plan → execute → verify → diagnose, lưu checkpoint sau mỗi phase và dừng khi verify pass, state lặp, hết hypothesis, hoặc phát hiện ambiguity. Xem thêm [docs/features/agentic-loop.md](docs/features/agentic-loop.md) và [docs/modules/harness.md](docs/modules/harness.md).
+`harness` chạy task tự động hóa workflow dev với self-correct loop. Mỗi task là file YAML/JSON trong `.harness/tasks/`, định nghĩa requirements, scope, acceptance criteria, routing và stopping rules. Loop đi qua các phase plan → execute → verify → diagnose, lưu checkpoint sau mỗi phase và dừng khi verify pass, state lặp, hết hypothesis, hoặc phát hiện ambiguity. Ngoài task dev generic, harness còn hỗ trợ task type `enrich-docs`: enrich docs từ seed URL với hard caps code-enforced (`max_pages`, `allowed_hosts`, `max_depth`, timeout) và chỉ ghi file bên trong docs root. Xem thêm [docs/features/agentic-loop.md](docs/features/agentic-loop.md) và [docs/modules/harness.md](docs/modules/harness.md).
 
 ```bash
 go run github.com/ngosangns/ns-workspace@latest preview --project ~/path/to/project --open
@@ -202,6 +207,72 @@ Graph flags:
 --ensure-lsp
 --no-ensure-lsp
 --json
+```
+
+## Export Tĩnh Và MCP
+
+`export` build một file HTML duy nhất, self-contained, nhúng toàn bộ knowledge base rồi render client-side bằng **OKF Bundle Viewer** (port từ [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog), Apache 2.0). Viewer có force-directed graph (Cytoscape.js), detail panel hiện frontmatter + body render bằng marked, danh sách "Cited by" backlinks, search theo title/id/tag, filter theo type và đổi layout (cose/concentric/breadth-first/circle/grid). Mặc định `--inline-assets=true` nhúng luôn thư viện render nên file mở được qua `file://` mà không gọi mạng; `--inline-assets=false` tham chiếu CDN. Command tái dùng cùng knowledge core với `preview`/`search`, validate docs dir trước khi ghi và fail-open khi một doc lỗi. Internal link `.md` giữa các doc được rewrite sang dạng OKF bundle-relative để điều hướng ngay trong viewer.
+
+```bash
+go run . export --project . --out ./ns-workspace-kb.html --open
+go run . export --project . --name "ns-workspace KB"
+go run . export --project . --no-graph
+go run . export --project . --inline-assets=false
+```
+
+Export flags:
+
+```bash
+--project PATH        project root to export, default current directory
+--docs PATH           docs directory, default docs
+--out PATH            output HTML file path, default ./ns-workspace-kb.html
+--name NAME           display name in the viewer header, default project name
+--no-graph            export documents only, without the relationship edges
+--inline-assets       inline render libraries for fully offline output, default true
+--open                open the generated file after writing
+```
+
+`mcp` khởi động một MCP server local-only giao tiếp JSON-RPC 2.0 qua stdin/stdout (không bind network port), để AI agent đọc/sửa knowledge base trực tiếp. Server expose bốn tool: `list_docs` (liệt kê docs, filter theo `type`/`tag`), `lookup_doc` (lấy full content + metadata theo id), `search_docs` (search bằng cùng pipeline với preview/search), và `modify_doc` (tạo/sửa doc, chặn path traversal ra ngoài docs root). Server được spawn như stdio subprocess bởi agent MCP-capable.
+
+```bash
+go run . mcp --project .
+```
+
+MCP flags:
+
+```bash
+--project PATH        project root to expose, default current directory
+--docs PATH           docs directory, default docs
+```
+
+## Metadata Docs Theo OKF
+
+Docs có thể khai báo metadata bằng YAML frontmatter chuẩn (`---`) theo tinh thần OKF, với các key `type`, `description`, `tags`, `timestamp` cùng các key tương thích (`status`, `version`, `compliance`, `priority`, `links`). `tags` nhận cả string đơn lẫn array và được normalize về `[]string`. Parser là permissive consumer: key lạ hoặc `type` không biết vẫn được chấp nhận, không báo lỗi.
+
+Frontmatter tương thích ngược với section `## Meta` dạng prose đang dùng: doc chỉ có `## Meta` hoạt động y như trước; doc có cả hai thì frontmatter thắng ở key trùng và `## Meta` điền các field còn trống. Nếu frontmatter lỗi cú pháp, hệ thống fallback sang `## Meta`, ghi warning và không panic.
+
+## Lệnh kb (OKF)
+
+`kb` gom các thao tác trên knowledge base theo Open Knowledge Format:
+
+- `kb validate` kiểm OKF conformance: mọi doc (trừ file reserved `index.md`/`log.md`) phải có YAML frontmatter parse được với `type` không rỗng. Thiếu key khuyến nghị (`title`/`description`/`timestamp`) là warning; `--strict` nâng warning thành lỗi. Exit non-zero khi có doc không conformant nên dùng được trong CI. `--json` xuất report cho tooling.
+- `kb index` sinh lại file `index.md` cho từng thư mục (progressive disclosure, theo OKF SPEC §6): group entry theo `type`, kèm description, và liệt kê subdirectory. `--dry-run` in danh sách file sẽ ghi mà không ghi thật.
+
+```bash
+go run . kb validate --project .
+go run . kb validate --project . --strict --json
+go run . kb index --project . --dry-run
+go run . kb index --project .
+```
+
+KB flags:
+
+```bash
+--project PATH        project root, default current directory
+--docs PATH           docs directory, default docs
+--json                (validate) in report dạng JSON
+--strict              (validate) coi warning key khuyến nghị là lỗi
+--dry-run             (index) in file sẽ ghi mà không ghi
 ```
 
 ## LSP Cho Code Graph

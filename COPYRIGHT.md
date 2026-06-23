@@ -18,6 +18,12 @@ Các dependency và package bên thứ ba giữ nguyên license của tác giả
 
 Việc dùng dependency bên thứ ba trong repo này không chuyển quyền sở hữu hoặc license của các dependency đó sang chủ sở hữu repo.
 
+### OKF Bundle Viewer (Apache License 2.0)
+
+Static export viewer trong `internal/preview/export_ui/` (`viz.html.tmpl`, `viz.css`, `viz.js`) được port từ dự án [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog) (`okf/src/reference_agent/viewer/`), bản quyền Google LLC, phát hành theo **Apache License, Version 2.0**. Các file giữ nguyên hành vi gốc, chỉ bổ sung cơ chế inline asset offline và phần inject bundle của repo này. License gốc: <https://www.apache.org/licenses/LICENSE-2.0>.
+
+Thư viện render đi kèm trong `internal/preview/export_ui/vendor/` ([Cytoscape.js](https://js.cytoscape.org/), [marked](https://marked.js.org/)) là MIT, giữ nguyên copyright header trong file minified.
+
 ## Presets And Generated Configuration
 
 Nội dung trong `presets/` được embed và materialize sang các thư mục cấu hình user-level khi chạy CLI. Các file được tool tạo ra từ preset vẫn chịu cùng giới hạn bản quyền của repo này, trừ khi nội dung file đó ghi rõ license hoặc điều khoản khác.

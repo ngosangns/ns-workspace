@@ -1,3 +1,13 @@
+---
+type: module
+title: "Module Harness"
+description: "Module harness cung cấp engine, task registry, evaluator, loop controller, dispatcher và memory store cho `ns-workspace` CLI."
+tags: ["module", "harness"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Module Harness
 
 ## Meta
@@ -20,6 +30,7 @@ Module `internal/harness` quản lý vòng đở của một harness task: đọ
 | `evaluator.go`    | Chạy eval commands từ nhiều nguồn      |
 | `dispatcher.go`   | Subagent driver abstraction            |
 | `loop.go`         | Loop controller và guardrails          |
+| `enrich.go`       | Task type `enrich-docs` với hard caps  |
 | `engine.go`       | Harness engine và CLI-facing API       |
 | `harness_test.go` | Tests                                  |
 
@@ -115,6 +126,38 @@ Guardrails:
 - Ambiguity
 - Acceptance criteria thỏa mãn
 - Subtasks hoàn thành
+
+## Task `enrich-docs`
+
+Khi `task.Type == "enrich-docs"`, loop controller chạy nhánh enrichment riêng (`runEnrich` trong `enrich.go`) ngay từ phase plan; phase execute là no-op còn phase verify vẫn chạy acceptance command như thường. Luồng: plan (LLM đề xuất URL ứng viên từ seeds) → fetch (guarded, fail-open) → execute (LLM tổng hợp corpus thành doc change JSON) → write (ghi file giới hạn trong docs root).
+
+Cấu hình qua `EnrichConfig` trong task:
+
+```yaml
+type: enrich-docs
+enrich:
+  seeds:
+    - url: https://example.com/guide
+    - file: docs/seed-notes.md
+  caps:
+    max_pages: 10
+    max_depth: 1
+    allowed_hosts:
+      - example.com
+    fetch_timeout_seconds: 15
+  target:
+    mode: references # references | enrich
+    references_dir: docs/references
+```
+
+Hard caps là code-enforced, không dựa vào LLM tự giới hạn:
+
+- `max_pages`: chặn số trang fetch (mặc định 10 khi <= 0).
+- `allowed_hosts` ∪ host của seeds: chỉ fetch URL trong allowlist; redirect đổi host bị chặn.
+- `max_depth`: giới hạn link-follow; depth 0 chỉ fetch seeds + URL do plan đề xuất.
+- `fetch_timeout_seconds`: timeout mỗi fetch (mặc định 15s), body cap 5 MiB.
+
+Fetch lỗi/timeout hay URL ngoài allowlist được ghi vào `state.Warnings` qua `State.AddWarning` và loop tiếp tục (fail-open). Mode `references` tạo doc mới trong `references_dir` với frontmatter `type: reference`; mode `enrich` chỉ sửa doc đã tồn tại. Mọi đường ghi đều đi qua `confineToDocsRoot` để chặn path traversal ra ngoài docs root.
 
 ## Quan Hệ
 

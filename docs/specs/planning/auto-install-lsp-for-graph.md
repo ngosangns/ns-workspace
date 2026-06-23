@@ -1,3 +1,13 @@
+---
+type: spec
+title: "Tự Động Cài LSP Cho Graph Query"
+description: "Kế hoạch thêm flow phát hiện và cài language server cho LSP Code Graph, để lệnh `graph` có thể tự chuẩn bị môi trường thay vì chỉ trả warning thiếu LSP."
+tags: ["spec", "planning"]
+timestamp: 2026-06-23T00:00:00Z
+status: implemented
+compliance: current-state
+---
+
 # Tự Động Cài LSP Cho Graph Query
 
 ## Meta

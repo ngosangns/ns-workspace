@@ -1,3 +1,13 @@
+---
+type: module
+title: "Module Agentsync"
+description: "Tài liệu module `internal/agentsync`, mô tả sync plan, adapter sync, preset materialization, managed operations, registry skills, native targets và safety rules."
+tags: ["module", "agentsync"]
+timestamp: 2026-06-23T00:00:00Z
+status: active
+compliance: current-state
+---
+
 # Module Agentsync
 
 ## Meta
