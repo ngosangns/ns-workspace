@@ -7,6 +7,7 @@ import (
 
 	synccli "github.com/ngosangns/ns-workspace/internal/cli"
 	"github.com/ngosangns/ns-workspace/internal/graphquery"
+	"github.com/ngosangns/ns-workspace/internal/kbmcp"
 	"github.com/ngosangns/ns-workspace/internal/preview"
 )
 
@@ -42,8 +43,12 @@ func run(args []string) error {
 		return preview.Run(args[1:])
 	case "search":
 		return preview.RunSearch(args[1:])
+	case "export":
+		return preview.RunExport(args[1:])
 	case "graph":
 		return preview.RunGraph(args[1:])
+	case "mcp":
+		return kbmcp.Run(args[1:])
 	case "lsp":
 		return graphquery.RunLSP(args[1:], preview.GraphQueryLSPDetector{})
 	default:
@@ -65,7 +70,9 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest harness <list|run|eval|status|resume|stop> [flags]
   go run github.com/ngosangns/ns-workspace@latest preview [flags]
   go run github.com/ngosangns/ns-workspace@latest search [flags]
+  go run github.com/ngosangns/ns-workspace@latest export [flags]
   go run github.com/ngosangns/ns-workspace@latest graph [flags]
+  go run github.com/ngosangns/ns-workspace@latest mcp [flags]
   go run github.com/ngosangns/ns-workspace@latest lsp <list|install> [flags]
 
 Local checkout usage:
@@ -100,6 +107,18 @@ Search flags:
   --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
   --out PATH          generated launcher HTML path, default ./ns-workspace-search.html
   --no-open           write the launcher without opening the browser
+
+Export flags:
+  --project PATH      project root to export, default current directory
+  --docs PATH         docs directory, default docs
+  --out PATH          output HTML file path, default ./ns-workspace-kb.html
+  --no-graph          export documents only, without the graph
+  --inline-assets     inline render libraries for fully offline output, default true
+  --open              open the generated file after writing
+
+MCP flags:
+  --project PATH      project root to expose, default current directory
+  --docs PATH         docs directory, default docs
 
 Graph flags:
   --project PATH      project root to inspect, default current directory

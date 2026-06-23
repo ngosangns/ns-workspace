@@ -22,6 +22,31 @@ type Task struct {
 	Routing      Routing        `json:"routing" yaml:"routing"`
 	Memory       MemoryConfig   `json:"memory" yaml:"memory"`
 	Stopping     StoppingConfig `json:"stopping" yaml:"stopping"`
+	Enrich       EnrichConfig   `json:"enrich" yaml:"enrich"`
+}
+
+// EnrichConfig cấu hình task type enrich-docs (Feature 3).
+type EnrichConfig struct {
+	Seeds  []EnrichSeed `json:"seeds" yaml:"seeds"`
+	Caps   EnrichCaps   `json:"caps" yaml:"caps"`
+	Target EnrichTarget `json:"target" yaml:"target"`
+}
+
+type EnrichSeed struct {
+	URL  string `json:"url,omitempty" yaml:"url,omitempty"`
+	File string `json:"file,omitempty" yaml:"file,omitempty"`
+}
+
+type EnrichCaps struct {
+	MaxPages            int      `json:"max_pages" yaml:"max_pages"`
+	MaxDepth            int      `json:"max_depth" yaml:"max_depth"`
+	AllowedHosts        []string `json:"allowed_hosts" yaml:"allowed_hosts"`
+	FetchTimeoutSeconds int      `json:"fetch_timeout_seconds" yaml:"fetch_timeout_seconds"`
+}
+
+type EnrichTarget struct {
+	Mode          string `json:"mode" yaml:"mode"`                     // references | enrich
+	ReferencesDir string `json:"references_dir" yaml:"references_dir"`
 }
 
 type Requirement struct {
