@@ -9,6 +9,7 @@ import (
 	"github.com/ngosangns/ns-workspace/internal/graphquery"
 	"github.com/ngosangns/ns-workspace/internal/kbmcp"
 	"github.com/ngosangns/ns-workspace/internal/preview"
+	"github.com/ngosangns/ns-workspace/internal/setup"
 )
 
 //go:embed presets/agents presets/mcp presets/minimax presets/opencode presets/registry presets/settings presets/adapters presets/manifest.json presets/skills/* presets/subagents
@@ -51,6 +52,8 @@ func run(args []string) error {
 		return kbmcp.Run(args[1:])
 	case "kb":
 		return preview.RunKB(args[1:])
+	case "setup":
+		return setup.Run(args[1:])
 	case "lsp":
 		return graphquery.RunLSP(args[1:], preview.GraphQueryLSPDetector{})
 	default:
@@ -76,6 +79,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest graph [flags]
   go run github.com/ngosangns/ns-workspace@latest mcp [flags]
   go run github.com/ngosangns/ns-workspace@latest kb <validate|index> [flags]
+  go run github.com/ngosangns/ns-workspace@latest setup [flags]
   go run github.com/ngosangns/ns-workspace@latest lsp <list|install> [flags]
 
 Local checkout usage:
@@ -134,6 +138,11 @@ KB flags:
   --json              (validate) print the conformance report as JSON
   --strict            (validate) treat recommended-key warnings as failures
   --dry-run           (index) print directories that would be written without writing
+
+Setup flags:
+  --target PATH       directory to write Taskfile.yml, default current directory
+  --dry-run           print planned Taskfile.yml on stdout instead of writing
+  --force             replace existing Taskfile.yml instead of merging
 
 Graph flags:
   --project PATH      project root to inspect, default current directory

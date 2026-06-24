@@ -36,6 +36,7 @@ go run . search --project .
 go run . graph --project . --query buildPreviewSearchResponse --json
 go run . export --project . --out ./kb.html --open
 go run . mcp --project .
+go run . setup
 go run . lsp list --project .
 ```
 
@@ -66,6 +67,7 @@ Không dùng dạng `go run ~/path/to/ns-workspace ...` từ một repo không c
 | `export`   | Xuất toàn bộ docs + graph thành một file HTML tĩnh self-contained, mở offline qua `file://`.                                                   |
 | `mcp`      | Khởi động MCP server stdio local expose `docs/` cho agent (list/lookup/search/modify).                                                         |
 | `kb`       | Thao tác OKF trên docs: `kb validate` kiểm conformance, `kb index` sinh lại `index.md` từng thư mục.                                           |
+| `setup`    | Sinh hoặc merge `Taskfile.yml` ở cwd liệt kê toàn bộ scripts/commands của ns-workspace để dùng với [go-task](https://taskfile.dev/). Hỗ trợ `--dry-run` xem trước và `--force` ghi đè. |
 | `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                                                       |
 
 ## Flag Hay Dùng
@@ -286,6 +288,36 @@ go run . lsp list --project . --json
 go run . lsp install auto --project .
 go run . lsp install kotlin --project .
 ```
+
+## Lệnh `setup`
+
+`setup` sinh (hoặc merge) file `Taskfile.yml` ở thư mục hiện tại để dùng với [go-task](https://taskfile.dev/). Taskfile liệt kê toàn bộ commands của `ns-workspace` (nhóm `ns:*`), npm scripts trong `package.json` (nhóm `lint:*`, `format:*`, `build:*`) và Go toolchain tasks (`go:build`, `go:test`). Sau khi setup, `task --list` sẽ hiển thị tất cả task có thể chạy trong repo.
+
+```bash
+go run . setup                # tạo/merge Taskfile.yml ở cwd
+go run . setup --dry-run      # xem nội dung sẽ ghi, không tạo file
+go run . setup --force        # ghi đè Taskfile.yml thay vì merge
+go run . setup --target ~/p   # ghi Taskfile.yml vào thư mục khác
+```
+
+Sau khi setup, dùng `task --list` để xem tất cả task và gọi trực tiếp:
+
+```bash
+task --list
+task ns:status
+task ns:preview
+task lint:docs:fix
+task go:test
+```
+
+Setup flags:
+```bash
+--target PATH     directory to write Taskfile.yml, default current directory
+--dry-run         print planned Taskfile.yml on stdout instead of writing
+--force           replace existing Taskfile.yml instead of merging
+```
+
+Khi merge, **task trùng tên** trong `Taskfile.yml` hiện có sẽ bị rewrite từ preset (kể cả `desc` và `cmds`). Đặt tên task riêng — không dùng các prefix `ns:`, `lint:`, `format:`, `build:`, `go:` — để giữ task do bạn tự định nghĩa qua nhiều lần setup. Các key khác ở top-level (vd `vars`, `includes`) được giữ nguyên.
 
 ## Phát Triển
 
