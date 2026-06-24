@@ -17,9 +17,9 @@ Trước khi apply lên môi trường quan trọng, hãy dùng `doctor`, `statu
 Một lệnh duy nhất để có toàn bộ commands của `ns-workspace` dưới dạng [go-task](https://taskfile.dev/):
 
 ```bash
-go run . setup    # sinh Taskfile.yml ở cwd
-task --list       # xem tất cả task có sẵn
-task ns:status    # chạy bất kỳ task nào
+go run github.com/ngosangns/ns-workspace@latest setup    # sinh Taskfile.yml ở cwd
+task --list                                              # xem tất cả task có sẵn
+task ns:status                                           # chạy bất kỳ task nào
 ```
 
 ## Lệnh `setup`
@@ -27,10 +27,10 @@ task ns:status    # chạy bất kỳ task nào
 Sinh (hoặc merge) `Taskfile.yml` ở cwd liệt kê toàn bộ scripts/commands của `ns-workspace` (nhóm `ns:*`), npm scripts (nhóm `lint:*`, `format:*`, `build:*`) và Go tasks (`go:*`).
 
 ```bash
-go run . setup                # tạo/merge Taskfile.yml ở cwd
-go run . setup --dry-run      # xem nội dung sẽ ghi
-go run . setup --force        # ghi đè Taskfile.yml thay vì merge
-go run . setup --target ~/p   # ghi Taskfile.yml vào thư mục khác
+go run github.com/ngosangns/ns-workspace@latest setup                # tạo/merge Taskfile.yml ở cwd
+go run github.com/ngosangns/ns-workspace@latest setup --dry-run      # xem nội dung sẽ ghi
+go run github.com/ngosangns/ns-workspace@latest setup --force        # ghi đè Taskfile.yml thay vì merge
+go run github.com/ngosangns/ns-workspace@latest setup --target ~/p   # ghi Taskfile.yml vào thư mục khác
 ```
 
 Setup flags:
@@ -44,41 +44,25 @@ Khi merge, **task trùng tên** trong `Taskfile.yml` hiện có sẽ bị rewrit
 
 ## Sử Dụng Nhanh
 
-Không cần clone repo nếu chỉ muốn chạy bản mới nhất:
+Sau khi `setup`, mọi command của ns-workspace chạy qua [go-task](https://taskfile.dev/):
 
 ```bash
-go run github.com/ngosangns/ns-workspace@latest status
-go run github.com/ngosangns/ns-workspace@latest doctor
-go run github.com/ngosangns/ns-workspace@latest init --dry-run
-go run github.com/ngosangns/ns-workspace@latest init
-go run github.com/ngosangns/ns-workspace@latest update
-go run github.com/ngosangns/ns-workspace@latest harness list
-go run github.com/ngosangns/ns-workspace@latest harness run --task <id> --project .
+task ns:status               # trạng thái cài đặt agents
+task ns:doctor               # validate JSON config + report local agent CLI
+task ns:init                 # cài cấu hình shared sang adapter native
+task ns:init -- --dry-run    # xem trước khi ghi
+task ns:update               # cập nhật config từ preset embedded
+task ns:harness:list         # liệt kê harness task
+task ns:harness:run -- --task <id>    # chạy harness task
 ```
 
-Trong checkout local:
+Dùng `--` để truyền flag cho command gốc bên trong task (vd `task ns:init -- --dry-run`).
 
-```bash
-go run . status
-go run . doctor
-go run . preview --project . --open
-go run . search --project .
-go run . graph --project . --query buildPreviewSearchResponse --json
-go run . export --project . --out ./kb.html --open
-go run . mcp --project .
-go run . lsp list --project .
-```
-
-Khi dùng checkout này để preview một project khác, chạy `go run .` từ thư mục `ns-workspace` và trỏ `--project` sang project cần đọc:
-
-```bash
-cd /Users/ngosangns/Github/ns-workspace
-go run . preview --project /Users/ngosangns/Github/viclass --open
-```
-
-Không dùng dạng `go run /Users/ngosangns/ns-workspace ...` từ một repo không có `go.mod`, vì Go sẽ cố tìm module từ current working directory trước khi chương trình này kịp chạy.
+Trong repo khác, `task ns:preview` mặc định đọc `--project .` (cwd). Để preview một project khác, override bằng `task ns:preview -- --project /path/to/project`.
 
 ## Lệnh Chính
+
+Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<command>` (vd `task ns:status`). Truyền flag bằng cú pháp `task ns:<command> -- --flag value`.
 
 | Lệnh       | Mục đích                                                                                                                                       |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -163,7 +147,7 @@ MiniMax CLI (`mmx`) được hỗ trợ như một stable adapter, chọn bằng
 - Native target: `~/.mmx/config.json`, ghi qua `MergeJSON` với `Replace: true` trên `update` để cleanup stale managed keys, mirror cùng pattern với `opencode`.
 - Default models: `MiniMax-M3` (text), `speech-2.8-hd` (speech), `MiniMax-Hailuo-2.3` (video), `music-2.6` (music).
 - Default timeouts: `timeout: 1800` (per-call, 30 phút) + `sessionTimeout: 1800` (long-running session như video generation sync).
-- Bật: `go run . init --tools minimax` (sau khi `npm install -g mmx-cli && mmx auth login`).
+- Bật: `task ns:init -- --tools minimax` (sau khi `npm install -g mmx-cli && mmx auth login`).
 - Override defaults qua user config: thêm `"presets/minimax/config.json": "/path/to/your.json"` vào `~/.config/ns-workspace/config.json`.
 - Official SKILL tự động cài qua registry: `npx skills add MiniMax-AI/cli -y -g` chạy trong phase registry install khi không dùng `--no-registry`. User có thể chạy lại bất cứ lúc nào qua `sh ~/.agents/registry/install.sh`.
 
@@ -202,8 +186,8 @@ Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<a
 `harness` chạy task tự động hóa workflow dev với self-correct loop. Mỗi task là file YAML/JSON trong `.harness/tasks/`, định nghĩa requirements, scope, acceptance criteria, routing và stopping rules. Loop đi qua các phase plan → execute → verify → diagnose, lưu checkpoint sau mỗi phase và dừng khi verify pass, state lặp, hết hypothesis, hoặc phát hiện ambiguity. Ngoài task dev generic, harness còn hỗ trợ task type `enrich-docs`: enrich docs từ seed URL với hard caps code-enforced (`max_pages`, `allowed_hosts`, `max_depth`, timeout) và chỉ ghi file bên trong docs root. Xem thêm [docs/features/agentic-loop.md](docs/features/agentic-loop.md) và [docs/modules/harness.md](docs/modules/harness.md).
 
 ```bash
-go run github.com/ngosangns/ns-workspace@latest preview --project /Users/ngosangns/Github/viclass --open
-go run . preview --project . --open
+task ns:preview -- --project /Users/ngosangns/Github/viclass --open
+task ns:preview -- --project . --open
 ```
 
 Preview flags:
@@ -221,10 +205,10 @@ Preview flags:
 `graph` chỉ chạy query terminal: không sinh launcher, không mở browser và không giữ server sống. Mặc định command tự ensure language server còn thiếu cho project trước khi query, cài vào cache user của `ns-workspace` và vẫn fail-open nếu cài đặt lỗi hoặc server không hỗ trợ relation expansion.
 
 ```bash
-go run . search --project . --out ./search.html
-go run . graph --project . --query buildPreviewSearchResponse --json
-go run . graph --project . --no-ensure-lsp --query buildPreviewSearchResponse --json
-go run . graph --project . --query auth,session --keyword-op difference --limit 5
+task ns:search -- --project . --out ./search.html
+task ns:graph -- --project . --query buildPreviewSearchResponse --json
+task ns:graph -- --project . --no-ensure-lsp --query buildPreviewSearchResponse --json
+task ns:graph -- --project . --query auth,session --keyword-op difference --limit 5
 ```
 
 Graph flags:
@@ -245,10 +229,10 @@ Graph flags:
 `export` build một file HTML duy nhất, self-contained, nhúng toàn bộ knowledge base rồi render client-side bằng **OKF Bundle Viewer** (port từ [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog), Apache 2.0). Viewer có force-directed graph (Cytoscape.js), detail panel hiện frontmatter + body render bằng marked, danh sách "Cited by" backlinks, search theo title/id/tag, filter theo type và đổi layout (cose/concentric/breadth-first/circle/grid). Mặc định `--inline-assets=true` nhúng luôn thư viện render nên file mở được qua `file://` mà không gọi mạng; `--inline-assets=false` tham chiếu CDN. Command tái dùng cùng knowledge core với `preview`/`search`, validate docs dir trước khi ghi và fail-open khi một doc lỗi. Internal link `.md` giữa các doc được rewrite sang dạng OKF bundle-relative để điều hướng ngay trong viewer.
 
 ```bash
-go run . export --project . --out ./ns-workspace-kb.html --open
-go run . export --project . --name "ns-workspace KB"
-go run . export --project . --no-graph
-go run . export --project . --inline-assets=false
+task ns:export -- --project . --out ./ns-workspace-kb.html --open
+task ns:export -- --project . --name "ns-workspace KB"
+task ns:export -- --project . --no-graph
+task ns:export -- --project . --inline-assets=false
 ```
 
 Export flags:
@@ -266,7 +250,7 @@ Export flags:
 `mcp` khởi động một MCP server local-only giao tiếp JSON-RPC 2.0 qua stdin/stdout (không bind network port), để AI agent đọc/sửa knowledge base trực tiếp. Server expose bốn tool: `list_docs` (liệt kê docs, filter theo `type`/`tag`), `lookup_doc` (lấy full content + metadata theo id), `search_docs` (search bằng cùng pipeline với preview/search), và `modify_doc` (tạo/sửa doc, chặn path traversal ra ngoài docs root). Server được spawn như stdio subprocess bởi agent MCP-capable.
 
 ```bash
-go run . mcp --project .
+task ns:mcp -- --project .
 ```
 
 MCP flags:
@@ -290,10 +274,10 @@ Frontmatter tương thích ngược với section `## Meta` dạng prose đang d
 - `kb index` sinh lại file `index.md` cho từng thư mục (progressive disclosure, theo OKF SPEC §6): group entry theo `type`, kèm description, và liệt kê subdirectory. `--dry-run` in danh sách file sẽ ghi mà không ghi thật.
 
 ```bash
-go run . kb validate --project .
-go run . kb validate --project . --strict --json
-go run . kb index --project . --dry-run
-go run . kb index --project .
+task ns:kb:validate
+task ns:kb:validate -- --strict --json
+task ns:kb:index -- --dry-run
+task ns:kb:index
 ```
 
 KB flags:
@@ -313,9 +297,9 @@ KB flags:
 Resolver ưu tiên binary có sẵn trong `PATH`, Go bin dirs và `node_modules/.bin` của project/checkout trước cache. Kotlin dùng `kotlin-lsp`; `lsp install kotlin` tải JetBrains Kotlin LSP standalone archive theo OS/arch, verify SHA-256 đã pin, extract vào cache versioned và tạo wrapper `<cache>/kotlin/bin/kotlin-lsp`.
 
 ```bash
-go run . lsp list --project . --json
-go run . lsp install auto --project .
-go run . lsp install kotlin --project .
+task ns:lsp:list -- --project . --json
+task ns:lsp:install -- auto --project .
+task ns:lsp:install -- kotlin --project .
 ```
 
 ## Phát Triển

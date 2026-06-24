@@ -96,6 +96,31 @@ var defaultScripts = []scriptSpec{
 		Description: "Liệt kê language server đã cài và trạng thái cho từng ngôn ngữ",
 		Commands:    []string{nsCLI + " lsp list"},
 	},
+	{
+		Name:        "ns:lsp:install",
+		Description: "Cài language server (vd: task ns:lsp:install -- auto, task ns:lsp:install -- kotlin)",
+		Commands:    []string{nsCLI + " lsp install"},
+	},
+	{
+		Name:        "ns:graph",
+		Description: "Chạy query Search/Code Graph terminal (mặc định không truyền --query; dùng `task ns:graph -- <args>` để truyền flag)",
+		Commands:    []string{nsCLI + " graph --project ."},
+	},
+	{
+		Name:        "ns:mcp",
+		Description: "Khởi động MCP server stdio local expose docs/ cho agent (list/lookup/search/modify)",
+		Commands:    []string{nsCLI + " mcp --project ."},
+	},
+	{
+		Name:        "ns:harness:list",
+		Description: "Liệt kê harness task có sẵn trong .harness/tasks/",
+		Commands:    []string{nsCLI + " harness list"},
+	},
+	{
+		Name:        "ns:harness:run",
+		Description: "Chạy harness task theo --task ID (mặc định không truyền --task; dùng `task ns:harness:run -- --task <id>`)",
+		Commands:    []string{nsCLI + " harness run --project ."},
+	},
 
 	// Nhóm lint:* — npm scripts kiểm tra code style.
 	{
