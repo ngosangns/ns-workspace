@@ -12,6 +12,36 @@ Repo cũng có các lệnh đọc knowledge base: `preview` chạy web dashboard
 
 Trước khi apply lên môi trường quan trọng, hãy dùng `doctor`, `status`, `--dry-run` và đọc diff/backups.
 
+## Quickstart
+
+Một lệnh duy nhất để có toàn bộ commands của `ns-workspace` dưới dạng [go-task](https://taskfile.dev/):
+
+```bash
+go run . setup    # sinh Taskfile.yml ở cwd
+task --list       # xem tất cả task có sẵn
+task ns:status    # chạy bất kỳ task nào
+```
+
+## Lệnh `setup`
+
+Sinh (hoặc merge) `Taskfile.yml` ở cwd liệt kê toàn bộ scripts/commands của `ns-workspace` (nhóm `ns:*`), npm scripts (nhóm `lint:*`, `format:*`, `build:*`) và Go tasks (`go:*`).
+
+```bash
+go run . setup                # tạo/merge Taskfile.yml ở cwd
+go run . setup --dry-run      # xem nội dung sẽ ghi
+go run . setup --force        # ghi đè Taskfile.yml thay vì merge
+go run . setup --target ~/p   # ghi Taskfile.yml vào thư mục khác
+```
+
+Setup flags:
+```bash
+--target PATH     directory to write Taskfile.yml, default current directory
+--dry-run         print planned Taskfile.yml on stdout instead of writing
+--force           replace existing Taskfile.yml instead of merging
+```
+
+Khi merge, **task trùng tên** trong `Taskfile.yml` hiện có sẽ bị rewrite từ preset. Đặt tên task riêng — không dùng các prefix `ns:`, `lint:`, `format:`, `build:`, `go:` — để giữ task do bạn tự định nghĩa. Các top-level key khác (`vars`, `includes`, ...) được giữ nguyên.
+
 ## Sử Dụng Nhanh
 
 Không cần clone repo nếu chỉ muốn chạy bản mới nhất:
@@ -36,7 +66,6 @@ go run . search --project .
 go run . graph --project . --query buildPreviewSearchResponse --json
 go run . export --project . --out ./kb.html --open
 go run . mcp --project .
-go run . setup
 go run . lsp list --project .
 ```
 
@@ -47,7 +76,7 @@ cd /Users/ngosangns/Github/ns-workspace
 go run . preview --project /Users/ngosangns/Github/viclass --open
 ```
 
-Không dùng dạng `go run /Users/ngosangns/Github/ns-workspace ...` từ một repo không có `go.mod`, vì Go sẽ cố tìm module từ current working directory trước khi chương trình này kịp chạy.
+Không dùng dạng `go run /Users/ngosangns/ns-workspace ...` từ một repo không có `go.mod`, vì Go sẽ cố tìm module từ current working directory trước khi chương trình này kịp chạy.
 
 ## Lệnh Chính
 
@@ -288,29 +317,6 @@ go run . lsp list --project . --json
 go run . lsp install auto --project .
 go run . lsp install kotlin --project .
 ```
-
-## Lệnh `setup`
-
-`setup` sinh (hoặc merge) file `Taskfile.yml` ở thư mục hiện tại để dùng với [go-task](https://taskfile.dev/). Sau khi setup, dùng `task --list` để xem và chạy toàn bộ task có sẵn:
-
-```bash
-go run . setup                # tạo/merge Taskfile.yml ở cwd
-go run . setup --dry-run      # xem nội dung sẽ ghi, không tạo file
-go run . setup --force        # ghi đè Taskfile.yml thay vì merge
-go run . setup --target ~/p   # ghi Taskfile.yml vào thư mục khác
-
-task --list                   # liệt kê tất cả task đã setup
-task ns:status                # ví dụ: chạy ns:status
-```
-
-Setup flags:
-```bash
---target PATH     directory to write Taskfile.yml, default current directory
---dry-run         print planned Taskfile.yml on stdout instead of writing
---force           replace existing Taskfile.yml instead of merging
-```
-
-Khi merge, **task trùng tên** trong `Taskfile.yml` hiện có sẽ bị rewrite từ preset (kể cả `desc` và `cmds`). Đặt tên task riêng — không dùng các prefix `ns:`, `lint:`, `format:`, `build:`, `go:` — để giữ task do bạn tự định nghĩa qua nhiều lần setup. Các key khác ở top-level (vd `vars`, `includes`) được giữ nguyên.
 
 ## Phát Triển
 
