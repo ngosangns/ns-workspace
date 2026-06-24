@@ -1,4 +1,4 @@
-# Vendored libraries (offline embed)
+# Third-party libraries (offline embed)
 
 These files are committed to the repo on purpose so that the static HTML export
 (`export --inline-assets=true`, the default) is fully self-contained and opens

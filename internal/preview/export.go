@@ -107,7 +107,7 @@ func normalizeExportOutputPath(cwd, out string) string {
 }
 
 // exportUIFS embeds the static OKF viewer assets (template, viz.js/viz.css, and
-// vendored render libraries) so that `export --inline-assets=true` produces a
+// third-party render libraries) so that `export --inline-assets=true` produces a
 // fully self-contained HTML file that opens over file:// with no network
 // requests. The assets live under export_ui/ and are hand-maintained (no Vite
 // build), keeping the export independent of the preview_ui_src/ pipeline.
@@ -132,12 +132,12 @@ const (
 	exportTemplatePath  = "export_ui/viz.html.tmpl"
 	exportStylePath     = "export_ui/viz.css"
 	exportAppScriptPath = "export_ui/viz.js"
-	exportCytoscapePath = "export_ui/vendor/cytoscape.min.js"
-	exportMarkedPath    = "export_ui/vendor/marked.min.js"
+	exportCytoscapePath = "export_ui/third_party/cytoscape.min.js"
+	exportMarkedPath    = "export_ui/third_party/marked.min.js"
 )
 
-// CDN fallback khi --inline-assets=false. Trùng version với vendor embed
-// (xem export_ui/vendor/README.md) để render đồng nhất giữa hai chế độ.
+// CDN fallback khi --inline-assets=false. Trùng version với third-party embed
+// (xem export_ui/third_party/README.md) để render đồng nhất giữa hai chế độ.
 const (
 	exportCytoscapeCDN = "https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"
 	exportMarkedCDN    = "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
@@ -503,8 +503,8 @@ func stripFrontmatter(content string) string {
 }
 
 // injectBundle nhúng bundle (JSON blob → window.BUNDLE) + tên + assets vào
-// template. inlineAssets=true: inline viz.css, viz.js và vendor libs từ embed FS
-// để file mở offline qua file://. inlineAssets=false: vendor libs tham chiếu CDN,
+// template. inlineAssets=true: inline viz.css, viz.js và third-party libs từ embed FS
+// để file mở offline qua file://. inlineAssets=false: third-party libs tham chiếu CDN,
 // vẫn inline CSS/JS của viewer.
 func injectBundle(tmpl *template.Template, bundle okfBundle, name string, opt exportOptions) ([]byte, error) {
 	if tmpl == nil {
@@ -560,11 +560,11 @@ func buildVendorHead(inline bool) (template.HTML, error) {
 	if inline {
 		cytoscape, err := exportUIFS.ReadFile(exportCytoscapePath)
 		if err != nil {
-			return "", fmt.Errorf("read vendor cytoscape: %w", err)
+			return "", fmt.Errorf("read third-party cytoscape: %w", err)
 		}
 		marked, err := exportUIFS.ReadFile(exportMarkedPath)
 		if err != nil {
-			return "", fmt.Errorf("read vendor marked: %w", err)
+			return "", fmt.Errorf("read third-party marked: %w", err)
 		}
 		head.WriteString("<script>")
 		head.Write(cytoscape)

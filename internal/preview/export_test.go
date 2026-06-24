@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"math/rand"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -438,5 +439,19 @@ func TestExportCDNModeReferencesVendorURLs(t *testing.T) {
 	}
 	if !externalSrcRe.Match(htmlBytes) {
 		t.Errorf("CDN-mode export should contain external src=\"http...\" references")
+	}
+}
+
+func TestExportInlineAssetPathsAreModuleZipSafe(t *testing.T) {
+	paths := []string{exportCytoscapePath, exportMarkedPath}
+	for _, assetPath := range paths {
+		for _, segment := range strings.Split(filepath.ToSlash(assetPath), "/") {
+			if segment == "vendor" {
+				t.Fatalf("inline asset path %q uses a vendor directory, which Go module zips omit", assetPath)
+			}
+		}
+		if _, err := exportUIFS.ReadFile(assetPath); err != nil {
+			t.Fatalf("embedded inline asset %q should be readable: %v", assetPath, err)
+		}
 	}
 }
