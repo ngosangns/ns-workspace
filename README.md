@@ -67,7 +67,7 @@ Không dùng dạng `go run /Users/ngosangns/Github/ns-workspace ...` từ một
 | `export`   | Xuất toàn bộ docs + graph thành một file HTML tĩnh self-contained, mở offline qua `file://`.                                                   |
 | `mcp`      | Khởi động MCP server stdio local expose `docs/` cho agent (list/lookup/search/modify).                                                         |
 | `kb`       | Thao tác OKF trên docs: `kb validate` kiểm conformance, `kb index` sinh lại `index.md` từng thư mục.                                           |
-| `setup`    | Sinh hoặc merge `Taskfile.yml` ở cwd liệt kê toàn bộ scripts/commands của ns-workspace để dùng với [go-task](https://taskfile.dev/). Hỗ trợ `--dry-run` xem trước và `--force` ghi đè. |
+| `setup`    | Sinh hoặc merge `Taskfile.yml` ở cwd để chạy toàn bộ scripts/commands của ns-workspace qua [go-task](https://taskfile.dev/). |
 | `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                                                       |
 
 ## Flag Hay Dùng
@@ -291,23 +291,16 @@ go run . lsp install kotlin --project .
 
 ## Lệnh `setup`
 
-`setup` sinh (hoặc merge) file `Taskfile.yml` ở thư mục hiện tại để dùng với [go-task](https://taskfile.dev/). Taskfile liệt kê toàn bộ commands của `ns-workspace` (nhóm `ns:*`), npm scripts trong `package.json` (nhóm `lint:*`, `format:*`, `build:*`) và Go toolchain tasks (`go:build`, `go:test`). Sau khi setup, `task --list` sẽ hiển thị tất cả task có thể chạy trong repo.
+`setup` sinh (hoặc merge) file `Taskfile.yml` ở thư mục hiện tại để dùng với [go-task](https://taskfile.dev/). Sau khi setup, dùng `task --list` để xem và chạy toàn bộ task có sẵn:
 
 ```bash
 go run . setup                # tạo/merge Taskfile.yml ở cwd
 go run . setup --dry-run      # xem nội dung sẽ ghi, không tạo file
 go run . setup --force        # ghi đè Taskfile.yml thay vì merge
 go run . setup --target ~/p   # ghi Taskfile.yml vào thư mục khác
-```
 
-Sau khi setup, dùng `task --list` để xem tất cả task và gọi trực tiếp:
-
-```bash
-task --list
-task ns:status
-task ns:preview
-task lint:docs:fix
-task go:test
+task --list                   # liệt kê tất cả task đã setup
+task ns:status                # ví dụ: chạy ns:status
 ```
 
 Setup flags:
