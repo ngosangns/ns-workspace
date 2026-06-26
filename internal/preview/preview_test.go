@@ -5577,17 +5577,20 @@ func TestRunHotReloadSupervisorRestartErrorP(t *testing.T) {
 	orig := startPreviewChildForTest
 	defer func() { startPreviewChildForTest = orig }()
 
-	// First call succeeds, second fails.
+	// First call succeeds, second fails. Use a channel to safely hand
+	// the first child's done channel from the stub goroutine to the
+	// main test goroutine; this avoids a data race on the variable.
 	var mu sync.Mutex
 	var callCount int
-	var firstDone chan previewChildResult
+	firstDoneCh := make(chan chan previewChildResult, 1)
 	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
 		mu.Lock()
 		callCount++
 		idx := callCount
 		mu.Unlock()
 		if idx == 1 {
-			firstDone = make(chan previewChildResult, 1)
+			firstDone := make(chan previewChildResult, 1)
+			firstDoneCh <- firstDone
 			return nil, firstDone, nil
 		}
 		return nil, nil, errors.New("restart failed")
@@ -5610,12 +5613,18 @@ func TestRunHotReloadSupervisorRestartErrorP(t *testing.T) {
 	}
 	// Wait for the next ticker to fire and supervisor to reach <-done.
 	time.Sleep(1200 * time.Millisecond)
-	mu.Lock()
-	fd := firstDone
-	mu.Unlock()
-	if fd != nil {
+	// Receive the first child's done channel from the stub via a channel
+	// (synchronized handoff). This avoids reading the variable directly
+	// from a different goroutine.
+	var firstDone chan previewChildResult
+	select {
+	case firstDone = <-firstDoneCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not receive first child done channel")
+	}
+	if firstDone != nil {
 		select {
-		case fd <- previewChildResult{err: nil}:
+		case firstDone <- previewChildResult{err: nil}:
 		default:
 		}
 	}
