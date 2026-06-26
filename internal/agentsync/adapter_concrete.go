@@ -161,7 +161,7 @@ func (a *AiderAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 // merge presets/minimax/config.json into ~/.mmx/config.json.
 func (m *MiniMaxAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	replace := update || ctx.Force
-	values, err := readPresetFile(ctx, "presets/minimax/config.json")
+	values, err := readPresetFileHook(ctx, "presets/minimax/config.json")
 	if err != nil {
 		return nil, err
 	}

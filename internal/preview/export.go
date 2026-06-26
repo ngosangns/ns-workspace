@@ -115,6 +115,17 @@ func normalizeExportOutputPath(cwd, out string) string {
 //go:embed export_ui
 var exportUIFS embed.FS
 
+// exportReadFileForTest lets tests stub the embedded asset reads.
+var exportReadFileForTest = func(name string) ([]byte, error) {
+	return exportUIFS.ReadFile(name)
+}
+
+// exportMarshalJSONForTest lets tests stub json.Marshal used inside injectBundle
+// so the normally-unreachable marshal error paths can be exercised.
+var exportMarshalJSONForTest = func(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+
 // exportOptions gom các tham số điều khiển một lần export tĩnh.
 type exportOptions struct {
 	projectRoot  string
@@ -511,11 +522,11 @@ func injectBundle(tmpl *template.Template, bundle okfBundle, name string, opt ex
 		return nil, fmt.Errorf("export template is nil")
 	}
 
-	styleCSS, err := exportUIFS.ReadFile(exportStylePath)
+	styleCSS, err := exportReadFileForTest(exportStylePath)
 	if err != nil {
 		return nil, fmt.Errorf("read export stylesheet: %w", err)
 	}
-	appJS, err := exportUIFS.ReadFile(exportAppScriptPath)
+	appJS, err := exportReadFileForTest(exportAppScriptPath)
 	if err != nil {
 		return nil, fmt.Errorf("read export script: %w", err)
 	}
@@ -527,11 +538,11 @@ func injectBundle(tmpl *template.Template, bundle okfBundle, name string, opt ex
 
 	// json.Marshal mặc định escape <, >, & thành \u003c/\u003e/\u0026, nên blob
 	// an toàn khi nhúng trong <script> (không thể đóng tag sớm bằng </script>).
-	bundleJSON, err := json.Marshal(bundle)
+	bundleJSON, err := exportMarshalJSONForTest(bundle)
 	if err != nil {
 		return nil, fmt.Errorf("marshal export bundle: %w", err)
 	}
-	nameJSON, err := json.Marshal(name)
+	nameJSON, err := exportMarshalJSONForTest(name)
 	if err != nil {
 		return nil, fmt.Errorf("marshal bundle name: %w", err)
 	}
@@ -558,11 +569,11 @@ func injectBundle(tmpl *template.Template, bundle okfBundle, name string, opt ex
 func buildVendorHead(inline bool) (template.HTML, error) {
 	var head strings.Builder
 	if inline {
-		cytoscape, err := exportUIFS.ReadFile(exportCytoscapePath)
+		cytoscape, err := exportReadFileForTest(exportCytoscapePath)
 		if err != nil {
 			return "", fmt.Errorf("read third-party cytoscape: %w", err)
 		}
-		marked, err := exportUIFS.ReadFile(exportMarkedPath)
+		marked, err := exportReadFileForTest(exportMarkedPath)
 		if err != nil {
 			return "", fmt.Errorf("read third-party marked: %w", err)
 		}

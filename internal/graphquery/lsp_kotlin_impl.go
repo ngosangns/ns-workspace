@@ -11,6 +11,11 @@ type kotlinImplementation struct{}
 
 var resolveArchiveSource = defaultKotlinArchiveSource
 
+// runtimeOS / runtimeArch là seam test: cho phép thay thế runtime.GOOS/GOARCH
+// để test các nhánh phụ thuộc OS/Arch.
+var runtimeOS = func() string { return runtime.GOOS }
+var runtimeArch = func() string { return runtime.GOARCH }
+
 func (kotlinImplementation) installSpec() InstallSpec {
 	return InstallSpec{
 		ID:         "kotlin",
@@ -71,31 +76,31 @@ func defaultKotlinArchiveSource(spec InstallSpec) (ArchiveSource, error) {
 	suffix := ""
 	extension := ""
 	sha := ""
-	switch runtime.GOOS {
+	switch runtimeOS() {
 	case "darwin":
 		extension = "sit"
-		switch runtime.GOARCH {
+		switch runtimeArch() {
 		case "arm64":
 			suffix = "-aarch64"
 			sha = "1b745743ce22ad92681a1bc3b1046803e942a6e1f36e04fb85ae9a40334a2f1e"
 		case "amd64":
 			sha = "6f06efe7a10f94b9c8a028c4efeb6c7e1769f47a01edfb74450acf30ab5665e4"
 		default:
-			return ArchiveSource{}, fmt.Errorf("Kotlin LSP archive install does not support darwin/%s", runtime.GOARCH)
+			return ArchiveSource{}, fmt.Errorf("Kotlin LSP archive install does not support darwin/%s", runtimeArch())
 		}
 	case "linux":
 		extension = "tar.gz"
-		switch runtime.GOARCH {
+		switch runtimeArch() {
 		case "arm64":
 			suffix = "-aarch64"
 			sha = "625870ae091c6d0dee25514d545c708a6ea50d7cbb5154aaf1aa9123ccff338b"
 		case "amd64":
 			sha = "46971110c9b8a3360ce3fdf5437467f4c447dad37ad73dbf81d64af6779e4105"
 		default:
-			return ArchiveSource{}, fmt.Errorf("Kotlin LSP archive install does not support linux/%s", runtime.GOARCH)
+			return ArchiveSource{}, fmt.Errorf("Kotlin LSP archive install does not support linux/%s", runtimeArch())
 		}
 	default:
-		return ArchiveSource{}, fmt.Errorf("Kotlin LSP archive install does not support %s/%s", runtime.GOOS, runtime.GOARCH)
+		return ArchiveSource{}, fmt.Errorf("Kotlin LSP archive install does not support %s/%s", runtimeOS(), runtimeArch())
 	}
 	fileName := fmt.Sprintf("kotlin-server-%s%s.%s", version, suffix, extension)
 	format := extension

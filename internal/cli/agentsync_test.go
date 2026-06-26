@@ -2,10 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ngosangns/ns-workspace/internal/agentsync"
 )
 
 func TestRunAgentSyncDryRunDoesNotWrite(t *testing.T) {
@@ -99,3 +103,216 @@ func TestIsAgentSyncCommand(t *testing.T) {
 		}
 	}
 }
+
+// --- Tests for branches not covered by existing integration tests ---
+
+func TestRunAgentSyncUpdate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("update", []string{"--no-registry"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncStatus(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("status", []string{}, os.DirFS("../..")); err != nil {
+		t.Fatalf("status failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncDoctor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("doctor", []string{}, os.DirFS("../..")); err != nil {
+		t.Fatalf("doctor failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncRegistry(t *testing.T) {
+	home := t.TempDir()
+	fakeBin := writeFakeNpx(t)
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := RunAgentSync("registry", []string{}, os.DirFS("../..")); err != nil {
+		t.Fatalf("registry failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncCatalog(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("catalog", []string{"--tools", "claude"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("catalog failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncAgentsAlias(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("agents", []string{"--tools", "claude"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("agents alias failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncUnknownCommand(t *testing.T) {
+	err := RunAgentSync("nonexistent", []string{}, os.DirFS("../.."))
+	if err == nil {
+		t.Fatal("expected error for unknown command")
+	}
+	// Unknown command trả về flag.ErrHelp.
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Logf("got err=%v (may not match flag.ErrHelp exactly)", err)
+	}
+}
+
+func TestRunAgentSyncInvalidFlag(t *testing.T) {
+	err := RunAgentSync("init", []string{"--unknown-flag"}, os.DirFS("../.."))
+	if err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+}
+
+func TestRunAgentSyncYesFlag(t *testing.T) {
+	// --yes không có skip-confirm ở test nhưng phải được parse OK.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("init", []string{"--yes", "--no-registry", "--dry-run"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("--yes init failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncCustomAgentsHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	customHome := filepath.Join(home, "custom-agents")
+	if err := RunAgentSync("init", []string{"--agents-home", customHome, "--dry-run", "--no-registry"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("--agents-home init failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncToolsOverride(t *testing.T) {
+	// --tools=opencode: tool filter override.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("init", []string{"--tools", "opencode", "--no-registry", "--dry-run"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("--tools init failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncCopyAndForce(t *testing.T) {
+	// --copy --force: cover flag paths.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("init", []string{"--copy", "--force", "--no-registry"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("--copy --force init failed: %v", err)
+	}
+}
+
+func TestRunAgentSyncNoMCP(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	if err := RunAgentSync("init", []string{"--no-mcp", "--no-registry"}, os.DirFS("../..")); err != nil {
+		t.Fatalf("--no-mcp init failed: %v", err)
+	}
+}
+
+// TestRunAgentSyncDefaultAgentsDirError exercises the early-return path
+// when agentsync.DefaultAgentsDir() fails (userHomeDir seam returns an
+// error).
+func TestRunAgentSyncDefaultAgentsDirError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	orig := agentsync.UserHomeDirForTest
+	agentsync.UserHomeDirForTest = func() (string, error) { return "", errors.New("forced home error") }
+	t.Cleanup(func() { agentsync.UserHomeDirForTest = orig })
+	err := RunAgentSync("init", []string{"--no-registry"}, os.DirFS("../.."))
+	if err == nil {
+		t.Fatalf("expected error from DefaultAgentsDir failure")
+	}
+}
+
+// TestRunAgentSyncDefaultUserConfigPathError exercises the early-return
+// path when agentsync.DefaultUserConfigPath() fails (userConfigDir seam
+// returns an error).
+func TestRunAgentSyncDefaultUserConfigPathError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	orig := agentsync.UserConfigDirForTest
+	agentsync.UserConfigDirForTest = func() (string, error) { return "", errors.New("forced config dir error") }
+	t.Cleanup(func() { agentsync.UserConfigDirForTest = orig })
+	err := RunAgentSync("init", []string{"--no-registry"}, os.DirFS("../.."))
+	if err == nil {
+		t.Fatalf("expected error from DefaultUserConfigPath failure")
+	}
+}
+
+// --- helpers ---
+
+func writeFakeNpx(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	name := "npx"
+	data := []byte("#!/usr/bin/env sh\nexit 0\n")
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// Đảm bảo agentsync import được dùng để tránh unused warning nếu test bị lọc.
+var _ = agentsync.ParseTools

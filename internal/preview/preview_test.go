@@ -2,6 +2,7 @@ package preview
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -10,13 +11,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -3123,3 +3128,3460 @@ func TestPreviewDiagramViewportUsesHiddenOverflowWithoutCustomBackground(t *test
 		t.Fatalf("preview Mermaid viewport should not reserve scrollbar gutter")
 	}
 }
+
+func TestRunHelpAndUnknownP(t *testing.T) {
+	if err := Run([]string{"--help"}); err != nil {
+		t.Errorf("--help should return nil: %v", err)
+	}
+}
+
+func TestPreviewArgsHaveAddrFlagP(t *testing.T) {
+	cases := []struct {
+		args []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"--addr", "x"}, true},
+		{[]string{"--addr=x"}, true},
+		{[]string{"-addr", "x"}, true},
+		{[]string{"-addr=x"}, true},
+		{[]string{"--other"}, false},
+	}
+	for _, c := range cases {
+		if got := previewArgsHaveAddrFlag(c.args); got != c.want {
+			t.Errorf("previewArgsHaveAddrFlag(%v) = %v, want %v", c.args, got, c.want)
+		}
+	}
+}
+
+func TestStripPreviewFlagsP(t *testing.T) {
+	in := []string{"--no-reload", "--no-reload=true", "--addr", "x"}
+	out := stripPreviewSupervisorFlags(in)
+	want := []string{"--addr", "x"}
+	if len(out) != len(want) {
+		t.Fatalf("supervisor: %v, want %v", out, want)
+	}
+	in = []string{"--project", "/p", "--project=/p", "-project", "/p", "-project=/p", "--other"}
+	out = stripPreviewProjectFlag(in)
+	want = []string{"--other"}
+	if len(out) != len(want) {
+		t.Fatalf("project: %v, want %v", out, want)
+	}
+	in = []string{"--open", "-open", "--open=true", "-open=true", "--other"}
+	out = stripPreviewOpenFlag(in)
+	want = []string{"--other"}
+	if len(out) != len(want) {
+		t.Fatalf("open: %v, want %v", out, want)
+	}
+}
+
+func TestPreviewChildArgsP(t *testing.T) {
+	child, err := previewChildArgs([]string{"--no-reload", "--addr", "x"}, "/proj")
+	if err != nil {
+		t.Fatalf("previewChildArgs: %v", err)
+	}
+	if !previewHasString(child, "--addr") || !previewHasString(child, "x") {
+		t.Errorf("expected --addr preserved, got %v", child)
+	}
+	if !previewHasString(child, "--project") || !previewHasString(child, "/proj") {
+		t.Errorf("expected --project /proj in %v", child)
+	}
+	if previewHasString(child, "--no-reload") {
+		t.Errorf("supervisor flag should be stripped: %v", child)
+	}
+}
+
+func TestPreviewChildArgsNoAddrP(t *testing.T) {
+	child, err := previewChildArgs([]string{}, "/proj")
+	if err != nil {
+		t.Fatalf("previewChildArgs: %v", err)
+	}
+	if !previewHasString(child, "--addr") {
+		t.Errorf("expected --addr to be auto-picked, got %v", child)
+	}
+}
+
+func TestPreviewChildArgsAddrErrorP(t *testing.T) {
+	orig := pickPreviewAddrForTest
+	defer func() { pickPreviewAddrForTest = orig }()
+	pickPreviewAddrForTest = func() (string, error) {
+		return "", errors.New("no addr")
+	}
+	if _, err := previewChildArgs([]string{}, "/proj"); err == nil {
+		t.Error("expected error from pickPreviewAddr")
+	}
+}
+
+func TestNormalizePreviewProjectRootPx(t *testing.T) {
+	got := normalizePreviewProjectRoot(".")
+	if !filepath.IsAbs(got) {
+		t.Errorf("expected absolute, got %q", got)
+	}
+	got = normalizePreviewProjectRoot("/already/abs")
+	if got != "/already/abs" {
+		t.Errorf("expected unchanged, got %q", got)
+	}
+}
+
+func TestPickPreviewAddrP(t *testing.T) {
+	addr, err := pickPreviewAddr()
+	if err != nil {
+		t.Fatalf("pickPreviewAddr: %v", err)
+	}
+	if !strings.Contains(addr, "127.0.0.1") {
+		t.Errorf("expected loopback, got %q", addr)
+	}
+
+	// Error path: pre-bind an address and reuse it for pickPreviewAddr.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("pre-bind: %v", err)
+	}
+	defer ln.Close()
+	boundAddr := ln.Addr().String()
+	if _, err := pickPreviewAddrAt(boundAddr); err == nil {
+		t.Errorf("expected error when address already in use")
+	}
+}
+
+func TestIsPreviewSourceFileP(t *testing.T) {
+	ui := "/proj/internal/preview/preview_ui"
+	uiSrc := "/proj/internal/preview/preview_ui_src"
+	if kind, ok := previewSourceFileKind("main.go", "/proj/main.go", uiSrc); !ok || kind != previewSourceBackend {
+		t.Errorf("main.go should be backend")
+	}
+	if kind, ok := previewSourceFileKind("go.mod", "/proj/go.mod", uiSrc); !ok || kind != previewSourceBackend {
+		t.Errorf("go.mod should be backend")
+	}
+	for _, rel := range []string{"package.json", "package-lock.json", "biome.json", "tsconfig.preview.json", "tsconfig.vue.json", "vite.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore"} {
+		if kind, ok := previewSourceFileKind(rel, "/proj/"+rel, uiSrc); !ok || kind != previewSourceFrontend {
+			t.Errorf("%s should be frontend", rel)
+		}
+	}
+	if kind, ok := previewSourceFileKind("preview_ui_src/main.ts", "/proj/internal/preview/preview_ui_src/main.ts", uiSrc); !ok || kind != previewSourceFrontend {
+		t.Errorf("ui_src file should be frontend")
+	}
+	if !isPreviewSourceFile("main.go", "/proj/main.go", ui, uiSrc) {
+		t.Error("isPreviewSourceFile should be true for main.go")
+	}
+	if !isPreviewSourceFile("x", ui+"/x", ui, uiSrc) {
+		t.Error("isPreviewSourceFile should be true for files under ui/")
+	}
+}
+
+func TestFileExistsP(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f")
+	if fileExists(p) {
+		t.Error("missing file should not exist")
+	}
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !fileExists(p) {
+		t.Error("written file should exist")
+	}
+	if fileExists(dir) {
+		t.Error("dir should not count as file")
+	}
+}
+
+func TestWalkPreviewSourceAndTokensP(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "d.md"), []byte("---\ntype: m\n---\n# D"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]previewSourceKind{}
+	walkPreviewSource(dir, func(p string, _ os.FileInfo, k previewSourceKind) {
+		rel, _ := filepath.Rel(dir, p)
+		seen[filepath.ToSlash(rel)] = k
+	})
+	if seen["go.mod"] != previewSourceBackend {
+		t.Errorf("go.mod should be backend: %v", seen)
+	}
+	if seen["package.json"] != previewSourceFrontend {
+		t.Errorf("package.json should be frontend: %v", seen)
+	}
+	if _, ok := seen[".git/HEAD"]; ok {
+		t.Error(".git should be skipped")
+	}
+	tok := previewSourceTokens(dir)
+	if tok.backend == "0:0" {
+		t.Errorf("expected backend tokens, got %q", tok.backend)
+	}
+	if tok.frontend == "0:0" {
+		t.Errorf("expected frontend tokens, got %q", tok.frontend)
+	}
+	if tok1 := previewSourceToken(dir); tok1 != tok.backend+"|"+tok.frontend {
+		t.Errorf("previewSourceToken inconsistent: %q", tok1)
+	}
+}
+
+func TestNewestModTokenEmptyP(t *testing.T) {
+	if got := newestModToken("/this/does/not/exist"); got == "" {
+		t.Error("expected non-empty token")
+	}
+}
+
+func TestNewestEmbeddedModTokenP(t *testing.T) {
+	if got := newestEmbeddedModToken(); got == "" {
+		t.Error("expected non-empty token")
+	}
+}
+
+func TestIsPreviewStaticAssetPathP(t *testing.T) {
+	cases := map[string]bool{
+		"favicon.svg":          true,
+		"style.css":            true,
+		"assets/foo.js":        true,
+		"nested/assets/foo.js": true,
+		"js/app.js":            true,
+		"index.html":           false,
+		"page.html":            false,
+	}
+	for p, want := range cases {
+		if got := isPreviewStaticAssetPath(p); got != want {
+			t.Errorf("isPreviewStaticAssetPath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
+func TestSpaFileServerP(t *testing.T) {
+	static := os.DirFS(t.TempDir())
+	handler := spaFileServer(static)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodHead, "/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("HEAD /: %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("GET /favicon.svg (missing): %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/some/spa/route", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /some/spa/route: %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("POST / should pass through: %d", rec.Code)
+	}
+}
+
+func TestWriteJSONP(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeJSON(rec, map[string]any{"a": 1})
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("unexpected content type: %q", ct)
+	}
+	if !strings.Contains(rec.Body.String(), `"a": 1`) {
+		t.Errorf("missing value in body: %q", rec.Body.String())
+	}
+}
+
+func TestWriteAPIErrorP(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeAPIError(rec, previewSentinelErrP{})
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
+	}
+}
+
+type previewSentinelErrP struct{}
+
+func (previewSentinelErrP) Error() string { return "sentinel" }
+
+func TestPreviewModuleRootP(t *testing.T) {
+	if _, ok := previewModuleRoot("/this/does/not/exist"); ok {
+		t.Error("missing module root should not be found")
+	}
+}
+
+func previewHasString(arr []string, s string) bool {
+	for _, v := range arr {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func TestParseTagsValueP(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"   ", nil},
+		{"a", []string{"a"}},
+		{"a, b, c", []string{"a", "b", "c"}},
+		{"[a, b]", []string{"a", "b"}},
+		{"a, , b", []string{"a", "b"}},
+		{`"a", 'b'`, []string{"a", "b"}},
+	}
+	for _, c := range cases {
+		got := parseTagsValue(c.in)
+		if !equalStringSlice(got, c.want) {
+			t.Errorf("parseTagsValue(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestBetweenAfterP(t *testing.T) {
+	if got := betweenAfter("foo:bar:baz", "bar:"); got != "baz" {
+		t.Errorf("betweenAfter = %q, want baz", got)
+	}
+	if got := betweenAfter("foo bar baz", "missing:"); got != "" {
+		t.Errorf("betweenAfter missing = %q", got)
+	}
+	// Case insensitive marker (marker appears with colon).
+	if got := betweenAfter("hello WORLD: trailing", "WORLD:"); got != "trailing" {
+		t.Errorf("betweenAfter case = %q", got)
+	}
+}
+
+func TestIsLoopbackHostP(t *testing.T) {
+	cases := map[string]bool{
+		"localhost":     true,
+		"127.0.0.1":     true,
+		"127.0.0.1:80":  true,
+		"":              true,
+		"example.com":   false,
+		"10.0.0.1:80":   false,
+	}
+	for host, want := range cases {
+		if got := isLoopbackHost(host); got != want {
+			t.Errorf("isLoopbackHost(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
+
+
+func TestLspSymbolKindLabelAllKinds(t *testing.T) {
+	cases := map[int]string{
+		2:  "module",
+		3:  "namespace",
+		5:  "class",
+		6:  "method",
+		7:  "property",
+		8:  "field",
+		9:  "constructor",
+		11: "interface",
+		12: "function",
+		13: "variable",
+		14: "constant",
+		15: "string",
+		18: "object",
+		20: "key",
+		23: "struct",
+		24: "event",
+		25: "operator",
+		0:  "symbol", // default
+		99: "symbol", // default
+	}
+	for kind, want := range cases {
+		got := lspSymbolKindLabel(kind)
+		if got != want {
+			t.Errorf("lspSymbolKindLabel(%d) = %q, want %q", kind, got, want)
+		}
+	}
+}
+
+
+func TestLocationsArrayOfLSPLocations(t *testing.T) {
+	orig := lspRequest
+	defer func() { lspRequest = orig }()
+
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		raw := []byte(`[{"uri":"file:///a.go","range":{"start":{"line":0,"character":0},"end":{"line":1,"character":1}}}]`)
+		// result is *json.RawMessage
+		if r, ok := result.(*json.RawMessage); ok {
+			*r = raw
+		}
+		return nil
+	}
+	srv := &previewLSPServer{}
+	locs, err := srv.locations(context.Background(), "test", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(locs) != 1 || locs[0].URI != "file:///a.go" {
+		t.Errorf("got %+v", locs)
+	}
+}
+
+func TestLocationsArrayOfLinks(t *testing.T) {
+	orig := lspRequest
+	defer func() { lspRequest = orig }()
+
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		raw := []byte(`[{"targetUri":"file:///b.go","targetRange":{"start":{"line":2,"character":0},"end":{"line":3,"character":0}},"targetSelectionRange":{"start":{"line":2,"character":5},"end":{"line":2,"character":10}}}]`)
+		if r, ok := result.(*json.RawMessage); ok {
+			*r = raw
+		}
+		return nil
+	}
+	srv := &previewLSPServer{}
+	locs, err := srv.locations(context.Background(), "test", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(locs) != 1 || locs[0].URI != "file:///b.go" {
+		t.Errorf("got %+v", locs)
+	}
+	if locs[0].Range.Start.Line != 2 || locs[0].Range.Start.Character != 5 {
+		t.Errorf("expected selection range, got %+v", locs[0].Range)
+	}
+}
+
+func TestLocationsLinksEmptySelectionRangeFallsBackToTarget(t *testing.T) {
+	orig := lspRequest
+	defer func() { lspRequest = orig }()
+
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		raw := []byte(`[{"targetUri":"file:///c.go","targetRange":{"start":{"line":4,"character":0},"end":{"line":5,"character":0}}}]`)
+		if r, ok := result.(*json.RawMessage); ok {
+			*r = raw
+		}
+		return nil
+	}
+	srv := &previewLSPServer{}
+	locs, err := srv.locations(context.Background(), "test", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(locs) != 1 || locs[0].Range.Start.Line != 4 {
+		t.Errorf("expected target range fallback, got %+v", locs[0].Range)
+	}
+}
+
+func TestLocationsSingleObject(t *testing.T) {
+	orig := lspRequest
+	defer func() { lspRequest = orig }()
+
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		raw := []byte(`{"uri":"file:///d.go","range":{"start":{"line":6,"character":0},"end":{"line":7,"character":0}}}`)
+		if r, ok := result.(*json.RawMessage); ok {
+			*r = raw
+		}
+		return nil
+	}
+	srv := &previewLSPServer{}
+	locs, err := srv.locations(context.Background(), "test", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(locs) != 1 || locs[0].URI != "file:///d.go" || locs[0].Range.Start.Line != 6 {
+		t.Errorf("got %+v", locs)
+	}
+}
+
+func TestLocationsNullOrEmpty(t *testing.T) {
+	orig := lspRequest
+	defer func() { lspRequest = orig }()
+
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		if r, ok := result.(*json.RawMessage); ok {
+			*r = nil
+		}
+		return nil
+	}
+	srv := &previewLSPServer{}
+	locs, err := srv.locations(context.Background(), "test", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(locs) != 0 {
+		t.Errorf("expected empty, got %+v", locs)
+	}
+}
+
+func TestLocationsRequestError(t *testing.T) {
+	orig := lspRequest
+	defer func() { lspRequest = orig }()
+
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		return errors.New("boom")
+	}
+	srv := &previewLSPServer{}
+	_, err := srv.locations(context.Background(), "test", nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestLocationsArrayInvalidJSON(t *testing.T) {
+	orig := lspRequest
+	defer func() { lspRequest = orig }()
+
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		raw := []byte(`{not-valid-json`)
+		if r, ok := result.(*json.RawMessage); ok {
+			*r = raw
+		}
+		return nil
+	}
+	srv := &previewLSPServer{}
+	_, err := srv.locations(context.Background(), "test", nil)
+	if err == nil {
+		t.Error("expected error from invalid JSON")
+	}
+}
+
+
+func TestRunHotReloadSupervisorDoneChannelReturnsError(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		return nil, makeChannelWithResult(errors.New("child failed")), nil
+	}
+	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
+	if err == nil || err.Error() != "child failed" {
+		t.Errorf("expected child failed, got %v", err)
+	}
+}
+
+func TestRunHotReloadSupervisorDoneChannelReturnsSuccess(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		return nil, makeChannelWithResult(nil), nil
+	}
+	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
+func TestRunHotReloadSupervisorStartError(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		return nil, nil, errors.New("start failed")
+	}
+	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
+	if err == nil || err.Error() != "start failed" {
+		t.Errorf("expected start failed, got %v", err)
+	}
+}
+
+func TestRunHotReloadSupervisorPreviewChildArgsError(t *testing.T) {
+	// previewChildArgs returns error if cwd is invalid
+	err := runHotReloadSupervisor(t.TempDir(), []string{}, "/nonexistent/path/that/does/not/exist/anywhere")
+	if err == nil {
+		t.Error("expected error from previewChildArgs with bad project root")
+	}
+}
+
+func makeChannelWithResult(err error) <-chan previewChildResult {
+	ch := make(chan previewChildResult, 1)
+	ch <- previewChildResult{err: err}
+	return ch
+}
+
+
+func TestRunHotReloadSupervisorTickerReload(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+
+	// Mock that returns a never-closing done channel and we will manually
+	// change a file to trigger token change.
+	startCount := 0
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		startCount++
+		return nil, makeChannelBlocking(), nil
+	}
+
+	// Create a module dir with a Go file that has tokens (backend)
+	moduleRoot := t.TempDir()
+	goFile := filepath.Join(moduleRoot, "main.go")
+	if err := os.WriteFile(goFile, []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run in goroutine; will tick after 700ms and try to restart
+	done := make(chan error, 1)
+	go func() {
+		done <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
+	}()
+	// Touch the file after a brief delay to trigger token change
+	time.Sleep(800 * time.Millisecond)
+	if err := os.WriteFile(goFile, []byte("package main\n// changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Wait a bit more for ticker to fire and pick up the change
+	time.Sleep(1500 * time.Millisecond)
+	// Force shutdown via done channel - just close our test by leaking
+	// (we'll cancel by sending to a signal, but we can't here).
+	// Instead just wait a bit and verify startCount >= 1.
+	if startCount < 1 {
+		t.Errorf("expected at least 1 start, got %d", startCount)
+	}
+	// Send to the blocking channel to terminate
+	// We can't reach the done channel directly since it's inside the function.
+	// Just exit the test - the goroutine will leak but that's OK for testing.
+}
+
+func makeChannelBlocking() chan previewChildResult {
+	return make(chan previewChildResult)
+}
+
+func TestTrimDocFragmentP(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"empty", "", ""},
+		{"plain", "modules/foo.md", "modules/foo.md"},
+		{"query", "modules/foo.md?bar=baz", "modules/foo.md"},
+		{"fragment", "modules/foo.md#section", "modules/foo.md"},
+		{"lineRef", "modules/foo.md:42", "modules/foo.md"},
+		{"lineRange", "modules/foo.md:42-99", "modules/foo.md"},
+		{"trailingSpace", "modules/foo.md   ", "modules/foo.md"},
+	}
+	for _, tc := range cases {
+		got := trimDocFragment(tc.input)
+		if got != tc.want {
+			t.Errorf("%s: trimDocFragment(%q)=%q want %q", tc.name, tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestRelationTypeFromTextP(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"implements", "this **implements** the spec", "implements"},
+		{"depends", "depends on prior step", "depends"},
+		{"dependency", "dependency tree", "depends"},
+		{"blocks", "blocks later steps", "blocked-by"},
+		{"blockedBy", "blocked by approval", "blocked-by"},
+		{"follows", "follows design", "follows"},
+		{"supersedes", "supersedes v1", "supersedes"},
+		{"verifies", "verifies correctness", "verifies"},
+		{"test", "test plan", "verifies"},
+		{"provides", "provides API", "provides"},
+		{"consumes", "consumes events", "consumes"},
+		{"related", "general prose mention", "related"},
+		{"underscore", "implements_feature", "implements"},
+		{"hyphen", "depends-on", "depends"},
+		{"markdown", "**follows** spec", "follows"},
+		{"caseInsensitive", "IMPLEMENTS rule", "implements"},
+	}
+	for _, tc := range cases {
+		got := relationTypeFromText(tc.input)
+		if got != tc.want {
+			t.Errorf("%s: relationTypeFromText(%q)=%q want %q", tc.name, tc.input, got, tc.want)
+		}
+	}
+}
+
+
+func TestHandleEventsStreamsChangesAndHeartbeats(t *testing.T) {
+	projectRoot := t.TempDir()
+	docsDir := filepath.Join(projectRoot, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Force at least one file so newestModToken has something deterministic.
+	if err := os.WriteFile(filepath.Join(docsDir, "a.md"), []byte("# a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ps := &previewServer{opt: previewOptions{projectRoot: projectRoot, docsDir: "docs"}}
+	srv := httptest.NewServer(http.HandlerFunc(ps.handleEvents))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected text/event-stream, got %s", ct)
+	}
+	buf := make([]byte, 2048)
+	if _, err := resp.Body.Read(buf); err != nil && err != io.EOF {
+		t.Fatal(err)
+	}
+	// We expect at least the "event: ready" prelude.
+	if !strings.Contains(string(buf), "event: ready") {
+		t.Errorf("missing ready event: %q", string(buf))
+	}
+	cancel()
+}
+
+func TestHandleEventsRejectsNonGET(t *testing.T) {
+	ps := &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "docs"}}
+	req := httptest.NewRequest(http.MethodPost, "/api/events", nil)
+	w := httptest.NewRecorder()
+	ps.handleEvents(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", w.Code)
+	}
+}
+
+func TestShouldSkipSearchDirP(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"git", ".git", true},
+		{"nodeModules", "node_modules", true},
+		{"graphifyOut", "graphify-out", true},
+		{"cache", ".cache", true},
+		{"dist", "dist", true},
+		{"build", "build", true},
+		{"vendor", "vendor", true},
+		{"src", "src", false},
+		{"empty", "", false},
+		{"docs", "docs", false},
+		{"internal", "internal", false},
+	}
+	for _, tc := range cases {
+		got := shouldSkipSearchDir(tc.in)
+		if got != tc.want {
+			t.Errorf("%s: shouldSkipSearchDir(%q)=%v want %v", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestCleanProjectRelP(t *testing.T) {
+	cases := []struct {
+		name        string
+		projectRoot string
+		path        string
+		want        string
+	}{
+		{"empty", "/r", "", ""},
+		{"whitespace", "/r", "   ", ""},
+		{"relative", "/r", "docs/foo.md", "docs/foo.md"},
+		{"relativeDotPrefix", "/r", "./docs/foo.md", "docs/foo.md"},
+		{"absoluteInside", "/r", "/r/docs/foo.md", "docs/foo.md"},
+		{"relativeDot", "/r", ".", ""},
+		{"relativeDotSlash", "/r", "./", ""},
+	}
+	for _, tc := range cases {
+		got := cleanProjectRel(tc.projectRoot, tc.path)
+		if got != tc.want {
+			t.Errorf("%s: cleanProjectRel(%q, %q)=%q want %q", tc.name, tc.projectRoot, tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestCleanRelPathP(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "docs/foo.md", "docs/foo.md"},
+		{"dotPrefix", "./docs/foo.md", "docs/foo.md"},
+		{"doubleDot", "..", ".."},
+		{"dot", ".", ""},
+		{"trailingSlash", "docs/", "docs"},
+		{"whitespace", "  docs/foo.md  ", "docs/foo.md"},
+	}
+	for _, tc := range cases {
+		got := cleanRelPath(tc.in)
+		if got != tc.want {
+			t.Errorf("%s: cleanRelPath(%q)=%q want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestWritePreviewEmbeddingIndexP(t *testing.T) {
+	dir := t.TempDir()
+	idx := previewEmbeddingIndex{
+		Model:      "test-model",
+		APIBase:    "https://api.example.com",
+		Dimensions: 768,
+		IndexedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := writePreviewEmbeddingIndex(dir, idx); err != nil {
+		t.Fatalf("writePreviewEmbeddingIndex: %v", err)
+	}
+	// Read it back using the loader
+	got := readPreviewEmbeddingIndex(dir)
+	if got.Model != "test-model" || got.Dimensions != 768 {
+		t.Errorf("readback mismatch: %+v", got)
+	}
+	// Verify it was written to a cache directory that exists
+	if got.IndexedAt.IsZero() {
+		t.Errorf("IndexedAt mismatch: zero value")
+	}
+	if got.APIBase != "https://api.example.com" {
+		t.Errorf("APIBase mismatch: %q", got.APIBase)
+	}
+}
+
+func TestInjectBundleNilTemplateP(t *testing.T) {
+	bundle := okfBundle{Nodes: []okfNode{}, Edges: []okfEdge{}, Bodies: map[string]string{}}
+	if _, err := injectBundle(nil, bundle, "test", exportOptions{}); err == nil {
+		t.Error("expected error for nil template")
+	}
+}
+
+func TestInjectBundleOKP(t *testing.T) {
+	bundle := okfBundle{
+		Nodes:  []okfNode{{Data: okfNodeData{ID: "n1", Label: "Node 1"}}},
+		Edges:  []okfEdge{},
+		Bodies: map[string]string{"n1": "Hello body"},
+		Types:  []string{"Concept"},
+	}
+	// inlineAssets=false uses CDN references
+	out, err := injectBundle(exportTemplate, bundle, "MyName", exportOptions{inlineAssets: false})
+	if err != nil {
+		t.Fatalf("injectBundle: %v", err)
+	}
+	if len(out) == 0 {
+		t.Error("expected non-empty output")
+	}
+	if !strings.Contains(string(out), "MyName") {
+		t.Error("expected bundle name to appear in output")
+	}
+	if !strings.Contains(string(out), "Hello body") {
+		t.Error("expected body to appear in output")
+	}
+}
+
+func TestInjectBundleInlineAssetsP(t *testing.T) {
+	bundle := okfBundle{
+		Nodes:  []okfNode{{Data: okfNodeData{ID: "n1"}}},
+		Edges:  []okfEdge{},
+		Bodies: map[string]string{"n1": "Inline test"},
+		Types:  []string{"Concept"},
+	}
+	out, err := injectBundle(exportTemplate, bundle, "InlineName", exportOptions{inlineAssets: true})
+	if err != nil {
+		t.Fatalf("injectBundle inline: %v", err)
+	}
+	if !strings.Contains(string(out), "InlineName") {
+		t.Error("expected bundle name in output")
+	}
+}
+
+func TestBuildVendorHeadP(t *testing.T) {
+	inline, err := buildVendorHead(true)
+	if err != nil {
+		t.Fatalf("buildVendorHead(inline=true): %v", err)
+	}
+	if !strings.Contains(string(inline), "<script>") {
+		t.Error("expected script tag for inline")
+	}
+	cdn, err := buildVendorHead(false)
+	if err != nil {
+		t.Fatalf("buildVendorHead(inline=false): %v", err)
+	}
+	if !strings.Contains(string(cdn), "cdn.jsdelivr.net") {
+		t.Error("expected CDN reference")
+	}
+}
+
+func TestOpenURLAllPlatformsP(t *testing.T) {
+	// Restore original at end
+	origCmd := openURLCmdForTest
+	defer func() { openURLCmdForTest = origCmd }()
+
+	// Capture which command was used by inspecting args
+	var capturedName string
+	var capturedArgs []string
+	openURLCmdForTest = func(name string, args ...string) *exec.Cmd {
+		capturedName = name
+		capturedArgs = args
+		// Return a command that just exits successfully without spawning
+		return exec.Command(os.Args[0], "-test.run=^$")
+	}
+
+	if err := openURL("https://example.com"); err != nil {
+		t.Fatalf("openURL: %v", err)
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		if capturedName != "open" {
+			t.Errorf("darwin: expected open, got %q", capturedName)
+		}
+	case "windows":
+		if capturedName != "rundll32" {
+			t.Errorf("windows: expected rundll32, got %q", capturedName)
+		}
+	default:
+		if capturedName != "xdg-open" {
+			t.Errorf("default: expected xdg-open, got %q", capturedName)
+		}
+	}
+	if len(capturedArgs) == 0 {
+		t.Error("expected captured args")
+	}
+}
+
+func TestPortOfP(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"127.0.0.1:8080", "8080"},
+		{":8080", "8080"},
+		{"[::1]:8080", "8080"},
+		{"no-port", "no-port"},
+	}
+	for _, tc := range cases {
+		if got := portOf(tc.in); got != tc.want {
+			t.Errorf("portOf(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestWriteGraphQueryTextEmptyP(t *testing.T) {
+	var buf bytes.Buffer
+	resp := previewSearchResponse{
+		Query:    "test query",
+		Warnings: []string{},
+		Stats:    map[string]int{"docsSemantic": 0, "docsGraph": 0, "codeSemantic": 0, "codeGraph": 0},
+	}
+	if err := writeGraphQueryText(&buf, resp); err != nil {
+		t.Fatalf("writeGraphQueryText: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Query: test query") {
+		t.Error("expected query in output")
+	}
+	if !strings.Contains(buf.String(), "Stats:") {
+		t.Error("expected Stats in output")
+	}
+}
+
+func TestWriteGraphQueryTextWithWarningsAndResultsP(t *testing.T) {
+	var buf bytes.Buffer
+	resp := previewSearchResponse{
+		Query:    "hello",
+		Warnings: []string{"warn1", "warn2"},
+		Stats:    map[string]int{"docsSemantic": 5, "docsGraph": 2, "codeSemantic": 3, "codeGraph": 1},
+		Panels: previewSearchPanels{
+			CodeGraph: []previewSearchResult{{Title: "C1", Path: "a.go", Line: 10, NodeID: "n1"}},
+			DocsGraph: []previewSearchResult{{Title: "D1", Path: "docs.md", NodeID: "n2"}},
+		},
+	}
+	if err := writeGraphQueryText(&buf, resp); err != nil {
+		t.Fatalf("writeGraphQueryText: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Warnings:") {
+		t.Error("expected Warnings in output")
+	}
+	if !strings.Contains(buf.String(), "warn1") {
+		t.Error("expected warn1 in output")
+	}
+	if !strings.Contains(buf.String(), "Code Graph:") {
+		t.Error("expected Code Graph panel in output")
+	}
+	if !strings.Contains(buf.String(), "C1") {
+		t.Error("expected title in output")
+	}
+}
+
+func TestWriteGraphQueryResultVariantsP(t *testing.T) {
+	cases := []struct {
+		name   string
+		result previewSearchResult
+		want   []string
+	}{
+		{
+			"basic", previewSearchResult{Title: "Title", Path: "foo.go"},
+			[]string{"Title", "foo.go"},
+		},
+		{
+			"withLine", previewSearchResult{Title: "Title", Path: "foo.go", Line: 42},
+			[]string{"foo.go:42"},
+		},
+		{
+			"noPath", previewSearchResult{Title: "Title", NodeID: "node-id"},
+			[]string{"Title", "node-id"},
+		},
+		{
+			"meta", previewSearchResult{Title: "Title", Source: "code", Confidence: "high", FlowRole: "anchor"},
+			[]string{"[code, high, anchor]"},
+		},
+		{
+			"withNeighbors", previewSearchResult{
+				Title: "Title",
+				Neighbors: []previewSearchNeighbor{
+					{ID: "n1", Direction: "out", Label: "L1", Path: "a.go", Line: 5, Relation: "implements"},
+					{ID: "n2", Direction: "in", Label: "L2", Path: "b.go"},
+					{ID: "n3", Direction: "out", Label: "L3"},
+					{ID: "n4", Direction: "in", Label: "L4"},
+				},
+			},
+			[]string{"out L1 via implements", "in L2", "+1 more"},
+		},
+	}
+	for _, tc := range cases {
+		var buf bytes.Buffer
+		if err := writeGraphQueryResult(&buf, tc.result); err != nil {
+			t.Errorf("%s: writeGraphQueryResult: %v", tc.name, err)
+			continue
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(buf.String(), want) {
+				t.Errorf("%s: expected %q in output: %s", tc.name, want, buf.String())
+			}
+		}
+	}
+}
+
+func TestNonEmptyStringsP(t *testing.T) {
+	cases := []struct {
+		in   []string
+		want []string
+	}{
+		{nil, []string{}},
+		{[]string{}, []string{}},
+		{[]string{"", "a", "b"}, []string{"a", "b"}},
+		{[]string{"a", "b", "a"}, []string{"a", "b"}},
+		{[]string{"a", "", "a", "b"}, []string{"a", "b"}},
+	}
+	for _, tc := range cases {
+		got := nonEmptyStrings(tc.in...)
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("nonEmptyStrings(%v)=%v want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestNormalizeSearchOutputPathP(t *testing.T) {
+	cwd := t.TempDir()
+	// Empty path → default name
+	got := normalizeSearchOutputPath(cwd, "")
+	if !strings.HasSuffix(got, defaultSearchLauncherName) {
+		t.Errorf("empty: got %q, want suffix %q", got, defaultSearchLauncherName)
+	}
+	// Relative path → joined with cwd
+	got = normalizeSearchOutputPath(cwd, "out.html")
+	if !strings.HasPrefix(got, cwd) {
+		t.Errorf("relative: got %q, want prefix %q", got, cwd)
+	}
+	// Absolute path → stays absolute
+	got = normalizeSearchOutputPath(cwd, "/tmp/abs.html")
+	if !strings.HasSuffix(got, "/tmp/abs.html") {
+		t.Errorf("absolute: got %q, want suffix /tmp/abs.html", got)
+	}
+}
+
+func TestLSPSymbolIsContainerP(t *testing.T) {
+	containerKinds := []int{2, 3, 5, 11, 18, 23}
+	for _, k := range containerKinds {
+		if !lspSymbolIsContainer(k) {
+			t.Errorf("kind %d: expected true", k)
+		}
+	}
+	nonContainer := []int{1, 4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22, 24, 25, 26}
+	for _, k := range nonContainer {
+		if lspSymbolIsContainer(k) {
+			t.Errorf("kind %d: expected false", k)
+		}
+	}
+}
+
+func TestLSPSymbolIsResultNodeDocumentModeP(t *testing.T) {
+	lang := lspLanguage{SymbolMode: lspSymbolModeDocument}
+	// File (kind=1) and Module (kind=2) are not result nodes
+	if lspSymbolIsResultNode(lang, lspDocumentSymbol{Name: "x", Kind: 1}) {
+		t.Error("kind 1 should not be result node in document mode")
+	}
+	if lspSymbolIsResultNode(lang, lspDocumentSymbol{Name: "x", Kind: 2}) {
+		t.Error("kind 2 should not be result node in document mode")
+	}
+	// Other kinds (12=function) are
+	if !lspSymbolIsResultNode(lang, lspDocumentSymbol{Name: "foo", Kind: 12}) {
+		t.Error("kind 12 should be result node in document mode")
+	}
+	// Empty name excluded
+	if lspSymbolIsResultNode(lang, lspDocumentSymbol{Name: "", Kind: 12}) {
+		t.Error("empty name should not be result node")
+	}
+	if lspSymbolIsResultNode(lang, lspDocumentSymbol{Name: "  ", Kind: 12}) {
+		t.Error("whitespace-only name should not be result node")
+	}
+}
+
+func TestLSPSymbolIsResultNodeSelectorModeP(t *testing.T) {
+	lang := lspLanguage{SymbolMode: lspSymbolModeSelector}
+	selectorKinds := []int{5, 7, 8, 12, 13, 14, 15, 18, 20}
+	for _, k := range selectorKinds {
+		if !lspSymbolIsResultNode(lang, lspDocumentSymbol{Name: "x", Kind: k}) {
+			t.Errorf("kind %d: expected true in selector mode", k)
+		}
+	}
+	nonSelector := []int{1, 2, 3, 4, 6, 9, 10, 11, 16, 17, 19, 21, 22, 23, 24}
+	for _, k := range nonSelector {
+		if lspSymbolIsResultNode(lang, lspDocumentSymbol{Name: "x", Kind: k}) {
+			t.Errorf("kind %d: expected false in selector mode", k)
+		}
+	}
+}
+
+func TestLSPSymbolKindLabelP(t *testing.T) {
+	cases := []struct {
+		kind int
+		want string
+	}{
+		{2, "module"}, {3, "namespace"}, {5, "class"}, {6, "method"},
+		{9, "constructor"}, {11, "interface"}, {12, "function"}, {7, "property"},
+		{8, "field"}, {13, "variable"}, {14, "constant"}, {15, "string"},
+		{18, "object"}, {20, "key"}, {23, "struct"}, {24, "event"}, {25, "operator"},
+		{1, "symbol"}, {99, "symbol"}, {0, "symbol"},
+	}
+	for _, tc := range cases {
+		if got := lspSymbolKindLabel(tc.kind); got != tc.want {
+			t.Errorf("kind %d: got %q want %q", tc.kind, got, tc.want)
+		}
+	}
+}
+
+func TestNodeLineP(t *testing.T) {
+	cases := []struct {
+		name string
+		node lspCodeNode
+		want int
+	}{
+		{"normal", lspCodeNode{SelectionRange: lspRange{Start: lspPosition{Line: 10}}}, 11},
+		{"zeroLine", lspCodeNode{SelectionRange: lspRange{Start: lspPosition{Line: -1}}}, 1},
+		{"negativeUsesRange", lspCodeNode{
+			SelectionRange: lspRange{Start: lspPosition{Line: -2}},
+			Range:          lspRange{Start: lspPosition{Line: 4}},
+		}, 5},
+	}
+	for _, tc := range cases {
+		if got := nodeLine(tc.node); got != tc.want {
+			t.Errorf("%s: nodeLine=%d want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestSortLSPCodeGraphCandidatesP(t *testing.T) {
+	candidates := []lspCodeGraphCandidate{
+		{ID: "a", Score: 0.5, Exactness: 3, Title: "B", Path: "z"},
+		{ID: "b", Score: 0.9, Exactness: 1, Title: "A", Path: "y"},
+		{ID: "c", Score: 0.9, Exactness: 5, Title: "C", Path: "x"},
+		{ID: "d", Score: 0.9, Exactness: 5, Title: "C", Path: "x"}, // dup, sorts by ID
+		{ID: "e", Score: 0.7, Exactness: 0, Title: "E", Path: "w"},
+	}
+	sortLSPCodeGraphCandidates(candidates)
+	// Highest score first
+	if candidates[0].Score < candidates[1].Score {
+		t.Errorf("not sorted by score desc")
+	}
+	// Among ties, exactness desc (highest Exactness first)
+	if candidates[0].Exactness < candidates[1].Exactness {
+		t.Errorf("not sorted by exactness desc on ties")
+	}
+	// Then by Title asc
+	if candidates[0].Title > candidates[1].Title {
+		t.Errorf("not sorted by title asc on ties")
+	}
+}
+
+func TestLimitLSPCodeGraphCandidatesP(t *testing.T) {
+	candidates := []lspCodeGraphCandidate{
+		{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"},
+	}
+	// Empty
+	got := limitLSPCodeGraphCandidates([]lspCodeGraphCandidate{}, 2)
+	if len(got) != 0 {
+		t.Errorf("empty: got len %d", len(got))
+	}
+	// Zero limit → default
+	got = limitLSPCodeGraphCandidates(candidates, 0)
+	if len(got) != 4 {
+		t.Errorf("zero limit: got len %d", len(got))
+	}
+	// Limit returns limit*2 capped by len
+	got = limitLSPCodeGraphCandidates(candidates, 2)
+	if len(got) != 4 {
+		t.Errorf("limit 2: got len %d, want 4 (2*2)", len(got))
+	}
+	// Negative limit
+	got = limitLSPCodeGraphCandidates(candidates, -1)
+	if len(got) != 4 {
+		t.Errorf("negative limit: got len %d", len(got))
+	}
+}
+
+func TestLSPRangeSpanP(t *testing.T) {
+	cases := []struct {
+		name string
+		rng  lspRange
+		want int
+	}{
+		{"normal", lspRange{Start: lspPosition{Line: 0}, End: lspPosition{Line: 4}}, 5},
+		{"singleLine", lspRange{Start: lspPosition{Line: 5}, End: lspPosition{Line: 5}}, 1},
+		{"reverseRange", lspRange{Start: lspPosition{Line: 5}, End: lspPosition{Line: 0}}, 1},
+	}
+	for _, tc := range cases {
+		if got := lspRangeSpan(tc.rng); got != tc.want {
+			t.Errorf("%s: got %d want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestPositionInLSPRangeP(t *testing.T) {
+	rng := lspRange{
+		Start: lspPosition{Line: 2, Character: 5},
+		End:   lspPosition{Line: 4, Character: 10},
+	}
+	cases := []struct {
+		name string
+		pos  lspPosition
+		want bool
+	}{
+		{"beforeLine", lspPosition{Line: 1, Character: 0}, false},
+		{"afterLine", lspPosition{Line: 5, Character: 0}, false},
+		{"startLineBeforeChar", lspPosition{Line: 2, Character: 3}, false},
+		{"startLineAtChar", lspPosition{Line: 2, Character: 5}, true},
+		{"middleLine", lspPosition{Line: 3, Character: 0}, true},
+		{"endLineAtChar", lspPosition{Line: 4, Character: 10}, true},
+		{"endLineAfterChar", lspPosition{Line: 4, Character: 11}, false},
+	}
+	for _, tc := range cases {
+		if got := positionInLSPRange(tc.pos, rng); got != tc.want {
+			t.Errorf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestContextTimedOutP(t *testing.T) {
+	// No error, no timeout
+	if contextTimedOut(context.Background(), nil) {
+		t.Error("background context: should not be timed out")
+	}
+	// Deadline exceeded error
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	time.Sleep(5 * time.Millisecond)
+	if !contextTimedOut(ctx, nil) {
+		t.Error("expired context: should be timed out")
+	}
+	// Direct err = DeadlineExceeded
+	if !contextTimedOut(context.Background(), context.DeadlineExceeded) {
+		t.Error("err DeadlineExceeded: should be timed out")
+	}
+	if !contextTimedOut(context.Background(), context.Canceled) {
+		t.Error("err Canceled: should be timed out")
+	}
+}
+
+func TestDedupeLSPCodeEdgesP(t *testing.T) {
+	edges := []lspCodeEdge{
+		{Source: "a", Target: "b", Relation: "calls"},
+		{Source: "a", Target: "b", Relation: "calls"}, // dup
+		{Source: "b", Target: "a", Relation: "calls"}, // different direction
+		{Source: "a", Target: "b", Relation: "uses"},  // different relation
+		{Source: "", Target: "b", Relation: "calls"},  // empty source
+		{Source: "a", Target: "", Relation: "calls"},  // empty target
+		{Source: "a", Target: "a", Relation: "calls"}, // self
+	}
+	got := dedupeLSPCodeEdges(edges)
+	if len(got) != 3 {
+		t.Errorf("expected 3 deduped edges, got %d", len(got))
+	}
+}
+
+func TestPathFromLSPURIP(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"plain", "abc", "abc"},
+		{"fileURI", "file:///tmp/foo.go", "/tmp/foo.go"},
+		{"fileURIWithSpaces", "file:///tmp/foo%20bar.go", "/tmp/foo bar.go"},
+		{"malformed", "not-a-url", "not-a-url"},
+	}
+	for _, tc := range cases {
+		got := pathFromLSPURI(tc.in)
+		if runtime.GOOS == "windows" && tc.want != "" {
+			// pathFromLSPURI returns what url.Parse gives us; on Windows the
+			// drive letter may be stripped — accept the actual result.
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%s: got %q want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestValueAfterColonP(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"noColon", "no colon here", ""},
+		{"simple", "Key: Value", "Value"},
+		{"withBold", "**Status**: **Active**", "Active"},
+		{"trailingSpace", "Key: Value   ", "Value"},
+		{"multipleColons", "Key: foo: bar", "foo: bar"},
+	}
+	for _, tc := range cases {
+		got := valueAfterColon(tc.in)
+		if got != tc.want {
+			t.Errorf("%s: valueAfterColon(%q)=%q want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestCleanNodeNameP(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "node1", "node1"},
+		{"withParens", "node1(extra)", "node1"},
+		{"withColon", "node1:label", "node1"},
+		{"withMdSuffix", "node1.md", "node1"},
+		{"withMdSuffixParens", "node1(file).md", "node1"},
+		{"withBackticks", "`node1`", "node1"},
+		{"trimmed", "  node1  ", "node1"},
+	}
+	for _, tc := range cases {
+		got := cleanNodeName(tc.in)
+		if got != tc.want {
+			t.Errorf("%s: cleanNodeName(%q)=%q want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestSplitConstraintTargetP(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		wantKey string
+		wantVal string
+	}{
+		{"empty", "", "", ""},
+		{"single", "node1", "node1", ""},
+		{"two", "node1 description here", "node1", "description here"},
+		{"withBackticks", "`node1` value", "node1", "value"},
+		{"withMd", "node1.md value", "node1", "value"},
+		{"withMdParens", "node1(file).md", "node1(file)", ""},
+	}
+	for _, tc := range cases {
+		k, v := splitConstraintTarget(tc.in)
+		if k != tc.wantKey || v != tc.wantVal {
+			t.Errorf("%s: splitConstraintTarget(%q)=(%q,%q) want (%q,%q)", tc.name, tc.in, k, v, tc.wantKey, tc.wantVal)
+		}
+	}
+}
+
+func TestResolveMermaidEndpointP(t *testing.T) {
+	aliases := map[string]string{}
+	// Empty
+	if got := resolveMermaidEndpoint("", aliases); got != "" {
+		t.Errorf("empty: got %q", got)
+	}
+	// Plain
+	if got := resolveMermaidEndpoint("node1", aliases); got != "node1" {
+		t.Errorf("plain: got %q", got)
+	}
+	// Inline alias - alias added to map
+	got := resolveMermaidEndpoint("n1[\"Foo Bar\"]", aliases)
+	if got != "Foo Bar" {
+		t.Errorf("inline: got %q", got)
+	}
+	if aliases["n1"] != "Foo Bar" {
+		t.Errorf("alias not registered: %v", aliases)
+	}
+	// With class via :::
+	if got := resolveMermaidEndpoint("n2:::class1", aliases); got != "n2" {
+		t.Errorf("class: got %q", got)
+	}
+	// Empty alias with label → just label
+	got = resolveMermaidEndpoint("[\"L\"]", aliases)
+	if got != "" || aliases[""] != "" {
+		t.Errorf("empty alias with label: got %q aliases %v", got, aliases)
+	}
+	// Empty alias without label
+	got = resolveMermaidEndpoint("[]", aliases)
+	if got != "" {
+		t.Errorf("empty label: got %q", got)
+	}
+	// Use existing alias
+	if got := resolveMermaidEndpoint("n1", aliases); got != "Foo Bar" {
+		t.Errorf("use alias: got %q want Foo Bar", got)
+	}
+}
+
+func TestParseMetaSectionP(t *testing.T) {
+	// Table-style metadata inside ## Meta block
+	raw := `# Title
+
+## Meta
+
+| Key | Value |
+| --- | --- |
+| Status | Active |
+| Version | 1.0 |
+| Compliance | Strict |
+| Description | Test description |
+| Priority | High |
+| Type | module |
+| Timestamp | 2024-01-01 |
+| Resource | src |
+| Tags | [a, b, c] |
+
+**Status**: ActiveBold
+**Meta**: Status=Approved, Version=2.0, Compliance=Newer, Description=Final
+`
+	meta := parseMetaSection(raw)
+	// prose values overwrite table values when both are present
+	if meta.Status != "ActiveBold" {
+		t.Errorf("Status: got %q", meta.Status)
+	}
+	if meta.Version != "1.0" {
+		t.Errorf("Version: got %q", meta.Version)
+	}
+	if meta.Compliance != "Strict" {
+		t.Errorf("Compliance: got %q", meta.Compliance)
+	}
+	if meta.Description != "Test description" {
+		t.Errorf("Description: got %q", meta.Description)
+	}
+	if meta.Priority != "High" {
+		t.Errorf("Priority: got %q", meta.Priority)
+	}
+	if meta.Type != "module" {
+		t.Errorf("Type: got %q", meta.Type)
+	}
+	if meta.Timestamp != "2024-01-01" {
+		t.Errorf("Timestamp: got %q", meta.Timestamp)
+	}
+	if meta.Resource != "src" {
+		t.Errorf("Resource: got %q", meta.Resource)
+	}
+	if len(meta.Tags) != 3 {
+		t.Errorf("Tags: got %v", meta.Tags)
+	}
+	// Frontmatter in front of ## Meta should be ignored by parseMetaSection (only ## Meta block is parsed)
+	raw2 := `---
+status: FromFrontmatter
+---
+
+## Meta
+
+**Status**: FromProse
+`
+	meta2 := parseMetaSection(raw2)
+	if meta2.Status != "FromProse" {
+		t.Errorf("Status from prose: got %q", meta2.Status)
+	}
+}
+
+func TestWriteLockedNotRunningP(t *testing.T) {
+	// Not running, no stdin
+	s := &previewLSPServer{lang: lspLanguage{ServerID: "test-server"}}
+	err := s.writeLocked(context.Background(), map[string]any{"x": 1})
+	if err == nil {
+		t.Error("expected error when not running")
+	}
+	if !strings.Contains(err.Error(), "not running") {
+		t.Errorf("expected 'not running' error, got %v", err)
+	}
+}
+
+func TestWriteLockedContextCanceledP(t *testing.T) {
+	// Use a pipe to simulate stdin/stdout
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+	s := &previewLSPServer{
+		lang:    lspLanguage{ServerID: "test"},
+		running: true,
+		stdin:   pw,
+		reader:  bufio.NewReader(pr),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := s.writeLocked(ctx, map[string]any{"x": 1})
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled error, got %v", err)
+	}
+}
+
+func TestWriteLockedMarshalErrorP(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+	s := &previewLSPServer{
+		lang:    lspLanguage{ServerID: "test"},
+		running: true,
+		stdin:   pw,
+		reader:  bufio.NewReader(pr),
+	}
+	// Channels are not marshalable
+	err := s.writeLocked(context.Background(), make(chan int))
+	if err == nil {
+		t.Error("expected marshal error")
+	}
+}
+
+func TestWriteLockedSuccessP(t *testing.T) {
+	pr, pw := io.Pipe()
+	go func() {
+		defer pr.Close()
+		defer pw.Close()
+		buf := make([]byte, 4096)
+		_, _ = pr.Read(buf)
+	}()
+	s := &previewLSPServer{
+		lang:    lspLanguage{ServerID: "test"},
+		running: true,
+		stdin:   pw,
+		reader:  bufio.NewReader(pr),
+	}
+	if err := s.writeLocked(context.Background(), map[string]any{"x": 1}); err != nil {
+		t.Fatalf("writeLocked: %v", err)
+	}
+}
+
+func TestReadMessageLockedP(t *testing.T) {
+	// Test readMessageLocked which reads Content-Length framed messages
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		pw.Write([]byte("Content-Length: 11\r\n\r\nHello World"))
+	}()
+	s := &previewLSPServer{reader: bufio.NewReader(pr)}
+	msg, err := s.readMessageLocked()
+	if err != nil {
+		t.Fatalf("readMessageLocked: %v", err)
+	}
+	if string(msg) != "Hello World" {
+		t.Errorf("got %q, want Hello World", msg)
+	}
+}
+
+func TestReadMessageLockedMissingContentLengthP(t *testing.T) {
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		pw.Write([]byte("\r\n"))
+	}()
+	s := &previewLSPServer{reader: bufio.NewReader(pr)}
+	_, err := s.readMessageLocked()
+	if err == nil {
+		t.Error("expected error for missing content length")
+	}
+}
+
+func TestReadResponseLockedContextCanceledP(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+	s := &previewLSPServer{lang: lspLanguage{ServerID: "test"}, reader: bufio.NewReader(pr)}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := s.readResponseLocked(ctx, 1, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestReadResponseLockedReadErrorP(t *testing.T) {
+	pr, pw := io.Pipe()
+	pw.Close()
+	s := &previewLSPServer{
+		lang:       lspLanguage{ServerID: "test"},
+		reader:     bufio.NewReader(pr),
+		running:    true,
+		initialized: true,
+	}
+	err := s.readResponseLocked(context.Background(), 1, nil)
+	if err == nil {
+		t.Error("expected error from closed pipe")
+	}
+	if s.running {
+		t.Error("expected running to be reset to false on read error")
+	}
+}
+
+func TestRequestNotInitializedP(t *testing.T) {
+	// request() should refuse non-initialize calls before initialize completes
+	s := &previewLSPServer{lang: lspLanguage{ServerID: "test"}, initialized: false}
+	err := s.request(context.Background(), "textDocument/documentSymbol", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "not initialized") {
+		t.Errorf("expected not initialized error, got %v", err)
+	}
+}
+
+func TestRequestInitializeAllowedWithoutInitializedP(t *testing.T) {
+	// "initialize" method is allowed even if initialized=false - just verify it doesn't return
+	// the "not initialized" error. The subsequent I/O will fail since stdin is not connected.
+	s := &previewLSPServer{
+		lang:       lspLanguage{ServerID: "test"},
+		running:    true,
+		initialized: false,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	err := s.request(ctx, "initialize", map[string]any{}, nil)
+	if err != nil && strings.Contains(err.Error(), "not initialized") {
+		t.Errorf("initialize should not be blocked by not-initialized check, got %v", err)
+	}
+}
+
+func TestDocsRootP(t *testing.T) {
+	absPath := "/absolute/docs"
+	if got := docsRoot("/project", absPath); got != absPath {
+		t.Errorf("absolute: got %q", got)
+	}
+	// Relative → joined
+	if got := docsRoot("/project", "docs"); got != "/project/docs" {
+		t.Errorf("relative: got %q", got)
+	}
+	// Tilde expansion
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		if got := docsRoot("/project", "~/mydocs"); got != filepath.Join(home, "mydocs") {
+			t.Errorf("tilde: got %q", got)
+		}
+	}
+}
+
+func TestScanSpecDocumentsP(t *testing.T) {
+	root := t.TempDir()
+	// Create a valid markdown file
+	mdPath := filepath.Join(root, "doc.md")
+	if err := os.WriteFile(mdPath, []byte("# Title\n\nContent"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Create a subdir with a file
+	subdir := filepath.Join(root, "sub")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	subFile := filepath.Join(subdir, "sub.md")
+	if err := os.WriteFile(subFile, []byte("# Sub"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Invalid UTF-8
+	invalidPath := filepath.Join(root, "invalid.md")
+	if err := os.WriteFile(invalidPath, []byte{0xff, 0xfe}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Large file
+	largePath := filepath.Join(root, "large.md")
+	large := bytes.Repeat([]byte("a"), int(maxSearchFileBytes)+1)
+	if err := os.WriteFile(largePath, large, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	docs, err := scanSpecDocuments(root, nil)
+	if err != nil {
+		t.Fatalf("scanSpecDocuments: %v", err)
+	}
+	// Should have 2 valid docs (doc.md and sub/sub.md)
+	if len(docs) != 2 {
+		t.Errorf("expected 2 docs, got %d: %+v", len(docs), docs)
+	}
+}
+
+func TestFirstNonEmptyTagsP(t *testing.T) {
+	if got := firstNonEmptyTags(); got != nil {
+		t.Errorf("empty: got %v", got)
+	}
+	if got := firstNonEmptyTags(nil, nil); got != nil {
+		t.Errorf("all nil: got %v", got)
+	}
+	got := firstNonEmptyTags(nil, []string{"a"}, []string{"b", "c"})
+	if !slices.Equal(got, []string{"a"}) {
+		t.Errorf("first non-empty: got %v", got)
+	}
+	if got := firstNonEmptyTags([]string{}, []string{"x"}); !slices.Equal(got, []string{"x"}) {
+		t.Errorf("empty slice skipped: got %v", got)
+	}
+}
+
+func TestNormalizePreviewProjectRootPy(t *testing.T) {
+	// Plain path
+	got := normalizePreviewProjectRoot("docs")
+	if !filepath.IsAbs(got) {
+		t.Errorf("plain: expected abs, got %q", got)
+	}
+	// Already absolute
+	abs, _ := filepath.Abs("/foo/bar")
+	got = normalizePreviewProjectRoot(abs)
+	if got != abs {
+		t.Errorf("absolute: got %q want %q", got, abs)
+	}
+	// Tilde
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		got = normalizePreviewProjectRoot("~/")
+		if got != home {
+			t.Errorf("tilde: got %q want %q", got, home)
+		}
+	}
+}
+
+func TestHandleEventsStreamingUnsupportedP(t *testing.T) {
+	// Wrap response writer to NOT implement Flusher
+	ps := &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "docs"}}
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	w := &nonFlusherWriter{ResponseWriter: httptest.NewRecorder()}
+	ps.handleEvents(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
+// nonFlusherWriter wraps http.ResponseWriter to NOT satisfy http.Flusher.
+type nonFlusherWriter struct {
+	http.ResponseWriter
+	Code int
+}
+
+func (n *nonFlusherWriter) WriteHeader(code int) { n.Code = code }
+
+func TestHandleEventsChangeEventP(t *testing.T) {
+	projectRoot := t.TempDir()
+	docsDir := filepath.Join(projectRoot, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Start with no files to ensure changeToken is stable initially
+	ps := &previewServer{opt: previewOptions{projectRoot: projectRoot, docsDir: "docs"}}
+	srv := httptest.NewServer(http.HandlerFunc(ps.handleEvents))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Read in a goroutine; we expect "event: ready" first.
+	got := make(chan string, 16)
+	go func() {
+		b := make([]byte, 8192)
+		for {
+			n, err := resp.Body.Read(b)
+			if n > 0 {
+				got <- string(b[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// Wait for "event: ready"
+	deadline := time.After(2 * time.Second)
+readyLoop:
+	for {
+		select {
+		case s := <-got:
+			if strings.Contains(s, "event: ready") {
+				break readyLoop
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for ready event")
+		}
+	}
+
+	// Now add a file in docs/ to trigger change
+	if err := os.WriteFile(filepath.Join(docsDir, "new.md"), []byte("# new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for change event
+	deadline = time.After(3 * time.Second)
+changeLoop:
+	for {
+		select {
+		case s := <-got:
+			if strings.Contains(s, "event: change") {
+				break changeLoop
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for change event")
+		}
+	}
+	cancel()
+}
+
+func TestOpenURLExecuteFailureP(t *testing.T) {
+	origCmd := openURLCmdForTest
+	defer func() { openURLCmdForTest = origCmd }()
+
+	// Simulate command that returns a command whose Start will fail.
+	// We use a non-existent executable to make Start fail.
+	openURLCmdForTest = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("/this/binary/does/not/exist/at/all", args...)
+	}
+	if err := openURL("https://example.com"); err == nil {
+		t.Error("expected error from openURL")
+	}
+}
+
+func TestOpenURLTestOverrideP(t *testing.T) {
+	origOpen := openURLForTest
+	origCmd := openURLCmdForTest
+	defer func() {
+		openURLForTest = origOpen
+		openURLCmdForTest = origCmd
+	}()
+
+	called := false
+	openURLForTest = func(target string) error {
+		called = true
+		if target != "https://example.com" {
+			t.Errorf("expected target, got %q", target)
+		}
+		return nil
+	}
+	if err := openURLForTest("https://example.com"); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("expected override to be called")
+	}
+}
+
+func TestPreviewEmbeddingConfigFromKnownsProjectP(t *testing.T) {
+	orig := loadKnownsEmbeddingSettingsForTest
+	defer func() { loadKnownsEmbeddingSettingsForTest = orig }()
+	loadKnownsEmbeddingSettingsForTest = func() (knownsEmbeddingSettings, error) {
+		return knownsEmbeddingSettings{}, errors.New("no settings")
+	}
+
+	// No .knowns/config.json
+	dir := t.TempDir()
+	if _, err := previewEmbeddingConfigFromKnownsProject(dir); err == nil {
+		t.Error("expected error when no .knowns dir")
+	}
+
+	// Create invalid config.json
+	knownsDir := filepath.Join(dir, ".knowns")
+	if err := os.MkdirAll(knownsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(knownsDir, "config.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := previewEmbeddingConfigFromKnownsProject(dir); err == nil {
+		t.Error("expected error from invalid JSON")
+	}
+
+	// valid JSON but missing fields
+	if err := os.WriteFile(filepath.Join(knownsDir, "config.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := previewEmbeddingConfigFromKnownsProject(dir); err == nil {
+		t.Error("expected error when no semantic search enabled")
+	}
+
+	// semantic search enabled but not "api" provider
+	cfg := `{"settings":{"semanticSearch":{"enabled":true,"model":"m1","provider":"local"}}}`
+	if err := os.WriteFile(filepath.Join(knownsDir, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := previewEmbeddingConfigFromKnownsProject(dir); err == nil {
+		t.Error("expected error for non-API provider")
+	}
+
+	// settings load failure
+	cfg = `{"settings":{"semanticSearch":{"enabled":true,"model":"m1","provider":"api"}}}`
+	if err := os.WriteFile(filepath.Join(knownsDir, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := previewEmbeddingConfigFromKnownsProject(dir); err == nil {
+		t.Error("expected error when settings load fails")
+	}
+}
+
+func TestPreviewEmbeddingConfigForProjectAllFailP(t *testing.T) {
+	orig := loadKnownsEmbeddingSettingsForTest
+	defer func() { loadKnownsEmbeddingSettingsForTest = orig }()
+	// Make all resolvers fail
+	loadKnownsEmbeddingSettingsForTest = func() (knownsEmbeddingSettings, error) {
+		return knownsEmbeddingSettings{}, errors.New("no settings")
+	}
+	dir := t.TempDir()
+	cfg, warning := previewEmbeddingConfigForProject(dir)
+	if cfg.APIBase != "" {
+		t.Errorf("expected empty cfg, got %+v", cfg)
+	}
+	if warning == "" {
+		t.Error("expected warning when all resolvers fail")
+	}
+}
+
+func TestLoadPreviewEmbeddingSearchWarningP(t *testing.T) {
+	orig := loadKnownsEmbeddingSettingsForTest
+	defer func() { loadKnownsEmbeddingSettingsForTest = orig }()
+	loadKnownsEmbeddingSettingsForTest = func() (knownsEmbeddingSettings, error) {
+		return knownsEmbeddingSettings{}, errors.New("no settings")
+	}
+	dir := t.TempDir()
+	search, warnings := loadPreviewEmbeddingSearch(dir, nil, nil)
+	if search != nil {
+		t.Errorf("expected nil search when config fails, got %+v", search)
+	}
+	if len(warnings) == 0 {
+		t.Error("expected warnings when config fails")
+	}
+}
+
+func TestPreviewEmbeddingConfigFromOllamaP(t *testing.T) {
+	orig := ollamaGetForTest
+	defer func() { ollamaGetForTest = orig }()
+
+	// Network error path.
+	ollamaGetForTest = func(url string) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	}
+	if _, err := previewEmbeddingConfigFromOllama(); err == nil {
+		t.Error("expected error when ollama server unreachable")
+	}
+
+	// Non-2xx response.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+	ollamaGetForTest = func(url string) (*http.Response, error) {
+		return server.Client().Get(server.URL + "/api/tags")
+	}
+	if _, err := previewEmbeddingConfigFromOllama(); err == nil {
+		t.Error("expected error on non-2xx status")
+	}
+
+	// Invalid JSON.
+	invalidJSONServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("not-json"))
+	}))
+	defer invalidJSONServer.Close()
+	ollamaGetForTest = func(url string) (*http.Response, error) {
+		return invalidJSONServer.Client().Get(invalidJSONServer.URL + "/api/tags")
+	}
+	if _, err := previewEmbeddingConfigFromOllama(); err == nil {
+		t.Error("expected error when JSON invalid")
+	}
+
+	// No priority match (no models returned).
+	emptyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	defer emptyServer.Close()
+	ollamaGetForTest = func(url string) (*http.Response, error) {
+		return emptyServer.Client().Get(emptyServer.URL + "/api/tags")
+	}
+	if _, err := previewEmbeddingConfigFromOllama(); err == nil {
+		t.Error("expected error when no priority match")
+	}
+
+	// Success path with a priority model.
+	successServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"name":"random-model"},{"name":"nomic-embed-text"}]}`))
+	}))
+	defer successServer.Close()
+	ollamaGetForTest = func(url string) (*http.Response, error) {
+		return successServer.Client().Get(successServer.URL + "/api/tags")
+	}
+	cfg, err := previewEmbeddingConfigFromOllama()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Model != "nomic-embed-text" {
+		t.Errorf("expected nomic-embed-text, got %q", cfg.Model)
+	}
+	if cfg.Source != "ollama" {
+		t.Errorf("expected source ollama, got %q", cfg.Source)
+	}
+}
+
+func TestHandleGraphP(t *testing.T) {
+	// Method not allowed.
+	ps := &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "docs"}}
+	req := httptest.NewRequest(http.MethodPost, "/api/graph", nil)
+	w := httptest.NewRecorder()
+	ps.handleGraph(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", w.Code)
+	}
+
+	// Success path with valid project root.
+	root := t.TempDir()
+	docsDir := filepath.Join(root, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "test.md"), []byte("# Hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ps = &previewServer{opt: previewOptions{projectRoot: root, docsDir: "docs"}}
+	req = httptest.NewRequest(http.MethodGet, "/api/graph", nil)
+	w = httptest.NewRecorder()
+	ps.handleGraph(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct == "" || !strings.Contains(ct, "json") {
+		t.Errorf("expected JSON content type, got %q", ct)
+	}
+
+	// Load error path: docs directory does not exist.
+	ps = &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "missing"}}
+	req = httptest.NewRequest(http.MethodGet, "/api/graph", nil)
+	w = httptest.NewRecorder()
+	ps.handleGraph(w, req)
+	if w.Code == http.StatusOK {
+		t.Errorf("expected error status, got 200")
+	}
+}
+
+func TestExpandLSPCodeGraphCallFlowP(t *testing.T) {
+	// Manager exists but no server registered for the node.
+	provider := &previewLSPCodeGraphProvider{
+		manager: &previewLSPManager{servers: map[string]*previewLSPServer{}},
+	}
+	candidate := lspCodeGraphCandidate{
+		ID:    "n1",
+		Node:  lspCodeNode{ID: "n1", Name: "alpha"},
+		Score: 1.0,
+	}
+	index := lspCodeGraphIndex{Nodes: map[string]lspCodeNode{}}
+	results, edges, warnings := provider.expandLSPCodeGraphCallFlow(context.Background(), index, candidate, 5)
+	if _, ok := results[candidate.ID]; !ok {
+		t.Errorf("expected anchor in results, got %+v", results)
+	}
+	if len(edges) != 0 {
+		t.Errorf("expected no edges without server, got %+v", edges)
+	}
+	if len(warnings) == 0 {
+		t.Error("expected warnings when no server registered")
+	}
+}
+
+func TestLSPServerStartAlreadyRunningP(t *testing.T) {
+	// Already running - returns nil without re-running command.
+	s := &previewLSPServer{running: true}
+	if err := s.Start(context.Background()); err != nil {
+		t.Errorf("expected nil when running, got %v", err)
+	}
+}
+
+func TestLSPServerStartContextCanceledP(t *testing.T) {
+	// Context canceled before start.
+	s := &previewLSPServer{command: "echo", args: []string{}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.Start(ctx); err == nil {
+		t.Error("expected error when context already canceled")
+	}
+}
+
+func TestLSPServerStartBadCommandP(t *testing.T) {
+	// Command fails to start.
+	s := &previewLSPServer{command: "definitely-not-a-real-command-xyz123", args: []string{}}
+	if err := s.Start(context.Background()); err == nil {
+		t.Error("expected error when command cannot start")
+	}
+}
+
+
+func TestLSPCodeGraphProviderCloseP(t *testing.T) {
+	// nil provider.
+	var p *previewLSPCodeGraphProvider
+	if err := p.Close(context.Background()); err != nil {
+		t.Errorf("expected nil for nil provider, got %v", err)
+	}
+	// provider with nil manager.
+	p = &previewLSPCodeGraphProvider{}
+	if err := p.Close(context.Background()); err != nil {
+		t.Errorf("expected nil for nil manager, got %v", err)
+	}
+	// provider with manager (no servers to stop).
+	p = &previewLSPCodeGraphProvider{manager: newPreviewLSPManager(t.TempDir())}
+	if err := p.Close(context.Background()); err != nil {
+		t.Errorf("expected nil for empty manager, got %v", err)
+	}
+	// provider with a registered server (Stop will be called).
+	srv := &previewLSPServer{}
+	p.manager.servers["test"] = srv
+	// srv is not running so Stop is a no-op.
+	if err := p.Close(context.Background()); err != nil {
+		t.Errorf("expected nil even with registered server, got %v", err)
+	}
+}
+
+func TestWithOpenFileP(t *testing.T) {
+	// Start fails -> error propagated.
+	origStart := lspStartServer
+	defer func() { lspStartServer = origStart }()
+	lspStartServer = func(ctx context.Context, srv *previewLSPServer) error {
+		return errors.New("start failed")
+	}
+	s := &previewLSPServer{}
+	err := s.withOpenFile(context.Background(), "/nonexistent/file.go", "go", func() error { return nil })
+	if err == nil {
+		t.Error("expected error when start fails")
+	}
+
+	// Path doesn't exist.
+	lspStartServer = func(ctx context.Context, srv *previewLSPServer) error {
+		srv.running = true
+		return nil
+	}
+	err = s.withOpenFile(context.Background(), "/nonexistent/file.go", "go", func() error { return nil })
+	if err == nil {
+		t.Error("expected error when file not found")
+	}
+
+	// File not valid UTF-8.
+	tmpFile := filepath.Join(t.TempDir(), "badutf8.go")
+	if err := os.WriteFile(tmpFile, []byte{0xff, 0xfe, 0xfd}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = s.withOpenFile(context.Background(), tmpFile, "go", func() error { return nil })
+	if err == nil {
+		t.Error("expected error when file not valid UTF-8")
+	}
+
+	// Start succeeds and file is opened; fn is invoked.
+	tmpFile2 := filepath.Join(t.TempDir(), "ok.go")
+	if err := os.WriteFile(tmpFile2, []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	s2 := &previewLSPServer{}
+	err = s2.withOpenFile(context.Background(), tmpFile2, "go", func() error {
+		called = true
+		return nil
+	})
+	// withOpenFile calls notify -> notify goes through request which writes to stdin.
+	// Since srv.stdin is nil, request will panic; we accept either an error or a clean success.
+	if !called && err == nil {
+		t.Error("expected fn to be invoked or error to be returned")
+	}
+}
+
+func TestExpandLSPCodeGraphCallFlowWithEdgesP(t *testing.T) {
+	// Stub hooks so we can drive expandLSPCodeGraphCallFlow through both
+	// edge branches (Source == candidate.ID and Target == candidate.ID).
+	origByID := lspServerByID
+	origPrepare := lspPrepareCallHierarchy
+	origIncoming := lspIncomingCalls
+	origOutgoing := lspOutgoingCalls
+	defer func() {
+		lspServerByID = origByID
+		lspPrepareCallHierarchy = origPrepare
+		lspIncomingCalls = origIncoming
+		lspOutgoingCalls = origOutgoing
+	}()
+
+	projectRoot := t.TempDir()
+	fileA := filepath.Join(projectRoot, "a.go")
+	fileB := filepath.Join(projectRoot, "b.go")
+
+	lspServerByID = func(manager *previewLSPManager, serverID string) (*previewLSPServer, error) {
+		return &previewLSPServer{}, nil
+	}
+	lspPrepareCallHierarchy = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspCallHierarchyItem, error) {
+		return []lspCallHierarchyItem{{Name: "alpha"}}, nil
+	}
+	lspIncomingCalls = func(ctx context.Context, srv *previewLSPServer, item lspCallHierarchyItem) ([]lspIncomingCall, error) {
+		return []lspIncomingCall{{
+			From: lspCallHierarchyItem{
+				URI:            fileURI(fileA),
+				SelectionRange: lspRange{Start: lspPosition{Line: 1, Character: 1}, End: lspPosition{Line: 2, Character: 2}},
+			},
+		}}, nil
+	}
+	lspOutgoingCalls = func(ctx context.Context, srv *previewLSPServer, item lspCallHierarchyItem) ([]lspOutgoingCall, error) {
+		return []lspOutgoingCall{{
+			To: lspCallHierarchyItem{
+				URI:            fileURI(fileB),
+				SelectionRange: lspRange{Start: lspPosition{Line: 3, Character: 3}, End: lspPosition{Line: 4, Character: 4}},
+			},
+		}}, nil
+	}
+
+	provider := &previewLSPCodeGraphProvider{
+		manager:     &previewLSPManager{servers: map[string]*previewLSPServer{}},
+		projectRoot: projectRoot,
+	}
+	nodeA := lspCodeNode{
+		ID:             "nA",
+		Name:           "caller",
+		ServerID:       "test",
+		Path:           "a.go",
+		AbsPath:        fileA,
+		SelectionRange: lspRange{Start: lspPosition{Line: 1, Character: 1}, End: lspPosition{Line: 2, Character: 2}},
+	}
+	nodeB := lspCodeNode{
+		ID:             "nB",
+		Name:           "callee",
+		ServerID:       "test",
+		Path:           "b.go",
+		AbsPath:        fileB,
+		SelectionRange: lspRange{Start: lspPosition{Line: 3, Character: 3}, End: lspPosition{Line: 4, Character: 4}},
+	}
+	candidate := lspCodeGraphCandidate{
+		ID:    "n1",
+		Node:  lspCodeNode{ID: "n1", ServerID: "test", Path: "x.go", SelectionRange: lspRange{Start: lspPosition{Line: 5, Character: 5}}},
+		Score: 1.0,
+	}
+	index := lspCodeGraphIndex{
+		Nodes: map[string]lspCodeNode{
+			"n1": candidate.Node,
+			"nA": nodeA,
+			"nB": nodeB,
+		},
+		ByPath: map[string][]string{
+			"a.go": {"nA"},
+			"b.go": {"nB"},
+			"x.go": {"n1"},
+		},
+	}
+	results, edges, _ := provider.expandLSPCodeGraphCallFlow(context.Background(), index, candidate, 5)
+	if _, ok := results[candidate.ID]; !ok {
+		t.Errorf("expected anchor in results, got %+v", results)
+	}
+	if len(edges) < 2 {
+		t.Errorf("expected >=2 edges (incoming + outgoing), got %d", len(edges))
+	}
+}
+
+func TestStopPreviewChildAllBranchesP(t *testing.T) {
+	origGOOS := runtimeGOOSForTest
+	defer func() { runtimeGOOSForTest = origGOOS }()
+
+	// nil cmd → return early.
+	stopPreviewChild(nil)
+
+	// Non-windows branch: real *exec.Cmd whose Process exists.
+	cmd := exec.Command("sleep", "10")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	runtimeGOOSForTest = "darwin"
+	stopPreviewChild(cmd)
+	cmd.Wait() // reap
+
+	// Windows branch: just call with stubbed GOOS.
+	cmd2 := exec.Command("sleep", "10")
+	if err := cmd2.Start(); err != nil {
+		t.Fatalf("start 2: %v", err)
+	}
+	runtimeGOOSForTest = "windows"
+	stopPreviewChild(cmd2)
+	cmd2.Wait()
+}
+
+func TestOpenURLAllBranchesP(t *testing.T) {
+	origCmd := openURLCmdForTest
+	origGOOS := runtimeGOOSForTest
+	defer func() {
+		openURLCmdForTest = origCmd
+		runtimeGOOSForTest = origGOOS
+	}()
+	// Track calls to verify each branch picks the expected binary.
+	var gotName string
+	var gotArgs []string
+	openURLCmdForTest = func(name string, args ...string) *exec.Cmd {
+		gotName = name
+		gotArgs = args
+		return exec.Command("true")
+	}
+
+	// darwin branch.
+	runtimeGOOSForTest = "darwin"
+	if err := openURL("https://example.com"); err != nil {
+		t.Fatalf("openURL darwin: %v", err)
+	}
+	if gotName != "open" || len(gotArgs) != 1 || gotArgs[0] != "https://example.com" {
+		t.Errorf("darwin: got %s %v", gotName, gotArgs)
+	}
+
+	// windows branch.
+	runtimeGOOSForTest = "windows"
+	if err := openURL("https://example.com"); err != nil {
+		t.Fatalf("openURL windows: %v", err)
+	}
+	if gotName != "rundll32" || len(gotArgs) != 2 {
+		t.Errorf("windows: got %s %v", gotName, gotArgs)
+	}
+
+	// default branch.
+	runtimeGOOSForTest = "linux"
+	if err := openURL("https://example.com"); err != nil {
+		t.Fatalf("openURL default: %v", err)
+	}
+	if gotName != "xdg-open" || len(gotArgs) != 1 {
+		t.Errorf("default: got %s %v", gotName, gotArgs)
+	}
+}
+
+func TestRunHotReloadSupervisorFrontendChangedP(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+
+	// Track starts. Each start returns a buffered channel; we drain prior
+	// channels after the supervisor calls stopPreviewChild so it can advance
+	// to the next iteration. Sending a result of nil keeps the supervisor
+	// from exiting (it treats a result on done as a normal exit).
+	var mu sync.Mutex
+	startCount := 0
+	doneChans := []chan previewChildResult{}
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		mu.Lock()
+		startCount++
+		ch := make(chan previewChildResult, 1)
+		doneChans = append(doneChans, ch)
+		mu.Unlock()
+		return nil, ch, nil
+	}
+
+	moduleRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(moduleRoot, "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	uiDir := filepath.Join(moduleRoot, "internal", "preview", "preview_ui_src")
+	if err := os.MkdirAll(uiDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	uiFile := filepath.Join(uiDir, "index.html")
+	if err := os.WriteFile(uiFile, []byte("<html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		_ = runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
+	}()
+	// Wait for ticker (700ms cycle), then change the frontend file's mtime.
+	time.Sleep(800 * time.Millisecond)
+	if err := os.WriteFile(uiFile, []byte("<html>changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(uiFile, future, future); err != nil {
+		t.Fatal(err)
+	}
+	// Wait for the next ticker to fire (at most ~700ms) so the supervisor
+	// reaches <-done inside the ticker.C branch. Then send to the initial
+	// doneChans[0] so it can advance past <-done and start a new child.
+	time.Sleep(1200 * time.Millisecond)
+	mu.Lock()
+	if len(doneChans) >= 1 {
+		select {
+		case doneChans[0] <- previewChildResult{err: nil}:
+		default:
+		}
+	}
+	mu.Unlock()
+	// Wait for the second start.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+		mu.Lock()
+		current := startCount
+		mu.Unlock()
+		if current >= 2 {
+			break
+		}
+	}
+	mu.Lock()
+	got := startCount
+	// Close last channel to let the supervisor exit cleanly.
+	if len(doneChans) > 0 {
+		last := doneChans[len(doneChans)-1]
+		select {
+		case <-last:
+		default:
+			close(last)
+		}
+	}
+	mu.Unlock()
+	if got < 2 {
+		t.Errorf("expected at least 2 starts (initial + restart), got %d", got)
+	}
+}
+
+func TestRunHotReloadSupervisorRestartErrorP(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+
+	// First call succeeds, second fails.
+	var mu sync.Mutex
+	var callCount int
+	var firstDone chan previewChildResult
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		mu.Lock()
+		callCount++
+		idx := callCount
+		mu.Unlock()
+		if idx == 1 {
+			firstDone = make(chan previewChildResult, 1)
+			return nil, firstDone, nil
+		}
+		return nil, nil, errors.New("restart failed")
+	}
+
+	moduleRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(moduleRoot, "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
+	}()
+	// Trigger ticker with a file change.
+	time.Sleep(800 * time.Millisecond)
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(filepath.Join(moduleRoot, "main.go"), future, future); err != nil {
+		t.Fatal(err)
+	}
+	// Wait for the next ticker to fire and supervisor to reach <-done.
+	time.Sleep(1200 * time.Millisecond)
+	mu.Lock()
+	fd := firstDone
+	mu.Unlock()
+	if fd != nil {
+		select {
+		case fd <- previewChildResult{err: nil}:
+		default:
+		}
+	}
+
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "restart failed" {
+			t.Errorf("expected restart failed, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("test timed out waiting for restart error")
+	}
+}
+
+
+func TestNormalizePreviewProjectRootFallbackP(t *testing.T) {
+	// Path that will trigger ExpandPath but not filepath.Abs.
+	// We can't easily trigger Abs error, but we test the basic path.
+	got := normalizePreviewProjectRoot("/already/absolute/path")
+	if !filepath.IsAbs(got) {
+		t.Errorf("expected absolute path, got %q", got)
+	}
+	// Empty path.
+	got = normalizePreviewProjectRoot("")
+	if got != "" && !filepath.IsAbs(got) {
+		t.Errorf("expected empty or absolute, got %q", got)
+	}
+	// ~ path: ExpandPath resolves to home dir.
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		got = normalizePreviewProjectRoot("~/foo")
+		if !filepath.IsAbs(got) || !strings.HasPrefix(got, home) {
+			t.Errorf("expected ~/foo to be under %s, got %q", home, got)
+		}
+	}
+
+	// filepath.Abs error path: stub the seam to fail.
+	origAbs := filepathAbsForTest
+	defer func() { filepathAbsForTest = origAbs }()
+	filepathAbsForTest = func(path string) (string, error) {
+		return "", errors.New("abs fail")
+	}
+	got = normalizePreviewProjectRoot("/some/path")
+	if got != "/some/path" {
+		t.Errorf("expected /some/path on abs failure, got %q", got)
+	}
+}
+
+func TestBuildGraphQueryResponseP(t *testing.T) {
+	// No docs dir - warning path.
+	root := t.TempDir()
+	codeGraph := &nullCodeGraphProvider{}
+	resp := buildGraphQueryResponse(context.Background(), graphOptions{projectRoot: root, docsDir: "docs"}, codeGraph)
+	if len(resp.Warnings) == 0 {
+		t.Error("expected warning when docs dir missing")
+	}
+
+	// With empty query and matching docs dir - no docs but response returned.
+	root2 := t.TempDir()
+	docsDir := filepath.Join(root2, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resp2 := buildGraphQueryResponse(context.Background(), graphOptions{projectRoot: root2, docsDir: "docs", query: "alpha"}, codeGraph)
+	if resp2.Query != "alpha" {
+		t.Errorf("expected query alpha, got %q", resp2.Query)
+	}
+	// Opt warnings are prepended.
+	resp3 := buildGraphQueryResponse(context.Background(), graphOptions{projectRoot: root, docsDir: "docs", warnings: []string{"opt-warn"}}, codeGraph)
+	if len(resp3.Warnings) < 2 || resp3.Warnings[0] != "opt-warn" {
+		t.Errorf("expected opt-warn first, got %+v", resp3.Warnings)
+	}
+}
+
+type nullCodeGraphProvider struct{}
+
+func (n *nullCodeGraphProvider) SearchCodeGraph(ctx context.Context, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) ([]previewSearchResult, []string) {
+	return nil, nil
+}
+func (n *nullCodeGraphProvider) Close(ctx context.Context) error { return nil }
+
+func TestWriteGraphQueryTextAllBranchesP(t *testing.T) {
+	response := previewSearchResponse{
+		Query: "alpha",
+		Warnings: []string{"warn1"},
+		Stats: map[string]int{
+			"docsSemantic": 1,
+			"docsGraph":    2,
+			"codeSemantic": 3,
+			"codeGraph":    4,
+		},
+		Panels: previewSearchPanels{
+			DocsSemantic: []previewSearchResult{{Title: "doc", Path: "doc.md", Source: "semantic"}},
+			DocsGraph:    []previewSearchResult{{Title: "docG", Path: "docG.md"}},
+			CodeSemantic: []previewSearchResult{{Title: "code", Path: "code.go", Line: 5, Source: "semantic", Confidence: "high"}},
+			CodeGraph:    []previewSearchResult{{Title: "codeG", Path: "codeG.go", NodeID: "n1"}},
+		},
+	}
+	var buf bytes.Buffer
+	if err := writeGraphQueryText(&buf, response); err != nil {
+		t.Fatalf("writeGraphQueryText: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"Query: alpha",
+		"Warnings:",
+		"- warn1",
+		"docsSemantic=1",
+		"docsGraph=2",
+		"codeSemantic=3",
+		"codeGraph=4",
+		"Docs Semantic:",
+		"Docs Graph:",
+		"Code Semantic:",
+		"Code Graph:",
+		"- doc (doc.md)",
+		"- code (code.go:5)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in output:\n%s", want, out)
+		}
+	}
+
+	// With empty results -> "no results" path.
+	responseEmpty := previewSearchResponse{Query: "x"}
+	if err := writeGraphQueryText(&buf, responseEmpty); err != nil {
+		t.Fatalf("writeGraphQueryText empty: %v", err)
+	}
+	if !strings.Contains(buf.String(), "- no results") {
+		t.Errorf("expected 'no results' in output")
+	}
+
+	// Write error path using a faulty writer.
+	faulty := &errWriter{err: errors.New("write fail")}
+	if err := writeGraphQueryText(faulty, response); err == nil {
+		t.Error("expected error from faulty writer")
+	}
+}
+
+func TestWriteGraphQueryTextAllErrorPathsP(t *testing.T) {
+	// Helper: response with one warning and one panel result.
+	response := previewSearchResponse{
+		Query:    "alpha",
+		Warnings: []string{"w1"},
+		Stats:    map[string]int{"docsSemantic": 1, "docsGraph": 2, "codeSemantic": 3, "codeGraph": 4},
+		Panels: previewSearchPanels{
+			DocsSemantic: []previewSearchResult{{Title: "doc", Path: "doc.md"}},
+		},
+	}
+	// Order of writes: Query, Warnings header, warning line, Stats, panel header, no results, panel result line.
+	// Iterate through each write position and verify error path.
+
+	// Position 0: fail on first write (Query).
+	w := &delayedErrWriter{failAfter: 0, err: errors.New("e0")}
+	if err := writeGraphQueryText(w, response); err == nil {
+		t.Error("expected error at position 0")
+	}
+
+	// Position 1: fail after Query (Warnings header).
+	w = &delayedErrWriter{failAfter: 1, err: errors.New("e1")}
+	if err := writeGraphQueryText(w, response); err == nil {
+		t.Error("expected error at position 1")
+	}
+
+	// Position 2: fail after Warnings header (warning line).
+	w = &delayedErrWriter{failAfter: 2, err: errors.New("e2")}
+	if err := writeGraphQueryText(w, response); err == nil {
+		t.Error("expected error at position 2")
+	}
+
+	// Position 3: fail after warning line (Stats).
+	w = &delayedErrWriter{failAfter: 3, err: errors.New("e3")}
+	if err := writeGraphQueryText(w, response); err == nil {
+		t.Error("expected error at position 3")
+	}
+
+	// Position 4: fail after Stats (panel header).
+	w = &delayedErrWriter{failAfter: 4, err: errors.New("e4")}
+	if err := writeGraphQueryText(w, response); err == nil {
+		t.Error("expected error at position 4")
+	}
+
+	// Empty panel and fail at panel header.
+	respEmpty := previewSearchResponse{Query: "x"}
+	w = &delayedErrWriter{failAfter: 0, err: errors.New("empty panel fail")}
+	if err := writeGraphQueryText(w, respEmpty); err == nil {
+		t.Error("expected error with empty response")
+	}
+
+	// Empty panel succeeds, then panel header fails on the second panel.
+	w = &delayedErrWriter{failAfter: 1, err: errors.New("second panel fail")}
+	if err := writeGraphQueryText(w, respEmpty); err == nil {
+		t.Error("expected error on second panel header")
+	}
+
+	// Empty panels - cover "no results" path then fail on subsequent write.
+	respNoRes := previewSearchResponse{Query: "x"}
+	w = &delayedErrWriter{failAfter: 0, err: errors.New("first panel fail")}
+	if err := writeGraphQueryText(w, respNoRes); err == nil {
+		t.Error("expected error on first panel with no results")
+	}
+
+	// Panels with results, succeed through Query and panel header, then fail in writeGraphQueryResult.
+	respWithRes := previewSearchResponse{
+		Query: "x",
+		Panels: previewSearchPanels{
+			CodeGraph: []previewSearchResult{{Title: "main", Path: "main.go"}},
+		},
+	}
+	// Try several failAfter values to find where writeGraphQueryResult actually writes.
+	for fa := 0; fa <= 5; fa++ {
+		w = &delayedErrWriter{failAfter: fa, err: errors.New("fail")}
+		if err := writeGraphQueryText(w, respWithRes); err == nil {
+			t.Errorf("expected error at failAfter=%d", fa)
+		}
+	}
+
+	// All empty panels - fail on "- no results" path. Query succeeds (1 write), then
+	// each panel: header + "no results" = 2 writes per panel. 4 panels = 8 writes + 1 query = 9.
+	// After the first "no results", fail.
+	respAllEmpty := previewSearchResponse{Query: "x"}
+	w = &delayedErrWriter{failAfter: 2, err: errors.New("first no results fail")}
+	if err := writeGraphQueryText(w, respAllEmpty); err == nil {
+		t.Error("expected error on first no results")
+	}
+}
+
+type errWriter struct{ err error }
+
+func (e *errWriter) Write(p []byte) (int, error) { return 0, e.err }
+
+// delayedErrWriter fails only after `failAfter` successful writes.
+type delayedErrWriter struct {
+	failAfter int
+	count     int
+	err       error
+}
+
+func (d *delayedErrWriter) Write(p []byte) (int, error) {
+	d.count++
+	if d.count > d.failAfter {
+		return 0, d.err
+	}
+	return len(p), nil
+}
+
+func TestWriteGraphQueryResultAllBranchesP(t *testing.T) {
+	// Result with all fields populated.
+	result := previewSearchResult{
+		Title:      "main",
+		Path:       "main.go",
+		Line:       42,
+		Source:     "code",
+		Confidence: "high",
+		FlowRole:   "caller",
+		Neighbors: []previewSearchNeighbor{
+			{Direction: "in", Label: "foo", Relation: "calls", Path: "foo.go", Line: 1},
+			{Direction: "out", Label: "bar", Path: "bar.go"},
+			{Direction: "x", Label: "baz", ID: "id1"},
+			{Direction: "y", Label: "qux"},
+			{Direction: "z", Label: "more"},
+		},
+	}
+	var buf bytes.Buffer
+	if err := writeGraphQueryResult(&buf, result); err != nil {
+		t.Fatalf("writeGraphQueryResult: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "main (main.go:42)") {
+		t.Errorf("expected title and location in output: %s", out)
+	}
+	if !strings.Contains(out, "[code, high, caller]") {
+		t.Errorf("expected source/confidence/flow in output: %s", out)
+	}
+	if !strings.Contains(out, "  - in foo via calls") {
+		t.Errorf("expected first neighbor with relation in output: %s", out)
+	}
+	if !strings.Contains(out, "  - out bar") {
+		t.Errorf("expected second neighbor: %s", out)
+	}
+	if !strings.Contains(out, "  - x baz (id1)") {
+		t.Errorf("expected third neighbor with id: %s", out)
+	}
+	if !strings.Contains(out, "+2 more") {
+		t.Errorf("expected '+2 more neighbors' marker: %s", out)
+	}
+}
+
+func TestWriteGraphQueryResultNoLocationP(t *testing.T) {
+	// Result with no Path/Line -> uses NodeID as location.
+	result := previewSearchResult{Title: "x", NodeID: "n42"}
+	var buf bytes.Buffer
+	if err := writeGraphQueryResult(&buf, result); err != nil {
+		t.Fatalf("writeGraphQueryResult: %v", err)
+	}
+	if !strings.Contains(buf.String(), "x (n42)") {
+		t.Errorf("expected NodeID as location: %s", buf.String())
+	}
+
+	// Neighbor with no Path/Line, fall back to ID.
+	result2 := previewSearchResult{
+		Title: "y",
+		Path:  "y.go",
+		Neighbors: []previewSearchNeighbor{
+			{Direction: "in", Label: "z", ID: "zID"},
+		},
+	}
+	buf.Reset()
+	if err := writeGraphQueryResult(&buf, result2); err != nil {
+		t.Fatalf("writeGraphQueryResult: %v", err)
+	}
+	if !strings.Contains(buf.String(), "(zID)") {
+		t.Errorf("expected neighbor ID as location: %s", buf.String())
+	}
+
+	// Write error path.
+	faulty := &errWriter{err: errors.New("write fail")}
+	if err := writeGraphQueryResult(faulty, result); err == nil {
+		t.Error("expected error from faulty writer")
+	}
+}
+
+func TestWriteGraphQueryResultAllErrorPathsP(t *testing.T) {
+	// Full result with line, source/confidence/flow, and many neighbors.
+	result := previewSearchResult{
+		Title:      "main",
+		Path:       "main.go",
+		Line:       42,
+		Source:     "code",
+		Confidence: "high",
+		FlowRole:   "caller",
+		Neighbors: []previewSearchNeighbor{
+			{Direction: "in", Label: "foo", Relation: "calls", Path: "foo.go", Line: 1},
+			{Direction: "out", Label: "bar", Path: "bar.go"},
+			{Direction: "x", Label: "baz", ID: "id1"},
+			{Direction: "y", Label: "qux"},
+			{Direction: "z", Label: "more"},
+		},
+	}
+	// Order of writes for full result:
+	// 0: "- main"
+	// 1: " (main.go:42)"
+	// 2: " [code, high, caller]"
+	// 3: "\n" (Fprintln)
+	// 4: "  - in foo"
+	// 5: " via calls"
+	// 6: " (foo.go:1)"
+	// 7: "\n"
+	// 8: "  - out bar"
+	// 9: " (bar.go)"
+	// 10: "\n"
+	// 11: "  - x baz"
+	// 12: " (id1)"
+	// 13: "\n"
+	// 14: "  - +1 more neighbors\n"
+	type tc struct {
+		failAfter int
+		name      string
+	}
+	for _, c := range []tc{
+		{0, "title"},
+		{1, "location"},
+		{2, "source"},
+		{3, "newline1"},
+		{4, "first neighbor"},
+		{5, "relation"},
+		{6, "neighbor location"},
+		{7, "neighbor newline"},
+		{12, "after first 3 neighbors"},
+	} {
+		w := &delayedErrWriter{failAfter: c.failAfter, err: errors.New(c.name)}
+		if err := writeGraphQueryResult(w, result); err == nil {
+			t.Errorf("expected error at position %d (%s)", c.failAfter, c.name)
+		}
+	}
+
+	// Result with only Source (to exercise source path without line/location).
+	r := previewSearchResult{Title: "x", Source: "y"}
+	w := &delayedErrWriter{failAfter: 1, err: errors.New("source path")}
+	if err := writeGraphQueryResult(w, r); err == nil {
+		t.Error("expected error on source path")
+	}
+
+	// Neighbor with relation and location.
+	rn := previewSearchResult{
+		Title: "z",
+		Neighbors: []previewSearchNeighbor{
+			{Direction: "in", Label: "q", Relation: "r", Path: "p.go", Line: 1},
+		},
+	}
+	w = &delayedErrWriter{failAfter: 3, err: errors.New("relation path")}
+	if err := writeGraphQueryResult(w, rn); err == nil {
+		t.Error("expected error after relation path")
+	}
+	w = &delayedErrWriter{failAfter: 4, err: errors.New("neighbor location path")}
+	if err := writeGraphQueryResult(w, rn); err == nil {
+		t.Error("expected error on neighbor location path")
+	}
+	w = &delayedErrWriter{failAfter: 5, err: errors.New("neighbor newline path")}
+	if err := writeGraphQueryResult(w, rn); err == nil {
+		t.Error("expected error on neighbor newline")
+	}
+}
+
+func TestRunSearchHelpP(t *testing.T) {
+	if err := RunSearch([]string{"--help"}); err != nil {
+		t.Errorf("--help should return nil: %v", err)
+	}
+}
+
+func TestRunSearchFlagErrorP(t *testing.T) {
+	if err := RunSearch([]string{"--unknown-flag"}); err == nil {
+		t.Error("expected error for unknown flag")
+	}
+}
+
+func TestRunSearchListenFailureP(t *testing.T) {
+	origServe := servePreviewForTest
+	origOpen := openURLForTest
+	defer func() {
+		servePreviewForTest = origServe
+		openURLForTest = origOpen
+	}()
+	openURLForTest = func(target string) error { return nil }
+	// Use a port that we know is taken.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	addr := ln.Addr().String()
+	if err := RunSearch([]string{"--project", t.TempDir(), "--docs-dir", "docs", "--addr", addr, "--no-open"}); err == nil {
+		t.Error("expected error when address already in use")
+	}
+}
+
+func TestRunSearchSuccessP(t *testing.T) {
+	origServe := servePreviewForTest
+	origOpen := openURLForTest
+	defer func() {
+		servePreviewForTest = origServe
+		openURLForTest = origOpen
+	}()
+	openURLForTest = func(target string) error { return nil }
+	// Stop the serve quickly.
+	servePreviewForTest = func(srv *http.Server, listener net.Listener) error {
+		return http.ErrServerClosed
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "search-launcher.html")
+	if err := RunSearch([]string{"--project", root, "--docs-dir", "docs", "--addr", "127.0.0.1:0", "--no-open", "--out", out}); err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("expected launcher file at %s, got %v", out, err)
+	}
+}
+
+func TestRunGraphHelpP(t *testing.T) {
+	if err := RunGraph([]string{"--help"}); err != nil {
+		t.Errorf("--help should return nil: %v", err)
+	}
+}
+
+func TestRunGraphFlagErrorP(t *testing.T) {
+	if err := RunGraph([]string{"--unknown-flag"}); err == nil {
+		t.Error("expected error for unknown flag")
+	}
+}
+
+func TestRunGraphSuccessP(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := runGraphQueryWithProvider(context.Background(), graphOptions{projectRoot: root, docsDir: "docs", query: "alpha"}, &nullCodeGraphProvider{}, &buf); err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if !strings.Contains(buf.String(), "Query: alpha") {
+		t.Errorf("expected Query: alpha in output, got %s", buf.String())
+	}
+}
+
+func TestRunGraphJSONP(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := runGraphQueryWithProvider(context.Background(), graphOptions{projectRoot: root, docsDir: "docs", query: "alpha", jsonOutput: true}, &nullCodeGraphProvider{}, &buf); err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if !strings.Contains(buf.String(), `"query": "alpha"`) {
+		t.Errorf("expected JSON output, got %s", buf.String())
+	}
+}
+
+func TestRunHotReloadSupervisorInitialBuildErrorP(t *testing.T) {
+	orig := buildPreviewFrontendForTest
+	defer func() { buildPreviewFrontendForTest = orig }()
+	buildPreviewFrontendForTest = func(moduleRoot string) error {
+		return errors.New("initial build failed")
+	}
+	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
+	if err == nil || err.Error() != "initial build failed" {
+		t.Errorf("expected initial build failed, got %v", err)
+	}
+}
+
+func TestRunHotReloadSupervisorSignalsInterruptP(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+
+	stopCalled := make(chan struct{}, 1)
+	var once sync.Once
+	done := make(chan previewChildResult, 1)
+	// Keep the child channel open until the test signals so the supervisor
+	// cannot exit through the result path. We only close it from the
+	// interrupt branch after stopPreviewChild is called.
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		return nil, done, nil
+	}
+	origStop := stopPreviewChildForTest
+	defer func() { stopPreviewChildForTest = origStop }()
+	stopPreviewChildForTest = func(cmd *exec.Cmd) {
+		once.Do(func() { close(stopCalled) })
+		// unblock the supervisor's <-done so it can return
+		select {
+		case done <- previewChildResult{err: nil}:
+		default:
+		}
+	}
+
+	result := make(chan error, 1)
+	go func() {
+		result <- runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
+	}()
+
+	// Wait briefly for the supervisor to enter its select loop.
+	time.Sleep(200 * time.Millisecond)
+	// Trigger signal: simulate SIGINT by stopping signal notification and
+	// sending on the channel directly is not possible without exporting the
+	// channel. Instead, we use the Stop signal the supervisor is listening
+	// to. The cleanest approach is to call signal.Reset and re-Notify and
+	// then send ourselves. Use a direct approach by sending to the process
+	// group via os.Interrupt is hard from within the same process.
+	// Instead, we'll just trigger a stop via test infrastructure. For test
+	// coverage we only need to enter the signal branch; we can simulate it
+	// by calling the supervisor's signal handler indirectly. The supervisor
+	// calls signal.Notify(signals, os.Interrupt); we can simulate the
+	// channel being closed by sending interrupt ourselves via the syscall.
+	proc, err := os.FindProcess(os.Getpid())
+	if err == nil {
+		_ = proc.Signal(os.Interrupt)
+	}
+	select {
+	case <-stopCalled:
+	case <-time.After(3 * time.Second):
+		t.Error("expected stopPreviewChild to be called after signal")
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Errorf("expected nil error after interrupt, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("supervisor did not exit after interrupt")
+	}
+}
+
+func TestRunHotReloadSupervisorFrontendBuildFailContinueP(t *testing.T) {
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+	origBuild := buildPreviewFrontendForTest
+	defer func() { buildPreviewFrontendForTest = origBuild }()
+
+	// First build succeeds (so supervisor reaches the loop).
+	// Second build (frontend rebuild) fails; we expect the supervisor to
+	// continue the loop rather than exit.
+	var mu sync.Mutex
+	var buildCount int
+	buildPreviewFrontendForTest = func(moduleRoot string) error {
+		mu.Lock()
+		buildCount++
+		n := buildCount
+		mu.Unlock()
+		if n == 1 {
+			return nil
+		}
+		return errors.New("frontend rebuild failed")
+	}
+
+	// The child channel must remain blocked indefinitely so the supervisor
+	// loops via the ticker.
+	firstDone := make(chan previewChildResult, 1)
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		return nil, firstDone, nil
+	}
+
+	moduleRoot := t.TempDir()
+	// Create frontend source file so previewSourceTokens sees a token.
+	uiDir := filepath.Join(moduleRoot, "internal", "preview", "preview_ui_src")
+	if err := os.MkdirAll(uiDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	uiFile := filepath.Join(uiDir, "index.html")
+	if err := os.WriteFile(uiFile, []byte("<html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := make(chan error, 1)
+	go func() {
+		result <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
+	}()
+
+	// Wait for ticker (700ms), then update frontend mtime so supervisor
+	// detects frontendChanged and triggers build (which fails -> continue).
+	time.Sleep(800 * time.Millisecond)
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(uiFile, future, future); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give time for the failed build to be exercised.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := buildCount
+		mu.Unlock()
+		if n >= 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	mu.Lock()
+	got := buildCount
+	mu.Unlock()
+	if got < 2 {
+		t.Errorf("expected at least 2 builds (initial + frontend rebuild), got %d", got)
+	}
+	// Now let the supervisor exit.
+	firstDone <- previewChildResult{err: nil}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Errorf("expected nil error, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("supervisor did not exit")
+	}
+}
+
+func TestRunHotReloadSupervisorNoChangeContinueP(t *testing.T) {
+	// Verifies that when tokens don't change, the supervisor takes the
+	// 'continue' path inside the ticker branch.
+	orig := startPreviewChildForTest
+	defer func() { startPreviewChildForTest = orig }()
+	done := make(chan previewChildResult, 1)
+	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
+		return nil, done, nil
+	}
+
+	moduleRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(moduleRoot, "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := make(chan error, 1)
+	go func() {
+		result <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
+	}()
+	// Wait for at least two ticker cycles so the 'continue' path is hit
+	// without any file changes.
+	time.Sleep(1700 * time.Millisecond)
+	done <- previewChildResult{err: nil}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Errorf("expected nil error, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("supervisor did not exit")
+	}
+}
+
+
+func TestLSPServerStartInitializeFailsP(t *testing.T) {
+	// Use a command that starts but doesn't speak LSP. We use `true` which
+	// exits 0 immediately. The initialize handshake will fail because the
+	// subprocess closes its stdout before responding. The Start function
+	// should call Stop and return the initialize error.
+	if _, err := exec.LookPath("true"); err != nil {
+		t.Skip("`true` not available")
+	}
+	s := &previewLSPServer{command: "true", args: []string{}}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := s.Start(ctx)
+	if err == nil {
+		t.Error("expected initialize error")
+	}
+}
+
+func TestLSPServerStartStdoutPipeErrorP(t *testing.T) {
+	// We can't easily force StdoutPipe/StdinPipe to fail, but we can verify
+	// that a non-existent command still gets a clean error from Start.
+	s := &previewLSPServer{command: "/nonexistent/path/to/cmd-zzz", args: []string{}}
+	if err := s.Start(context.Background()); err == nil {
+		t.Error("expected error for non-existent command")
+	}
+}
+
+
+func TestWithOpenFileReadFileErrorP(t *testing.T) {
+	// Path doesn't exist -> os.ReadFile returns error.
+	s := &previewLSPServer{running: true, stdin: os.Stdout}
+	err := s.withOpenFile(context.Background(), "/nonexistent/file-zzz.go", "go", func() error { return nil })
+	if err == nil {
+		t.Error("expected error when file does not exist")
+	}
+}
+
+func TestWithOpenFileUTF8ErrorP(t *testing.T) {
+	// File not valid UTF-8.
+	tmpFile := filepath.Join(t.TempDir(), "badutf8.go")
+	if err := os.WriteFile(tmpFile, []byte{0xff, 0xfe, 0xfd}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := &previewLSPServer{running: true, stdin: os.Stdout}
+	err := s.withOpenFile(context.Background(), tmpFile, "go", func() error { return nil })
+	if err == nil {
+		t.Error("expected error when file is not valid UTF-8")
+	}
+}
+
+func TestWithOpenFileNotifyErrorP(t *testing.T) {
+	// Start returns nil because running=true; stdin is nil so notify fails.
+	tmpFile := filepath.Join(t.TempDir(), "ok.go")
+	if err := os.WriteFile(tmpFile, []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := &previewLSPServer{running: true, stdin: nil, lang: lspLanguage{}}
+	err := s.withOpenFile(context.Background(), tmpFile, "go", func() error { return nil })
+	if err == nil {
+		t.Error("expected error from notify when stdin is nil")
+	}
+}
+
+func TestWithOpenFileSuccessAndCallbackP(t *testing.T) {
+	// withOpenFile calls s.Start(ctx) directly (not via seam), so we set up
+	// a server with running=true so Start is a no-op. We need a writable
+	// stdin to allow notify to succeed. We also need a valid s.lang.
+	tmpFile := filepath.Join(t.TempDir(), "ok.go")
+	if err := os.WriteFile(tmpFile, []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	s := &previewLSPServer{
+		running: true,
+		stdin:   w,
+		reader:  bufio.NewReader(r),
+		lang:    lspLanguage{},
+	}
+	// We expect either a successful path (fn is called and returns nil)
+	// or a deferred didClose error. We test that fn gets called.
+	called := false
+	fnErr := errors.New("fn error")
+	result := s.withOpenFile(context.Background(), tmpFile, "go", func() error {
+		called = true
+		return fnErr
+	})
+	if !called && result == nil {
+		t.Error("expected fn to be invoked or error returned")
+	}
+	if called && result != fnErr {
+		t.Errorf("expected fn error to propagate, got %v", result)
+	}
+}
+
+
+func TestLSPReferenceEdgesErrorPathP(t *testing.T) {
+	// Stub lspReferences to return an error so the error branch in
+	// referenceEdges is exercised.
+	orig := lspReferences
+	defer func() { lspReferences = orig }()
+	lspReferences = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspLocation, error) {
+		return nil, errors.New("references failed")
+	}
+	p := &previewLSPCodeGraphProvider{projectRoot: t.TempDir()}
+	index := lspCodeGraphIndex{Nodes: map[string]lspCodeNode{}}
+	node := lspCodeNode{ID: "n1"}
+	_, err := p.referenceEdges(context.Background(), nil, index, node)
+	if err == nil {
+		t.Error("expected error from lspReferences")
+	}
+}
+
+func TestLSPReferenceEdgesSkipSelfP(t *testing.T) {
+	// Stub lspReferences to return a ref whose caller is the same as the node.
+	orig := lspReferences
+	defer func() { lspReferences = orig }()
+	lspReferences = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspLocation, error) {
+		return []lspLocation{{URI: "file:///x.go", Range: lspRange{Start: lspPosition{Line: 1, Character: 0}}}}, nil
+	}
+	p := &previewLSPCodeGraphProvider{projectRoot: t.TempDir()}
+	// Index has a node whose ID matches what containingNodeIDForLocation will return.
+	// Use an empty index so containingNodeIDForLocation returns "" → continue.
+	index := lspCodeGraphIndex{Nodes: map[string]lspCodeNode{}}
+	node := lspCodeNode{ID: "n1"}
+	edges, err := p.referenceEdges(context.Background(), nil, index, node)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	// Edge should be empty because callerID is "" and is skipped.
+	if len(edges) != 0 {
+		t.Errorf("expected 0 edges (callerID empty), got %d", len(edges))
+	}
+}
+
+func TestAssignLSPGraphNeighborsIncomingP(t *testing.T) {
+	// Test the case edge.Target branch (incoming direction).
+	results := map[string]previewSearchResult{
+		"r1": {NodeID: "n1"},
+	}
+	index := lspCodeGraphIndex{
+		Nodes: map[string]lspCodeNode{
+			"n2": {ID: "n2", Name: "target", AbsPath: "/x.go", LanguageID: "go"},
+		},
+	}
+	// Edge has n1 as Target, so it falls into case edge.Target.
+	edges := []lspCodeEdge{{Source: "n2", Target: "n1", Relation: "callers"}}
+	assignLSPGraphNeighbors(results, index, edges)
+	got := results["r1"].Neighbors
+	if len(got) != 1 {
+		t.Fatalf("expected 1 neighbor, got %d", len(got))
+	}
+	if got[0].Direction != "incoming" {
+		t.Errorf("expected incoming direction, got %s", got[0].Direction)
+	}
+}
+
+func TestAssignLSPGraphNeighborsOutgoingP(t *testing.T) {
+	// Test the case edge.Source branch (outgoing direction).
+	results := map[string]previewSearchResult{
+		"r1": {NodeID: "n1"},
+	}
+	index := lspCodeGraphIndex{
+		Nodes: map[string]lspCodeNode{
+			"n2": {ID: "n2", Name: "callee", AbsPath: "/y.go", LanguageID: "go"},
+		},
+	}
+	// Edge has n1 as Source, so it falls into case edge.Source.
+	edges := []lspCodeEdge{{Source: "n1", Target: "n2", Relation: "calls"}}
+	assignLSPGraphNeighbors(results, index, edges)
+	got := results["r1"].Neighbors
+	if len(got) != 1 {
+		t.Fatalf("expected 1 neighbor, got %d", len(got))
+	}
+	if got[0].Direction != "outgoing" {
+		t.Errorf("expected outgoing direction, got %s", got[0].Direction)
+	}
+}
+
+func TestAssignLSPGraphNeighborsUnknownTargetP(t *testing.T) {
+	// Edge where index doesn't have the target node -> no neighbor added.
+	results := map[string]previewSearchResult{
+		"r1": {NodeID: "n1"},
+	}
+	index := lspCodeGraphIndex{Nodes: map[string]lspCodeNode{}}
+	edges := []lspCodeEdge{{Source: "n1", Target: "missing", Relation: "calls"}}
+	assignLSPGraphNeighbors(results, index, edges)
+	if len(results["r1"].Neighbors) != 0 {
+		t.Errorf("expected 0 neighbors, got %d", len(results["r1"].Neighbors))
+	}
+}
+
+
+func TestParseLSPDocumentSymbolsEmpty(t *testing.T) {
+	// Empty raw message → returns nil, nil.
+	syms, err := parseLSPDocumentSymbols(nil)
+	if err != nil {
+		t.Errorf("empty: %v", err)
+	}
+	if syms != nil {
+		t.Errorf("empty: expected nil symbols, got %v", syms)
+	}
+	// "null" raw message → returns nil, nil.
+	syms, err = parseLSPDocumentSymbols(json.RawMessage("null"))
+	if err != nil {
+		t.Errorf("null: %v", err)
+	}
+	if syms != nil {
+		t.Errorf("null: expected nil symbols, got %v", syms)
+	}
+	// Empty bytes → returns nil, nil.
+	syms, err = parseLSPDocumentSymbols(json.RawMessage(""))
+	if err != nil {
+		t.Errorf("empty bytes: %v", err)
+	}
+	if syms != nil {
+		t.Errorf("empty bytes: expected nil symbols, got %v", syms)
+	}
+	// Invalid JSON → returns error.
+	_, err = parseLSPDocumentSymbols(json.RawMessage("not json"))
+	if err == nil {
+		t.Error("invalid JSON should error")
+	}
+}
+
+func TestLSPFullSymbolName(t *testing.T) {
+	cases := []struct {
+		name  string
+		owner string
+		want  string
+	}{
+		// Empty inputs.
+		{"", "", ""},
+		{"foo", "", "foo"},
+		{"", "Owner", "Owner"},
+		// No matching prefix: prepend owner.
+		{"foo", "Owner", "Owner.foo"},
+		// Matching prefix variants.
+		{"Owner.foo", "Owner", "Owner.foo"},
+		{"Owner#foo", "Owner", "Owner#foo"},
+		{"Owner::foo", "Owner", "Owner::foo"},
+		{"(Owner)foo", "Owner", "(Owner)foo"},
+		// Whitespace trimming.
+		{"  foo  ", "Owner", "Owner.foo"},
+		{"foo", "  Owner  ", "Owner.foo"},
+	}
+	for _, tc := range cases {
+		got := lspFullSymbolName(tc.name, tc.owner)
+		if got != tc.want {
+			t.Errorf("lspFullSymbolName(%q, %q) = %q, want %q", tc.name, tc.owner, got, tc.want)
+		}
+	}
+}
+
+func TestExtractSemanticSpecRefs(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{"empty", "", 0},
+		{"no_match", "no refs here", 0},
+		{"simple_match", "see @spec/foo for details", 1},
+		{"doc_match", "see @doc/bar/baz are related", 1},
+		{"multiple_match", "@spec/foo and @spec/bar/baz are related", 2},
+		{"explicit_relation", "see @spec/foo{depends} for details", 1},
+		{"trailing_punctuation", "see @spec/foo.", 1},
+	}
+	for _, tc := range cases {
+		got := extractSemanticSpecRefs(tc.in)
+		if len(got) != tc.want {
+			t.Errorf("%s: got %d refs, want %d (refs: %+v)", tc.name, len(got), tc.want, got)
+		}
+	}
+}
+

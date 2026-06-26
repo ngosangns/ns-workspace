@@ -516,7 +516,7 @@ func (m Manager) InstallRegistrySkills(opt Options) error {
 }
 
 func (m Manager) context(opt Options) (Context, error) {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return Context{}, err
 	}
@@ -535,13 +535,21 @@ func (m Manager) context(opt Options) (Context, error) {
 	return Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, UserConfig: userCfg, Report: stdoutReporter{}, manifestCache: map[string]any{}, seenDirs: map[string]bool{}}, nil
 }
 
-func (m Manager) adapters(ctx Context) []Adapter {
+// managerAdaptersFn is a seam test: lets tests inject a custom adapter
+// catalog (e.g. one with duplicate executables) to cover dedup branches.
+var managerAdaptersFn = defaultManagerAdapters
+
+func defaultManagerAdapters(ctx Context) []Adapter {
 	kiroRoot := ExpandPath(os.Getenv("KIRO_HOME"))
 	return NewAdapterRegistry(RegistryOptions{
 		Home:          ctx.Home,
 		XDGConfigHome: ctx.XDGConfigHome,
 		KiroHome:      kiroRoot,
 	}).All()
+}
+
+func (m Manager) adapters(ctx Context) []Adapter {
+	return managerAdaptersFn(ctx)
 }
 
 

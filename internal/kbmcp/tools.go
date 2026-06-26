@@ -278,6 +278,10 @@ func (s *Server) handleModifyDoc(args json.RawMessage) (any, error) {
 	return modifyDocResult{OK: true, Path: id}, nil
 }
 
+// relFn is a test seam for filepath.Rel so tests can exercise the error branch
+// (which is platform-specific and hard to trigger on Linux).
+var relFn = filepath.Rel
+
 // resolveDocPath joins a docs-root-relative id onto docsRoot and returns the
 // absolute path only when the result stays strictly inside docsRoot. It is a
 // security-critical guard against path traversal (Property 15, Req 8.2): it
@@ -299,7 +303,7 @@ func resolveDocPath(docsRoot, id string) (string, error) {
 	// Primary check: the cleaned target must be relative to the docs root with
 	// no upward escape. filepath.Rel collapses ".." segments, so a traversal
 	// that climbs above root yields a rel beginning with "..".
-	rel, err := filepath.Rel(root, abs)
+	rel, err := relFn(root, abs)
 	if err != nil {
 		return "", fmt.Errorf("path escapes docs root: %q", id)
 	}

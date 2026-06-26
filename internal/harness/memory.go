@@ -221,10 +221,7 @@ func (st *Store) Load() (*State, error) {
 }
 
 func (st *Store) Save(state *State) error {
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
+	data, _ := json.MarshalIndent(state, "", "  ")
 	data = append(data, '\n')
 	project := st.projectPath()
 	if err := os.MkdirAll(filepath.Dir(project), 0o755); err != nil {

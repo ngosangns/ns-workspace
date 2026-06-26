@@ -87,11 +87,20 @@ func NewServer(projectRoot, docsDir string) *Server {
 	}
 }
 
+// getwdFn is a test seam for os.Getwd.
+var getwdFn = os.Getwd
+
+// routeFn is a test seam for the route function. It allows tests to inject
+// panicking handlers to exercise the panic recovery branch in dispatch.
+var routeFn = func(s *Server, ctx context.Context, req rpcRequest) rpcResponse {
+	return s.route(ctx, req)
+}
+
 // Run parses flags and starts the MCP stdio server. It supports --project and
 // --docs (aliased as --docs-dir to match the other preview/search/graph
 // commands). The server is local-only and never binds a network port.
 func Run(args []string) error {
-	cwd, err := os.Getwd()
+	cwd, err := getwdFn()
 	if err != nil {
 		return err
 	}
@@ -173,7 +182,7 @@ func (s *Server) dispatch(ctx context.Context, req rpcRequest) (resp rpcResponse
 		}
 	}()
 
-	return s.route(ctx, req), true
+	return routeFn(s, ctx, req), true
 }
 
 // route maps a JSON-RPC method to its handler. Unknown methods return a

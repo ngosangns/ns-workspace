@@ -35,11 +35,13 @@ func NewEvaluator(projectRoot string, reporter Reporter) *Evaluator {
 
 func (e *Evaluator) EvaluateAll(task *Task, prior map[string]bool) ([]EvalResult, bool) {
 	commands := e.buildCommands(task)
+	mustPass := e.buildMustPass(task)
 	results := make([]EvalResult, 0, len(commands))
 	allPassed := true
 	status := map[string]bool{}
 	for name, cmd := range commands {
 		res := e.run(name, cmd)
+		res.MustPass = mustPass[name]
 		results = append(results, res)
 		status[name] = res.Passed
 		if !res.Passed && res.MustPass {
@@ -50,6 +52,19 @@ func (e *Evaluator) EvaluateAll(task *Task, prior map[string]bool) ([]EvalResult
 		prior[k] = v
 	}
 	return results, allPassed
+}
+
+// buildMustPass returns a map from evaluator command name to its must_pass flag.
+// Discovered commands (go-test, pkg-*) are advisory and never must_pass.
+func (e *Evaluator) buildMustPass(task *Task) map[string]bool {
+	out := map[string]bool{}
+	for i, acc := range task.Acceptance {
+		name := fmt.Sprintf("accept-%d", i)
+		if acc.Command != "" || acc.Script != "" {
+			out[name] = acc.MustPass
+		}
+	}
+	return out
 }
 
 func (e *Evaluator) buildCommands(task *Task) map[string]string {

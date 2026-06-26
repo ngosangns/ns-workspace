@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// readPresetFileHook is a seam for tests; production code uses
+// readPresetFile below.
+var readPresetFileHook = readPresetFile
+
 // readPresetFile reads embeddedPath from the user-config overlay if
 // present, otherwise from the embedded preset FS. Caches the result so
 // repeated lookups during a single Apply pass do not re-read disk.
@@ -48,6 +52,10 @@ func fsReadFile(fsys fs.FS, name string) ([]byte, error) {
 	return fs.ReadFile(fsys, name)
 }
 
+// readMCPManifestHook is a seam for tests; production code uses
+// readMCPManifest below.
+var readMCPManifestHook = readMCPManifest
+
 // readMCPManifest returns the shared `presets/mcp/servers.json` content
 // as a typed MCPManifest, honoring the user-config overlay.
 func readMCPManifest(ctx Context) (MCPManifest, error) {
@@ -80,6 +88,10 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 	ctx.manifestCache[cacheKey] = manifest
 	return manifest, nil
 }
+
+// readSettingsManifestHook is a seam for tests; production code uses
+// readSettingsManifest below.
+var readSettingsManifestHook = readSettingsManifest
 
 // readSettingsManifest returns the cross-cutting settings preset
 // (hooks). Profile-based providers merge additional fields on top via
@@ -211,10 +223,14 @@ func loadAdapterSettingsManifest(ctx Context) (map[string]string, error) {
 	return out, nil
 }
 
+// resolveAdapterSettingsTargetHook is a seam for tests; production code
+// uses resolveAdapterSettingsTarget below.
+var resolveAdapterSettingsTargetHook = resolveAdapterSettingsTarget
+
 // resolveAdapterSettingsTarget reads the profile at profilePath and
 // returns the resolved native config path (Target joined with homeDir).
 func resolveAdapterSettingsTarget(ctx Context, profilePath, homeDir string) (string, error) {
-	profile, err := readAdapterSettingsProfile(ctx, profilePath)
+	profile, err := readAdapterSettingsProfileHook(ctx, profilePath)
 	if err != nil {
 		return "", err
 	}

@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,11 +139,11 @@ func RunSearch(args []string) error {
 	fmt.Printf("project: %s\n", opt.projectRoot)
 	fmt.Printf("docs: %s\n", docsRoot(opt.projectRoot, opt.docsDir))
 	if opt.openBrowser {
-		if err := openURL(opt.outPath); err != nil {
+		if err := openURLForTest(opt.outPath); err != nil {
 			fmt.Printf("open browser failed: %v\n", err)
 		}
 	}
-	if err := server.srv.Serve(listener); err != nil {
+	if err := servePreviewForTest(server.srv, listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil

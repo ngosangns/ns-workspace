@@ -101,7 +101,7 @@ func copyDir(ctx Context, src, dst string) error {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(src, path)
+		rel, err := copyDirRel(src, path)
 		if err != nil {
 			return err
 		}
@@ -116,6 +116,12 @@ func copyDir(ctx Context, src, dst string) error {
 		return writeFileManaged(ctx, target, data, true)
 	})
 }
+
+// copyDirRel is a thin seam over filepath.Rel so tests can simulate the
+// error branch in copyDir. Production paths from filepath.WalkDir
+// always succeed for filepath.Rel; the seam exists for future-proof
+// coverage.
+var copyDirRel = filepath.Rel
 
 // backupAndRemove renames path aside as a timestamped backup, then
 // removes the original (directory or file). Used by linkOrCopy when

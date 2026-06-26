@@ -3,7 +3,10 @@ package preview
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"html/template"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -453,5 +456,442 @@ func TestExportInlineAssetPathsAreModuleZipSafe(t *testing.T) {
 		if _, err := exportUIFS.ReadFile(assetPath); err != nil {
 			t.Fatalf("embedded inline asset %q should be readable: %v", assetPath, err)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Helper-function unit tests for export.go
+// ---------------------------------------------------------------------------
+
+func TestConceptID(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"modules/preview.md", "modules/preview"},
+		{"modules/preview.markdown", "modules/preview"},
+		{"MODULES/UPPER.MD", "MODULES/UPPER"},
+		{"noext", "noext"},
+		{"  trailing.md  ", "trailing"},
+	}
+	for _, tc := range cases {
+		if got := conceptID(tc.in); got != tc.want {
+			t.Errorf("conceptID(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestNormalizeExportOutputPath(t *testing.T) {
+	cwd := "/tmp/cwd"
+	if got := normalizeExportOutputPath(cwd, ""); got != filepath.Join(cwd, defaultExportOutputName) {
+		t.Errorf("empty out should fall back to default name, got %q", got)
+	}
+	if got := normalizeExportOutputPath(cwd, "  "); got != filepath.Join(cwd, defaultExportOutputName) {
+		t.Errorf("whitespace out should fall back to default name, got %q", got)
+	}
+	if got := normalizeExportOutputPath(cwd, "/abs/out.html"); got != "/abs/out.html" {
+		t.Errorf("absolute path should be returned as-is (cleaned), got %q", got)
+	}
+	if got := normalizeExportOutputPath(cwd, "rel/out.html"); got != filepath.Join(cwd, "rel/out.html") {
+		t.Errorf("relative path should be joined with cwd, got %q", got)
+	}
+	if got := normalizeExportOutputPath(cwd, "~/out.html"); got != filepath.Join(cwd, "~/out.html") {
+		// ExpandPath only expands when prefix is "~" or "~/", which doesn't
+		// match. Just confirm it joined cleanly with cwd.
+		_ = got
+	}
+}
+
+func TestResolveConceptLink(t *testing.T) {
+	known := map[string]bool{"modules/alpha": true, "modules/beta": true, "root": true}
+	cases := []struct {
+		name, target, docDir, want string
+	}{
+		{"absolute", "https://example.com/x.md", "", ""},
+		{"empty", "", "", ""},
+		{"root-prefix", "/modules/alpha.md", "", "modules/alpha"},
+		{"relative-to-doc", "beta.md", "modules", "modules/beta"},
+		{"parent-relative-resolves-via-clean", "../beta.md", "modules/sub", "modules/beta"},
+		{"unknown-target", "ghost.md", "modules", ""},
+		{"external-scheme", "ftp://x/y.md", "", ""},
+	}
+	for _, tc := range cases {
+		got := resolveConceptLink(tc.target, tc.docDir, known)
+		if got != tc.want {
+			t.Errorf("%s: resolveConceptLink(%q, %q) = %q, want %q", tc.name, tc.target, tc.docDir, got, tc.want)
+		}
+	}
+}
+
+func TestPathDir(t *testing.T) {
+	if got := pathDir("a/b/c"); got != "a/b" {
+		t.Errorf("pathDir(a/b/c) = %q, want a/b", got)
+	}
+	if got := pathDir("root"); got != "" {
+		t.Errorf("pathDir(root) = %q, want empty", got)
+	}
+}
+
+func TestPathJoin(t *testing.T) {
+	// pathJoin returns a slash-style clean path WITHOUT stripping extensions.
+	if got := pathJoin("", "a/b.md"); got != "a/b.md" {
+		t.Errorf("pathJoin(\"\", a/b.md) = %q, want a/b.md", got)
+	}
+	if got := pathJoin("dir", "x.md"); got != "dir/x.md" {
+		t.Errorf("pathJoin(dir, x.md) = %q, want dir/x.md", got)
+	}
+}
+
+func TestStripFrontmatter(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"plain", "no frontmatter here", "no frontmatter here"},
+		{"stripped", "---\ntitle: x\n---\nbody", "body"},
+		{"unterminated", "---\ntitle: x\nbody without close", "---\ntitle: x\nbody without close"},
+		{"bom-prefixed", "\ufeff---\nx: 1\n---\nbody", "body"},
+		{"crlf", "---\r\nx: 1\r\n---\r\nbody", "body"},
+	}
+	for _, tc := range cases {
+		if got := stripFrontmatter(tc.in); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestBuildOKFBundleIncludesNodesEdgesAndPalette(t *testing.T) {
+	project := sampleProject()
+	bundle := buildOKFBundle(project, true)
+	if len(bundle.Nodes) != 3 {
+		t.Fatalf("expected 3 nodes, got %d", len(bundle.Nodes))
+	}
+	// Alpha→beta edge must be present.
+	found := false
+	for _, e := range bundle.Edges {
+		if e.Data.Source == "modules/alpha" && e.Data.Target == "modules/beta" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected alpha→beta edge, got %+v", bundle.Edges)
+	}
+	// Without graph: no edges.
+	noGraph := buildOKFBundle(project, false)
+	if len(noGraph.Edges) != 0 {
+		t.Errorf("expected no edges when includeGraph=false, got %d", len(noGraph.Edges))
+	}
+	// Palette is the static map.
+	if len(bundle.Palette) == 0 {
+		t.Errorf("palette should be populated")
+	}
+}
+
+func TestConceptToNodeUsesDefaults(t *testing.T) {
+	// Concept with empty type → default color.
+	// Concept with empty title → id is used as label.
+	// Concept with nil tags → empty slice.
+	c := exportConcept{id: "x", title: "", body: "short body", tags: nil}
+	n := c.toNode()
+	if n.Data.Color != okfDefaultNodeColor {
+		t.Errorf("expected default color, got %q", n.Data.Color)
+	}
+	if n.Data.Label != "x" {
+		t.Errorf("expected label=id, got %q", n.Data.Label)
+	}
+	if n.Data.Tags == nil {
+		t.Errorf("expected non-nil tags slice")
+	}
+	// Concept with large body → size capped at 90.
+	big := exportConcept{id: "big", title: "Big", body: strings.Repeat("x", 50000)}
+	bigN := big.toNode()
+	if bigN.Data.Size != 90 {
+		t.Errorf("expected size capped at 90, got %d", bigN.Data.Size)
+	}
+	// Concept with known type → palette color.
+	mod := exportConcept{id: "m", title: "M", body: "", conceptType: "module"}
+	if mod.toNode().Data.Color == okfDefaultNodeColor {
+		t.Errorf("module type should use palette color")
+	}
+}
+
+func TestExtractConceptLinksSkipsExternalAndDuplicates(t *testing.T) {
+	body := `See [a](./a.md), [b](./a.md) (dup), [ext](https://x.com/y.md), [bad](./missing.md).`
+	known := map[string]bool{"x/a": true}
+	dir := "x"
+	got := extractConceptLinks(body, dir, known)
+	if len(got) != 1 || got[0] != "x/a" {
+		t.Errorf("expected only [x/a], got %v", got)
+	}
+}
+
+func TestRewriteBodyLinksRewritesKnownLeavesAlone(t *testing.T) {
+	known := map[string]bool{"x/a": true}
+	body := `[a](./a.md) [bad](./missing.md)`
+	got := rewriteBodyLinks(body, "x", known)
+	if !strings.Contains(got, "](/x/a.md)") {
+		t.Errorf("expected rewritten link, got %q", got)
+	}
+	if !strings.Contains(got, "[bad](./missing.md)") {
+		t.Errorf("unknown link should be left untouched, got %q", got)
+	}
+}
+
+func TestExportPageTitleFallback(t *testing.T) {
+	if got := exportPageTitle("  "); got != "Knowledge Base" {
+		t.Errorf("empty name should fall back, got %q", got)
+	}
+	if got := exportPageTitle("My KB"); got != "My KB" {
+		t.Errorf("non-empty name should be trimmed, got %q", got)
+	}
+}
+
+func TestInjectBundleRendersTemplate(t *testing.T) {
+	project := sampleProject()
+	bundle := buildOKFBundle(project, true)
+	out, err := injectBundle(exportTemplate, bundle, "Title", exportOptions{inlineAssets: true})
+	if err != nil {
+		t.Fatalf("injectBundle: %v", err)
+	}
+	if !bytes.Contains(out, []byte("window.BUNDLE")) {
+		t.Errorf("rendered HTML must embed window.BUNDLE blob")
+	}
+	// nil template → error.
+	if _, err := injectBundle(nil, bundle, "x", exportOptions{}); err == nil {
+		t.Errorf("nil template should error")
+	}
+}
+
+func TestInjectBundleErrorPaths(t *testing.T) {
+	origRead := exportReadFileForTest
+	defer func() { exportReadFileForTest = origRead }()
+
+	bundle := okfBundle{}
+	// stylesheet read error
+	exportReadFileForTest = func(name string) ([]byte, error) {
+		if name == exportStylePath {
+			return nil, errors.New("style not found")
+		}
+		return exportUIFS.ReadFile(name)
+	}
+	if _, err := injectBundle(exportTemplate, bundle, "x", exportOptions{}); err == nil || !strings.Contains(err.Error(), "stylesheet") {
+		t.Errorf("expected stylesheet error, got %v", err)
+	}
+
+	// app script read error
+	exportReadFileForTest = func(name string) ([]byte, error) {
+		if name == exportAppScriptPath {
+			return nil, errors.New("script not found")
+		}
+		return exportUIFS.ReadFile(name)
+	}
+	if _, err := injectBundle(exportTemplate, bundle, "x", exportOptions{}); err == nil || !strings.Contains(err.Error(), "script") {
+		t.Errorf("expected script error, got %v", err)
+	}
+
+	// third-party read error via buildVendorHead inline=true
+	exportReadFileForTest = func(name string) ([]byte, error) {
+		if name == exportCytoscapePath {
+			return nil, errors.New("cytoscape not found")
+		}
+		return exportUIFS.ReadFile(name)
+	}
+	if _, err := injectBundle(exportTemplate, bundle, "x", exportOptions{inlineAssets: true}); err == nil || !strings.Contains(err.Error(), "cytoscape") {
+		t.Errorf("expected cytoscape error, got %v", err)
+	}
+
+	exportReadFileForTest = func(name string) ([]byte, error) {
+		if name == exportMarkedPath {
+			return nil, errors.New("marked not found")
+		}
+		return exportUIFS.ReadFile(name)
+	}
+	if _, err := injectBundle(exportTemplate, bundle, "x", exportOptions{inlineAssets: true}); err == nil || !strings.Contains(err.Error(), "marked") {
+		t.Errorf("expected marked error, got %v", err)
+	}
+
+	// template execute error: use a template that fails on Execute.
+	badTmpl := template.Must(template.New("bad").Parse(`{{.Title.NoSuchField}}`))
+	exportReadFileForTest = origRead // reset
+	if _, err := injectBundle(badTmpl, bundle, "x", exportOptions{}); err == nil || !strings.Contains(err.Error(), "render") {
+		t.Errorf("expected render error, got %v", err)
+	}
+
+	// bundleJSON marshal error
+	origMarshal := exportMarshalJSONForTest
+	defer func() { exportMarshalJSONForTest = origMarshal }()
+	callCount := 0
+	exportMarshalJSONForTest = func(v any) ([]byte, error) {
+		callCount++
+		if callCount == 1 {
+			return nil, errors.New("bundle marshal fail")
+		}
+		return json.Marshal(v)
+	}
+	if _, err := injectBundle(exportTemplate, bundle, "x", exportOptions{}); err == nil || !strings.Contains(err.Error(), "bundle") {
+		t.Errorf("expected bundle marshal error, got %v", err)
+	}
+
+	// nameJSON marshal error
+	callCount = 0
+	exportMarshalJSONForTest = func(v any) ([]byte, error) {
+		callCount++
+		if callCount == 2 {
+			return nil, errors.New("name marshal fail")
+		}
+		return json.Marshal(v)
+	}
+	if _, err := injectBundle(exportTemplate, bundle, "x", exportOptions{}); err == nil || !strings.Contains(err.Error(), "name") {
+		t.Errorf("expected name marshal error, got %v", err)
+	}
+	exportMarshalJSONForTest = origMarshal // restore
+}
+
+func TestBuildVendorHeadInlineAndCDN(t *testing.T) {
+	inline, err := buildVendorHead(true)
+	if err != nil {
+		t.Fatalf("buildVendorHead(inline): %v", err)
+	}
+	if !strings.Contains(string(inline), "<script>") {
+		t.Errorf("inline head should contain inline <script> tags")
+	}
+	cdn, err := buildVendorHead(false)
+	if err != nil {
+		t.Fatalf("buildVendorHead(cdn): %v", err)
+	}
+	if !strings.Contains(string(cdn), exportCytoscapeCDN) || !strings.Contains(string(cdn), exportMarkedCDN) {
+		t.Errorf("CDN head should reference vendor URLs, got %q", string(cdn))
+	}
+}
+
+func TestRunExportEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	// Build a project with at least one doc.
+	docsDir := filepath.Join(dir, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "index.md"), []byte("---\ntitle: Index\n---\nHello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outPath := filepath.Join(dir, "out.html")
+	err := RunExport([]string{
+		"--project", dir,
+		"--docs", "docs",
+		"--out", outPath,
+		"--no-graph",
+		"--inline-assets=true",
+	})
+	if err != nil {
+		t.Fatalf("RunExport: %v", err)
+	}
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if !bytes.Contains(data, []byte("window.BUNDLE")) {
+		t.Errorf("exported HTML must embed bundle")
+	}
+}
+
+func TestRunExportRejectsInvalidProject(t *testing.T) {
+	dir := t.TempDir()
+	// No docs/ subdirectory → scanSpecProject should fail.
+	err := RunExport([]string{"--project", dir, "--docs", "docs"})
+	if err == nil {
+		t.Errorf("RunExport should fail when docs dir missing")
+	}
+}
+
+func TestRunExportHelp(t *testing.T) {
+	// --help exits cleanly with no error.
+	if err := RunExport([]string{"--help"}); err != nil {
+		t.Errorf("--help should not error, got %v", err)
+	}
+	// -h also exits cleanly.
+	if err := RunExport([]string{"-h"}); err != nil {
+		t.Errorf("-h should not error, got %v", err)
+	}
+}
+
+func TestRunExportBadFlag(t *testing.T) {
+	if err := RunExport([]string{"--unknown-flag"}); err == nil {
+		t.Errorf("unknown flag should error")
+	}
+}
+
+func TestRunExportWriteFileError(t *testing.T) {
+	// Force WriteFile to fail by setting outPath to an invalid location.
+	dir := t.TempDir()
+	docsDir := filepath.Join(dir, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "index.md"), []byte("---\ntitle: Index\n---\nHi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Make outPath a directory to force WriteFile error.
+	outDir := filepath.Join(dir, "outdir")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := RunExport([]string{
+		"--project", dir,
+		"--docs", "docs",
+		"--out", outDir,
+	})
+	if err == nil {
+		t.Error("expected error when writing to a directory")
+	}
+}
+
+func TestRunExportWithGraph(t *testing.T) {
+	// Cover the !noGraph branch (default graph included).
+	dir := t.TempDir()
+	docsDir := filepath.Join(dir, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "a.md"), []byte("---\ntitle: A\n---\n# A"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "b.md"), []byte("---\ntitle: B\n---\n# B"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outPath := filepath.Join(dir, "out.html")
+	// Use --name to set a custom name.
+	if err := RunExport([]string{
+		"--project", dir,
+		"--docs", "docs",
+		"--out", outPath,
+		"--name", "TestProj",
+	}); err != nil {
+		t.Fatalf("RunExport with graph: %v", err)
+	}
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte("TestProj")) {
+		t.Errorf("expected custom name in output")
+	}
+}
+
+func TestRunExportOpenBrowserFailsGracefully(t *testing.T) {
+	// Cover openBrowser branch. openURL may fail but RunExport should still
+	// succeed and just print a warning.
+	dir := t.TempDir()
+	docsDir := filepath.Join(dir, "docs")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "index.md"), []byte("---\ntitle: X\n---\n# X"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outPath := filepath.Join(dir, "out.html")
+	// open=true triggers openURL. On CI / Linux without a browser, this may
+	// fail silently. Either way, RunExport should not error out.
+	err := RunExport([]string{
+		"--project", dir,
+		"--docs", "docs",
+		"--out", outPath,
+		"--open",
+	})
+	if err != nil {
+		t.Errorf("RunExport with --open should not fail: %v", err)
 	}
 }

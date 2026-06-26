@@ -2,70 +2,26 @@ package setup
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
 
-// runSetupFromDir chạy setup từ một working directory giả lập (thông qua
+// runSetupFromDir chạy Run() thật từ một working directory giả lập (thông qua
 // override target) và trả về stdout output. Dùng để test end-to-end mà không
 // cần phụ thuộc vào os.Getwd() thật.
 func runSetupFromDir(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	full := append([]string{"--target", dir}, args...)
 	var buf bytes.Buffer
-	// Gọi trực tiếp writeTaskfile thông qua một hàm wrapper để capture output.
-	// Vì Run() dùng os.Stdout cứng, ta dùng cách khác: refactor nhẹ bằng cách
-	// truyền buffer vào writeTaskfile qua một test-only entry point.
-	err := runWithOutput(full, &buf)
+	err := runWithWriter(full, &buf)
 	return buf.String(), err
 }
-
-// runWithOutput là wrapper test: parse flag giống Run() rồi gọi writeTaskfile
-// với stdout có thể điều khiển được.
-func runWithOutput(args []string, stdout *bytes.Buffer) error {
-	// Phục hồi từ CLI args: --target DIR [--dry-run] [--force]
-	target, dryRun, force, err := parseSetupArgs(args)
-	if err != nil {
-		return err
-	}
-	return writeTaskfile(target, defaultScripts, dryRun, force, stdout)
-}
-
-// parseSetupArgs tách các flag của setup ra khỏi args, không phụ thuộc flag
-// package để test dễ hơn.
-func parseSetupArgs(args []string) (target string, dryRun, force bool, err error) {
-	target, _ = os.Getwd()
-	dryRun = false
-	force = false
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--target":
-			if i+1 >= len(args) {
-				return "", false, false, errMissingValue("--target")
-			}
-			target = args[i+1]
-			i++
-		case "--dry-run":
-			dryRun = true
-		case "--force":
-			force = true
-		default:
-			return "", false, false, errUnknownFlag(args[i])
-		}
-	}
-	return target, dryRun, force, nil
-}
-
-type flagError struct{ msg string }
-
-func (e *flagError) Error() string { return e.msg }
-
-func errMissingValue(flag string) error  { return &flagError{"missing value for " + flag} }
-func errUnknownFlag(flag string) error   { return &flagError{"unknown flag: " + flag} }
 
 func TestRunWritesNewTaskfile(t *testing.T) {
 	dir := t.TempDir()
@@ -86,7 +42,7 @@ func TestRunWritesNewTaskfile(t *testing.T) {
 		t.Fatalf("Taskfile.yml was not created: %v", err)
 	}
 
-	// Phải chứa tất cả 20 task mặc định.
+	// Phải chứa tất cả task mặc định.
 	body := string(data)
 	for _, name := range ScriptNames() {
 		if !strings.Contains(body, name+":") {
@@ -364,7 +320,375 @@ func TestRunHandlesMissingValueFlag(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for --target without value")
 	}
-	if !strings.Contains(err.Error(), "missing value") {
+	// Go flag trả về "flag needs an argument: -target" được wrap với "setup:"
+	if !strings.Contains(err.Error(), "flag needs an argument") &&
+		!strings.Contains(err.Error(), "setup:") {
 		t.Errorf("unexpected error: %v", err)
 	}
+}
+
+// --- Tests targeting 100% coverage ---
+
+func TestRunEntryPoint(t *testing.T) {
+	// Gọi Run() thật (entry point) thay vì wrapper, để cover entry point.
+	dir := t.TempDir()
+	// Chuyển cwd sang dir để --target mặc định = dir.
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldCwd) })
+
+	if err := Run([]string{"--dry-run"}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+}
+
+func TestRunHelp(t *testing.T) {
+	// -h / --help / help phải in usage ra stdout và trả về nil error.
+	var buf bytes.Buffer
+	if err := runWithWriter([]string{"-h"}, &buf); err != nil {
+		t.Fatalf("Run -h should not error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Usage: setup") {
+		t.Errorf("help output should contain usage, got: %q", out)
+	}
+}
+
+func TestRunLongHelp(t *testing.T) {
+	var buf bytes.Buffer
+	if err := runWithWriter([]string{"--help"}, &buf); err != nil {
+		t.Fatalf("Run --help should not error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Usage: setup") {
+		t.Errorf("--help should print usage, got: %q", buf.String())
+	}
+}
+
+func TestRunInvalidFlag(t *testing.T) {
+	// Flag không hợp lệ phải trả về error.
+	var buf bytes.Buffer
+	err := runWithWriter([]string{"--unknown-flag"}, &buf)
+	if err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+	if !strings.Contains(err.Error(), "setup:") {
+		t.Errorf("error should be prefixed with 'setup:', got: %v", err)
+	}
+}
+
+func TestWriteTaskfileInvalidTargetPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows path semantics differ")
+	}
+	// Trên Unix, /dev/null/foo không tạo được ⇒ MkdirAll fail.
+	var buf bytes.Buffer
+	err := writeTaskfile("/dev/null/foo", defaultScripts, false, false, &buf)
+	if err == nil {
+		t.Fatal("expected error when target cannot be created")
+	}
+	// Có thể fail ở mkdir (cannot create) hoặc ở read (cannot read existing).
+	if !strings.Contains(err.Error(), "cannot create target directory") &&
+		!strings.Contains(err.Error(), "cannot read existing Taskfile.yml") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteTaskfileInvalidYAMLExisting(t *testing.T) {
+	// Tạo Taskfile.yml với nội dung YAML không hợp lệ để cover nhánh parse error.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte("::: invalid :::\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err := writeTaskfile(dir, defaultScripts, false, false, &buf)
+	if err == nil {
+		t.Fatal("expected error for invalid YAML")
+	}
+	if !strings.Contains(err.Error(), "cannot parse existing Taskfile.yml") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteTaskfileExistingTasksNotMap(t *testing.T) {
+	// `tasks:` tồn tại nhưng là null/list (không phải map) → phải reset.
+	dir := t.TempDir()
+	// tasks: null  ⇒ parse thành nil
+	existing := "version: \"3\"\ntasks: null\n"
+	if err := os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeTaskfile(dir, defaultScripts, false, false, &buf); err != nil {
+		t.Fatalf("setup should recover from tasks: null, got: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "Taskfile.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("output invalid: %v", err)
+	}
+	tasks, ok := parsed["tasks"].(map[string]any)
+	if !ok || len(tasks) != len(defaultScripts) {
+		t.Errorf("tasks should be reset to map of size %d, got: %v", len(defaultScripts), parsed["tasks"])
+	}
+}
+
+func TestWriteTaskfileExistingVersionKept(t *testing.T) {
+	// Nếu file đã có version, không ghi đè.
+	dir := t.TempDir()
+	existing := "version: \"2\"\ntasks: {}\n"
+	if err := os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeTaskfile(dir, defaultScripts, false, false, &buf); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "Taskfile.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := parsed["version"].(string); v != "2" {
+		t.Errorf("version should be preserved as '2', got %q", v)
+	}
+}
+
+func TestWriteTaskfileEmptyFile(t *testing.T) {
+	// File trống → readExistingTaskfile trả về map rỗng → phải set version 3.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Taskfile.yml"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeTaskfile(dir, defaultScripts, false, false, &buf); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "Taskfile.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := parsed["version"].(string); v != "3" {
+		t.Errorf("version should be '3', got %q", v)
+	}
+}
+
+func TestWriteTaskfileDryRunOutput(t *testing.T) {
+	// Dry-run phải in header + YAML ra stdout.
+	dir := t.TempDir()
+	var buf bytes.Buffer
+	if err := writeTaskfile(dir, defaultScripts, true, false, &buf); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+	out := buf.String()
+	if !strings.HasPrefix(out, "# Generated by ns-workspace setup.") {
+		t.Errorf("dry-run should start with header, got: %q", out[:min(80, len(out))])
+	}
+	if !strings.Contains(out, "ns:status:") {
+		t.Errorf("dry-run should include default tasks, got: %q", out)
+	}
+}
+
+func TestReadExistingTaskfileUnreadable(t *testing.T) {
+	// File không đọc được. Trên Unix, chmod 000 sẽ ngăn read (nếu không phải owner root).
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 ineffective on windows / as root")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Taskfile.yml")
+	if err := os.WriteFile(path, []byte("version: \"3\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	_, err := readExistingTaskfile(path)
+	if err == nil {
+		t.Fatal("expected error when file unreadable")
+	}
+	if !strings.Contains(err.Error(), "cannot read existing Taskfile.yml") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestReadExistingTaskfileNilParsed(t *testing.T) {
+	// YAML parse được nhưng trả về nil map (vd: file chỉ chứa "---" + EOF).
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte("---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readExistingTaskfile(filepath.Join(dir, "Taskfile.yml"))
+	if err != nil {
+		t.Fatalf("read should not error on nil parsed: %v", err)
+	}
+	if got == nil {
+		t.Error("readExistingTaskfile should return non-nil empty map")
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty map, got: %v", got)
+	}
+}
+
+func TestToStringSliceEmpty(t *testing.T) {
+	got := toStringSlice(nil)
+	if len(got) != 0 {
+		t.Errorf("toStringSlice(nil) = %v, want empty", got)
+	}
+	got = toStringSlice([]string{})
+	if len(got) != 0 {
+		t.Errorf("toStringSlice([]) = %v, want empty", got)
+	}
+}
+
+func TestDefaultScriptsReturnsCopy(t *testing.T) {
+	// DefaultScripts phải trả về bản copy — sửa bản trả về không ảnh hưởng list gốc.
+	got := DefaultScripts()
+	if len(got) != len(defaultScripts) {
+		t.Fatalf("DefaultScripts length = %d, want %d", len(got), len(defaultScripts))
+	}
+	// Đổi tên task đầu tiên.
+	got[0].Name = "modified"
+	// Đổi Commands của task đầu tiên.
+	got[0].Commands[0] = "modified"
+
+	// defaultScripts phải còn nguyên.
+	if defaultScripts[0].Name == "modified" {
+		t.Error("DefaultScripts returned a shared slice (Name mutation leaked)")
+	}
+	if defaultScripts[0].Commands[0] == "modified" {
+		t.Error("DefaultScripts returned a shared Commands slice")
+	}
+
+	// Gọi lần nữa phải trả về bản copy tươi.
+	got2 := DefaultScripts()
+	if got2[0].Name == "modified" {
+		t.Error("DefaultScripts is not idempotent")
+	}
+}
+
+func TestRunParseErrorSurfaces(t *testing.T) {
+	// Nhánh error path không phải ErrHelp trong runWithWriter: flag unknown.
+	var buf bytes.Buffer
+	err := runWithWriter([]string{"--bogus"}, &buf)
+	if err == nil {
+		t.Fatal("expected error for bogus flag")
+	}
+	// Confirm error không phải nil (cover nhánh return fmt.Errorf("setup: %w", err)).
+	if !strings.Contains(err.Error(), "setup:") {
+		t.Errorf("error should be prefixed with 'setup:', got: %v", err)
+	}
+}
+
+func TestRunWithWriterGetwdError(t *testing.T) {
+	// Inject mock getwdFunc để simulate Getwd fail.
+	origGetwd := getwdFunc
+	getwdFunc = func() (string, error) {
+		return "", errors.New("simulated getwd failure")
+	}
+	t.Cleanup(func() { getwdFunc = origGetwd })
+
+	var buf bytes.Buffer
+	err := runWithWriter([]string{}, &buf)
+	if err == nil {
+		t.Fatal("expected error when Getwd fails")
+	}
+	if !strings.Contains(err.Error(), "cannot determine working directory") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteTaskfileAbsError(t *testing.T) {
+	// Inject mock systemOps với abs luôn fail.
+	ops := systemOps{
+		abs: func(string) (string, error) {
+			return "", errors.New("simulated abs failure")
+		},
+		mkdirAll:    defaultOps.mkdirAll,
+		writeFile:   defaultOps.writeFile,
+		yamlMarshal: defaultOps.yamlMarshal,
+	}
+	var buf bytes.Buffer
+	err := writeTaskfileWithOps("/some/path", defaultScripts, false, false, &buf, ops)
+	if err == nil {
+		t.Fatal("expected error when Abs fails")
+	}
+	if !strings.Contains(err.Error(), "cannot resolve target") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteTaskfileMkdirError(t *testing.T) {
+	ops := systemOps{
+		abs: defaultOps.abs,
+		mkdirAll: func(string, os.FileMode) error {
+			return errors.New("simulated mkdir failure")
+		},
+		writeFile:   defaultOps.writeFile,
+		yamlMarshal: defaultOps.yamlMarshal,
+	}
+	var buf bytes.Buffer
+	err := writeTaskfileWithOps(t.TempDir(), defaultScripts, false, false, &buf, ops)
+	if err == nil {
+		t.Fatal("expected error when MkdirAll fails")
+	}
+	if !strings.Contains(err.Error(), "cannot create target directory") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteTaskfileWriteError(t *testing.T) {
+	ops := systemOps{
+		abs:         defaultOps.abs,
+		mkdirAll:    defaultOps.mkdirAll,
+		writeFile:   func(string, []byte, os.FileMode) error { return errors.New("simulated write failure") },
+		yamlMarshal: defaultOps.yamlMarshal,
+	}
+	var buf bytes.Buffer
+	err := writeTaskfileWithOps(t.TempDir(), defaultScripts, false, false, &buf, ops)
+	if err == nil {
+		t.Fatal("expected error when WriteFile fails")
+	}
+	if !strings.Contains(err.Error(), "cannot write") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteTaskfileMarshalError(t *testing.T) {
+	// Inject yaml.Marshal mock để simulate unmarshalable type.
+	ops := systemOps{
+		abs:         defaultOps.abs,
+		mkdirAll:    defaultOps.mkdirAll,
+		writeFile:   defaultOps.writeFile,
+		yamlMarshal: func(any) ([]byte, error) { return nil, errors.New("simulated marshal failure") },
+	}
+	var buf bytes.Buffer
+	err := writeTaskfileWithOps(t.TempDir(), defaultScripts, false, false, &buf, ops)
+	if err == nil {
+		t.Fatal("expected error when yaml.Marshal fails")
+	}
+	if !strings.Contains(err.Error(), "cannot marshal") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

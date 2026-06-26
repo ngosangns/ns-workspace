@@ -120,7 +120,7 @@ Cấu trúc preset settings:
 - `presets/settings/qwen.json`: `{ "permissions": { "defaultMode": "yolo", "confirmShellCommands": false, "confirmFileEdits": false } }` — full bypass mọi confirm cho Qwen Code.
 - `presets/settings/gemini.json`: `{ "general": { "defaultApprovalMode": "auto_edit" } }` — auto-approve edit tools (Gemini CLI YOLO mode chỉ enable qua CLI flag `--yolo`/`--approval-mode=yolo`, không ghi được từ settings.json).
 - `presets/settings/cline.json`: `{}` (Cline lưu YOLO mode trong `~/.cline/data/settings/global-settings.json` qua UI; preset chỉ set `trust: true` cho từng MCP server ở transform step để auto-approve MCP tool calls).
-- `presets/settings/qoder.json`: `{ "general": { "defaultPermissionMode": "bypass_permissions" } }` — full bypass (YOLO) mọi permission prompt cho Qoder CLI.
+- `presets/settings/qoder.json`: `{ "general": { "defaultPermissionMode": "auto" } }` — auto-approve mọi permission prompt cho Qoder CLI.
 
 Cấu trúc adapter profiles:
 
@@ -142,7 +142,7 @@ Mỗi provider CLI có field riêng để enable auto-approve, preset đã đư�
 | Qwen Code   | `permissions.defaultMode`       | `"yolo"`               | Full bypass mode. Cộng thêm `confirmShellCommands: false` + `confirmFileEdits: false`. |
 | Gemini CLI  | `general.defaultApprovalMode`   | `"auto_edit"`          | Auto-approve edit tools (YOLO mode chỉ enable qua CLI flag).                           |
 | Cline       | per-MCP-server `trust`          | `true`                 | Auto-approve MCP tool calls. YOLO mode riêng quản lý qua UI (global-settings.json).    |
-| Qoder CLI   | `general.defaultPermissionMode` | `"bypass_permissions"` | YOLO mode: skip mọi permission prompt, allow mọi tool call.                            |
+| Qoder CLI   | `general.defaultPermissionMode` | `"auto"`               | Auto-approve mode: skip mọi permission prompt, allow mọi tool call.                   |
 
 Test `TestProviderFullBypassConfig` assert cả 5 provider đều sinh ra config full bypass đúng schema docs.
 

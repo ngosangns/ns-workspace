@@ -173,19 +173,23 @@ type previewEmbeddingSearch struct {
 	Index  previewEmbeddingIndex
 }
 
+type knownsEmbeddingProvider struct {
+	APIBase   string `json:"apiBase"`
+	APIKey    string `json:"apiKey"`
+	Timeout   int    `json:"timeout"`
+	BatchSize int    `json:"batchSize"`
+}
+
+type knownsEmbeddingModel struct {
+	Provider   string `json:"provider"`
+	Model      string `json:"model"`
+	Dimensions int    `json:"dimensions"`
+}
+
 type knownsEmbeddingSettings struct {
-	Providers map[string]struct {
-		APIBase   string `json:"apiBase"`
-		APIKey    string `json:"apiKey"`
-		Timeout   int    `json:"timeout"`
-		BatchSize int    `json:"batchSize"`
-	} `json:"embeddingProviders"`
-	Models map[string]struct {
-		Provider   string `json:"provider"`
-		Model      string `json:"model"`
-		Dimensions int    `json:"dimensions"`
-	} `json:"embeddingModels"`
-	DefaultModel string `json:"defaultEmbeddingModel"`
+	Providers    map[string]knownsEmbeddingProvider `json:"embeddingProviders"`
+	Models       map[string]knownsEmbeddingModel    `json:"embeddingModels"`
+	DefaultModel string                             `json:"defaultEmbeddingModel"`
 }
 
 type ollamaModel struct {
@@ -646,6 +650,7 @@ func previewEmbeddingConfigFromKnownsProject(projectRoot string) (previewEmbeddi
 		return previewEmbeddingConfig{}, fmt.Errorf("Knowns project semantic search is not configured.")
 	}
 	var project struct {
+
 		Settings struct {
 			SemanticSearch struct {
 				Enabled    bool   `json:"enabled"`
@@ -662,7 +667,7 @@ func previewEmbeddingConfigFromKnownsProject(projectRoot string) (previewEmbeddi
 	if project.Settings.SemanticSearch.Provider != "api" {
 		return previewEmbeddingConfig{}, fmt.Errorf("Knowns project semantic search uses a non-API provider.")
 	}
-	settings, err := loadKnownsEmbeddingSettings()
+	settings, err := loadKnownsEmbeddingSettingsForTest()
 	if err != nil {
 		return previewEmbeddingConfig{}, err
 	}
@@ -670,7 +675,7 @@ func previewEmbeddingConfigFromKnownsProject(projectRoot string) (previewEmbeddi
 }
 
 func previewEmbeddingConfigFromKnownsDefault() (previewEmbeddingConfig, error) {
-	settings, err := loadKnownsEmbeddingSettings()
+	settings, err := loadKnownsEmbeddingSettingsForTest()
 	if err != nil {
 		return previewEmbeddingConfig{}, err
 	}
@@ -684,6 +689,16 @@ func previewEmbeddingConfigFromKnownsDefault() (previewEmbeddingConfig, error) {
 		return previewEmbeddingConfig{}, fmt.Errorf("Knowns default embedding model is not configured.")
 	}
 	return previewEmbeddingConfigFromKnownsSettings(settings, modelID, 0, "knowns-default")
+}
+
+var loadKnownsEmbeddingSettingsForTest = loadKnownsEmbeddingSettings
+
+// ollamaGetForTest lets tests stub the HTTP call to the local Ollama server.
+var ollamaGetForTest = ollamaHTTPGet
+
+func ollamaHTTPGet(url string) (*http.Response, error) {
+	client := http.Client{Timeout: 2 * time.Second}
+	return client.Get(url)
 }
 
 func loadKnownsEmbeddingSettings() (knownsEmbeddingSettings, error) {
@@ -736,8 +751,7 @@ func previewEmbeddingConfigFromKnownsSettings(settings knownsEmbeddingSettings, 
 
 func previewEmbeddingConfigFromOllama() (previewEmbeddingConfig, error) {
 	const ollamaBase = "http://localhost:11434"
-	client := http.Client{Timeout: 2 * time.Second}
-	res, err := client.Get(ollamaBase + "/api/tags")
+	res, err := ollamaGetForTest(ollamaBase + "/api/tags")
 	if err != nil {
 		return previewEmbeddingConfig{}, fmt.Errorf("Ollama embedding models were not detected.")
 	}
@@ -1672,6 +1686,12 @@ func scanCodeSearchDocs(projectRoot, docsRoot string) ([]codeSearchDoc, []string
 }
 
 func gitTrackedFiles(projectRoot string) (map[string]bool, bool) {
+	return gitTrackedFilesForTest(projectRoot)
+}
+
+// gitTrackedFilesForTest lets tests stub the git ls-files call so the
+// gitFilesKnown branch in scanDocsSearchDocs can be exercised.
+var gitTrackedFilesForTest = func(projectRoot string) (map[string]bool, bool) {
 	// Preview search uses Git's tracked corpus when available so generated and scratch files stay out of results.
 	cmd := exec.Command("git", "-C", projectRoot, "ls-files", "-z")
 	out, err := cmd.Output()
@@ -2008,24 +2028,42 @@ func readPreviewEmbeddingIndex(projectRoot string) previewEmbeddingIndex {
 }
 
 func writePreviewEmbeddingIndex(projectRoot string, index previewEmbeddingIndex) error {
+	return writePreviewEmbeddingIndexForTest(projectRoot, index)
+}
+
+// writePreviewEmbeddingIndexForTest lets tests stub the JSON marshal so the
+// normally-unreachable error path can be exercised.
+var writePreviewEmbeddingIndexForTest = func(projectRoot string, index previewEmbeddingIndex) error {
 	path := previewEmbeddingIndexPath(projectRoot)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	data, err := json.Marshal(index)
+	data, err := previewEmbeddingIndexMarshalForTest(index)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
 }
 
+// previewEmbeddingIndexMarshalForTest lets tests stub the JSON marshal of
+// previewEmbeddingIndex so the unreachable marshal error branch can be exercised.
+var previewEmbeddingIndexMarshalForTest = func(v previewEmbeddingIndex) ([]byte, error) {
+	return json.Marshal(v)
+}
+
 func previewEmbeddingIndexPath(projectRoot string) string {
-	cache, err := os.UserCacheDir()
+	cache, err := previewUserCacheDirForTest()
 	if err != nil || cache == "" {
 		cache = os.TempDir()
 	}
 	sum := sha256.Sum256([]byte(projectRoot))
 	return filepath.Join(cache, "ns-workspace", "preview-search", hex.EncodeToString(sum[:8]), "embedding-index.json")
+}
+
+// previewUserCacheDirForTest lets tests stub the user cache directory lookup so
+// the error branches of previewEmbeddingIndexPath can be exercised.
+var previewUserCacheDirForTest = func() (string, error) {
+	return os.UserCacheDir()
 }
 
 func contentHash(content string) string {

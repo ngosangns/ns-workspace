@@ -33,6 +33,12 @@ func opencodeMCPManifest(manifest MCPManifest) MCPManifest {
 	return out
 }
 
+// transformMCPServersForAdapterImpl is the seam used by adapter_plugins
+// to delegate to transformMCPServersForAdapter. Tests can override the
+// variable to inject custom errors and cover error branches in plugin
+// TransformMCPServers methods that always succeed in production.
+var transformMCPServersForAdapterImpl = transformMCPServersForAdapter
+
 // transformMCPServersForAdapter rewrites each MCP server entry from the
 // canonical shared shape ({"type": "http", "url": "..."}) into the shape
 // that the target provider's native config expects.
@@ -164,7 +170,7 @@ func codexMCPBlock(manifest MCPManifest) string {
 	sort.Strings(names)
 	out := "[mcp_servers]\n"
 	for _, name := range names {
-		raw, ok := manifest.MCPServers[name]
+		raw, ok := codexMCPLookup(manifest, name)
 		if !ok {
 			continue
 		}
@@ -206,4 +212,13 @@ func codexMCPBlock(manifest MCPManifest) string {
 		out += "\n"
 	}
 	return out
+}
+
+// codexMCPLookup is a thin seam over the manifest map lookup so tests
+// can simulate a key disappearing mid-iteration (the production map is
+// never mutated between name collection and lookup, but the defensive
+// !ok check is part of the public contract).
+var codexMCPLookup = func(manifest MCPManifest, name string) (any, bool) {
+	v, ok := manifest.MCPServers[name]
+	return v, ok
 }

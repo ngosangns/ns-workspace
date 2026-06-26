@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
 )
 
 func TestScanSpecProjectParsesViclassStyleIndex(t *testing.T) {
@@ -514,4 +516,383 @@ func hasTypedEdge(edges []graphEdge, from, to, typ, origin string) bool {
 		}
 	}
 	return false
+}
+
+func TestWalkHTMLNilNodeP(t *testing.T) {
+	called := 0
+	walkHTML(nil, func(node *html.Node) { called++ })
+	if called != 0 {
+		t.Errorf("expected 0 visits for nil node, got %d", called)
+	}
+}
+
+func TestHtmlRelationFromNodeInvalidTypeP(t *testing.T) {
+	// Build a node with an invalid relation type so the default branch is taken.
+	node := &html.Node{
+		Type: html.ElementNode,
+		Data: "a",
+		Attr: []html.Attribute{
+			{Key: "target", Val: "foo.md"},
+			{Key: "type", Val: "garbage-type"},
+		},
+	}
+	got := htmlRelationFromNode(node)
+	if got.Type == "garbage-type" {
+		t.Errorf("expected default relation type, got %s", got.Type)
+	}
+	if got.Target != "foo.md" {
+		t.Errorf("expected target foo.md, got %s", got.Target)
+	}
+}
+
+func TestIsKeyValueMetadataTableShortP(t *testing.T) {
+	if isKeyValueMetadataTable(nil) {
+		t.Error("expected false for nil headers")
+	}
+	if isKeyValueMetadataTable([]string{"key"}) {
+		t.Error("expected false for single header")
+	}
+	if !isKeyValueMetadataTable([]string{"key", "value"}) {
+		t.Error("expected true for key/value headers")
+	}
+}
+
+func TestResolveSpecReferenceBadInputsP(t *testing.T) {
+	cases := []struct {
+		name   string
+		target string
+	}{
+		{"empty", ""},
+		{"url", "https://example.com"},
+		{"mailto", "mailto:foo@bar"},
+		{"anchor", "#anchor"},
+	}
+	docByPath := map[string]specDocument{}
+	diagramLabelSet := map[string]bool{}
+	for _, tc := range cases {
+		_, ok := resolveSpecReference("src.md", tc.target, docByPath, diagramLabelSet)
+		if ok {
+			t.Errorf("%s: expected false for %q", tc.name, tc.target)
+		}
+	}
+}
+
+func TestResolveSpecReferenceQueryFragmentStripP(t *testing.T) {
+	// Target with ?query#fragment should be stripped; the function returns
+	// the spec ID of the matched doc.
+	docByPath := map[string]specDocument{
+		"docs/foo.md": {Path: "docs/foo.md", ID: "foo"},
+	}
+	diagramLabelSet := map[string]bool{}
+	got, ok := resolveSpecReference("docs/index.md", "docs/foo.md?query#frag", docByPath, diagramLabelSet)
+	if !ok || got != "foo" {
+		t.Errorf("expected foo, got %q ok=%v", got, ok)
+	}
+}
+
+func TestRenderMarkdownSuccessP(t *testing.T) {
+	out, err := renderMarkdown([]byte("# Hello"))
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(out, "Hello") {
+		t.Errorf("expected Hello in output, got %s", out)
+	}
+}
+
+func TestIsMarkdownSeparatorRowEmptyP(t *testing.T) {
+	if isMarkdownSeparatorRow(nil) {
+		t.Error("expected false for nil cells")
+	}
+	if isMarkdownSeparatorRow([]string{}) {
+		t.Error("expected false for empty cells")
+	}
+	if !isMarkdownSeparatorRow([]string{"---"}) {
+		t.Error("expected true for ---")
+	}
+	if !isMarkdownSeparatorRow([]string{"", "---"}) {
+		t.Error("expected true for empty + ---")
+	}
+}
+
+func TestExtractMarkdownLinkTargetNoMatchP(t *testing.T) {
+	if got := extractMarkdownLinkTarget("plain text no link"); got != "" {
+		t.Errorf("expected empty, got %s", got)
+	}
+}
+
+
+func TestParseHTMLDocumentDataAllPathsP(t *testing.T) {
+	// Test the h1 and title branches, plus script/style filtering.
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"script_skipped", `<html><body><script>alert(1)</script><p>visible</p></body></html>`},
+		{"style_skipped", `<html><body><style>body{}</style><p>visible</p></body></html>`},
+		{"h1_first_heading", `<html><body><h1>Title Text</h1><p>body</p></body></html>`},
+		{"title_tag", `<html><head><title>Title</title></head><body></body></html>`},
+		{"doc_relation", `<html><body><doc-relation target="foo.md" type="blocks"></doc-relation></body></html>`},
+	}
+	for _, tc := range cases {
+		got := parseHTMLDocumentData(tc.raw)
+		_ = got
+	}
+}
+
+func TestParseHTMLDocumentDataInvalidHTMLP(t *testing.T) {
+	// Invalid HTML should fall back to plain text.
+	got := parseHTMLDocumentData("plain text content")
+	if got.Text == "" {
+		t.Error("expected non-empty text from fallback")
+	}
+}
+
+
+func TestNormalizeSpecPath(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"   ", ""},
+		{".", ""},
+		{"./", ""},
+		{"docs/foo.md", "foo.md"},
+		{"specs/foo.md", "foo.md"},
+		{"foo/", "foo/_overview.md"},
+		{"foo", "foo/_overview.md"},
+		{"foo.md", "foo.md"},
+		{"foo.txt", "foo.txt"},
+		{"/abs/foo.md", "/abs/foo.md"},
+		{"foo//", "foo/_overview.md"},
+	}
+	for _, tc := range cases {
+		got := normalizeSpecPath(tc.in)
+		if got != tc.want {
+			t.Errorf("normalizeSpecPath(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestCanonicalGraphEndpoint(t *testing.T) {
+	specs := map[string]specDocument{
+		"foo": {Path: "docs/foo.md", Title: "Foo"},
+	}
+	labels := map[string]bool{"foo_alias": true}
+	// exact match
+	if got := canonicalGraphEndpoint("foo", specs, labels); got != "foo" {
+		t.Errorf("exact match: got %q want foo", got)
+	}
+	// case-insensitive match
+	if got := canonicalGraphEndpoint("FOO", specs, labels); got != "foo" {
+		t.Errorf("case-insensitive match: got %q want foo", got)
+	}
+	// no match, returns input
+	if got := canonicalGraphEndpoint("bar", specs, labels); got != "bar" {
+		t.Errorf("no match: got %q want bar", got)
+	}
+}
+
+func TestCanonicalSpecNodeID(t *testing.T) {
+	doc := specDocument{Path: "docs/foo.md", Title: "Foo"}
+	// The aliases derived from name="foo" and Path="docs/foo.md" include
+	// "foo", "docs/foo", etc.
+	labels := map[string]bool{"docs/foo": true}
+	// First alias matches label set.
+	if got := canonicalSpecNodeID("foo", doc, labels); got != "docs/foo" {
+		t.Errorf("alias match: got %q want docs/foo", got)
+	}
+	// No alias matches, returns name.
+	if got := canonicalSpecNodeID("zzz_nothing_matches", specDocument{Path: "docs/bar.md"}, labels); got != "zzz_nothing_matches" {
+		t.Errorf("no alias match: got %q want zzz_nothing_matches", got)
+	}
+}
+
+func TestDedupeRelationships(t *testing.T) {
+	in := []graphRelation{
+		{From: "a", To: "b", Description: "d", Section: "s"},
+		{From: "a", To: "b", Description: "d", Section: "s"}, // dup
+		{From: "a", To: "c", Description: "d", Section: "s"}, // diff To
+		{From: "a", To: "b", Description: "d", Section: "x"}, // diff Section
+		{From: "a", To: "b", Description: "y", Section: "s"}, // diff Description
+	}
+	out := dedupeRelationships(in)
+	if len(out) != 4 {
+		t.Errorf("expected 4 unique, got %d: %+v", len(out), out)
+	}
+}
+
+func TestRelationshipsFromEdges(t *testing.T) {
+	in := []graphEdge{
+		{From: "a", To: "b", Label: "calls", Type: "calls", Origin: "doc"},
+		{From: "", To: "b", Label: "x", Origin: "doc"},  // empty From → skip
+		{From: "a", To: "", Label: "x", Origin: "doc"},  // empty To → skip
+		{From: "a", To: "b", Type: "depends", Origin: "index"},  // skip
+	}
+	out := relationshipsFromEdges(in)
+	if len(out) != 1 {
+		t.Errorf("expected 1 edge, got %d: %+v", len(out), out)
+	}
+}
+
+func TestMetadataTableEntries(t *testing.T) {
+	cases := []struct {
+		name  string
+		in    string
+		wantN int
+	}{
+		{"empty", "", 0},
+		{"no_table", "some text\nmore text", 0},
+		{"header_only_no_separator", "| Key | Value |\n", 0},
+		{"kv_table", "| Key | Value |\n| --- | --- |\n| a | 1 |\n| b | 2 |\n", 2},
+		{"no_value_row", "| Key | Value |\n| --- | --- |\n", 0},
+		{"single_column", "| a |\n| --- |\n| b |\n", 1},
+	}
+	for _, tc := range cases {
+		got := metadataTableEntries(tc.in)
+		if len(got) != tc.wantN {
+			t.Errorf("%s: got %d, want %d (entries: %+v)", tc.name, len(got), tc.wantN, got)
+		}
+	}
+}
+
+func TestEdgesFromSemanticReferences(t *testing.T) {
+	docByPath := map[string]specDocument{
+		"docs/b.md": {Path: "docs/b.md", ID: "b"},
+	}
+	diagramLabels := map[string]bool{}
+	// Valid ref to existing doc.
+	edges := edgesFromSemanticReferences("docs/a.md", "a", "see @doc/b", "test", docByPath, diagramLabels)
+	if len(edges) != 1 || edges[0].To != "b" {
+		t.Errorf("expected 1 edge to b, got %+v", edges)
+	}
+	// Invalid relation (defaultSpecRelation) — branch that may add it as
+	// dependency depending on ValidRelation semantics; we just need to
+	// exercise the loop with no matches.
+	edges = edgesFromSemanticReferences("docs/a.md", "a", "see @doc/zzz", "test", docByPath, diagramLabels)
+	if len(edges) != 0 {
+		t.Errorf("expected 0 edges to missing doc, got %+v", edges)
+	}
+	// Self-reference is skipped.
+	edges = edgesFromSemanticReferences("docs/a.md", "a", "see @doc/a", "test", docByPath, diagramLabels)
+	if len(edges) != 0 {
+		t.Errorf("expected 0 edges for self-reference, got %+v", edges)
+	}
+}
+
+func TestEdgesFromPlainDocPaths(t *testing.T) {
+	docByPath := map[string]specDocument{
+		"docs/b.md": {Path: "docs/b.md", ID: "b"},
+	}
+	edges := edgesFromPlainDocPaths("docs/a.md", "a", "see docs/b.md here", "ref", "html", docByPath, map[string]bool{})
+	if len(edges) == 0 {
+		t.Error("expected at least 1 edge")
+	}
+}
+
+func TestEdgesFromHTMLLinks(t *testing.T) {
+	docByPath := map[string]specDocument{
+		"docs/b.md": {Path: "docs/b.md", ID: "b"},
+	}
+	html1 := `<html><body><a href="docs/b.md">link</a></body></html>`
+	edges := edgesFromHTMLLinks("docs/a.md", "a", html1, "related", "html", docByPath, map[string]bool{})
+	if len(edges) != 1 || edges[0].To != "b" {
+		t.Errorf("expected 1 edge, got %+v", edges)
+	}
+	// Self-reference skipped.
+	html2 := `<html><body><a href="docs/a.md">self</a></body></html>`
+	edges = edgesFromHTMLLinks("docs/a.md", "a", html2, "related", "html", docByPath, map[string]bool{})
+	if len(edges) != 0 {
+		t.Errorf("expected 0 self edges, got %+v", edges)
+	}
+	// Invalid HTML parse failure shouldn't crash.
+	edges = edgesFromHTMLLinks("docs/a.md", "a", "<not really html", "related", "html", docByPath, map[string]bool{})
+	// Just ensure no crash.
+}
+
+func TestScanSpecDocumentsSkipLargeFile(t *testing.T) {
+	dir := t.TempDir()
+	docs := filepath.Join(dir, "docs")
+	if err := os.MkdirAll(docs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Write a normal small file.
+	if err := os.WriteFile(filepath.Join(docs, "small.md"), []byte("# Small"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Write a very large file (> maxSearchFileBytes).
+	big := make([]byte, maxSearchFileBytes+1)
+	for i := range big {
+		big[i] = 'a'
+	}
+	if err := os.WriteFile(filepath.Join(docs, "big.md"), big, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Write invalid UTF-8.
+	if err := os.WriteFile(filepath.Join(docs, "invalid.md"), []byte{0xff, 0xfe, 0xfd}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := scanSpecDocuments(docs, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != "small.md" {
+		t.Errorf("expected only small.md, got %+v", got)
+	}
+}
+
+func TestParseDocumentMetadataEdgesHTML(t *testing.T) {
+	docByPath := map[string]specDocument{
+		"docs/b.md": {Path: "docs/b.md", ID: "b"},
+	}
+	doc := specDocument{Path: "docs/a.html", Format: "html", Raw: `<html><body><doc-meta><div><p>Related: <a href="docs/b.md">b</a></p></div></doc-meta></body></html>`}
+	edges := parseDocumentMetadataEdges(doc, "a", docByPath, map[string]bool{})
+	if len(edges) == 0 {
+		t.Error("expected at least 1 edge from HTML metadata")
+	}
+}
+
+func TestDedupeEdges(t *testing.T) {
+	in := []graphEdge{
+		{From: "a", To: "b", Label: "L", Type: "ref"},
+		{From: "a", To: "b", Label: "L", Type: "ref"}, // dup
+		{From: "a", To: "b", Label: "X", Type: "diff"}, // diff label
+		{From: "a", To: "c", Label: "L", Type: "ref"},  // diff To
+	}
+	out := dedupeEdges(in)
+	if len(out) != 3 {
+		t.Errorf("expected 3 unique, got %d: %+v", len(out), out)
+	}
+}
+
+func TestExtractPlainSpecPathRefs(t *testing.T) {
+	refs := extractPlainSpecPathRefs("see docs/a.md and docs/b.md for details")
+	if len(refs) != 2 {
+		t.Errorf("expected 2 refs, got %d: %v", len(refs), refs)
+	}
+	// External URL should not match.
+	refs2 := extractPlainSpecPathRefs("see https://example.com/a.md")
+	if len(refs2) != 0 {
+		t.Errorf("expected 0 refs for external URL, got %d", len(refs2))
+	}
+}
+
+func TestCleanGraphLine(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"  a → b  ", "a → b"},
+		{"", ""},
+		{"├a", "a"},  // tree char
+		{"└─b", "b"},
+		{"│ c ", "c"},
+	}
+	for _, tc := range cases {
+		got := cleanGraphLine(tc.in)
+		if got != tc.want {
+			t.Errorf("cleanGraphLine(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
 }

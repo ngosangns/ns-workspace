@@ -64,6 +64,9 @@ var (
 	lspReferences = func(ctx context.Context, srv *previewLSPServer, path, languageID string, pos lspPosition) ([]lspLocation, error) {
 		return srv.References(ctx, path, languageID, pos)
 	}
+	lspRequest = func(ctx context.Context, srv *previewLSPServer, method string, params any, result any) error {
+		return srv.request(ctx, method, params, result)
+	}
 )
 
 type previewLSPCodeGraphProvider struct {
@@ -1155,7 +1158,7 @@ func (s *previewLSPServer) withOpenFile(ctx context.Context, path, languageID st
 
 func (s *previewLSPServer) locations(ctx context.Context, method string, params map[string]any) ([]lspLocation, error) {
 	var raw json.RawMessage
-	if err := s.request(ctx, method, params, &raw); err != nil {
+	if err := lspRequest(ctx, s, method, params, &raw); err != nil {
 		return nil, err
 	}
 	if len(raw) == 0 || string(raw) == "null" {

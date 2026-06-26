@@ -7,13 +7,37 @@ import (
 	"strings"
 )
 
+// userHomeDir is the package-internal seam for tests. External test
+// packages should mutate UserHomeDirForTest (same value), so this
+// variable is just an alias.
+var userHomeDir = func() (string, error) { return UserHomeDirForTest() }
+
+// UserHomeDirForTest exposes userHomeDir to external test packages
+// (e.g. internal/cli) so they can simulate home-resolution failures
+// without modifying private state.
+var UserHomeDirForTest = os.UserHomeDir
+
+// expandPathImpl is the seam test used by ExpandPath so tests can
+// simulate unusual home states (e.g. userHomeDir returning ("", nil)).
+var expandPathImpl = func(path string) string {
+	if path == "~" {
+		home, _ := userHomeDir()
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, _ := userHomeDir()
+		return filepath.Join(home, path[2:])
+	}
+	return path
+}
+
 // DefaultAgentsDir resolves the shared ~/.agents/ directory, honoring
 // AGENTS_HOME if set. Used by CLI bootstrap to fill Options.AgentsDir.
 func DefaultAgentsDir() (string, error) {
 	if env := os.Getenv("AGENTS_HOME"); env != "" {
 		return ExpandPath(env), nil
 	}
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return "", err
 	}
@@ -23,15 +47,7 @@ func DefaultAgentsDir() (string, error) {
 // ExpandPath converts a leading "~" or "~/" to the user home directory.
 // Other paths are returned untouched.
 func ExpandPath(path string) string {
-	if path == "~" {
-		home, _ := os.UserHomeDir()
-		return home
-	}
-	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[2:])
-	}
-	return path
+	return expandPathImpl(path)
 }
 
 // ParseTools parses the comma-separated --tools value into a lookup
@@ -64,10 +80,10 @@ func shellWord(value string) string {
 }
 
 // shellSingleQuotePayload escapes a value for embedding inside single
-// quotes using the POSIX shell idiom: end the quote, insert an escaped
+// quotes using the POSIX shell idiom: end the quote, insert a literal
 // single quote, then reopen the quote.
 func shellSingleQuotePayload(value string) string {
-	return strings.ReplaceAll(value, "'", `'\"'\"'`)
+	return strings.ReplaceAll(value, "'", `'"'"'`)
 }
 
 // sameLink reports whether path is an existing symlink whose target is

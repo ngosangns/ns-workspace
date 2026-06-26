@@ -23,9 +23,6 @@ type LoopResult struct {
 func (lc *LoopController) Run(ctx context.Context, task *Task, state *State) (*LoopResult, error) {
 	phases := task.DefaultPhases()
 	maxFail := task.DefaultMaxConsecutiveFailures()
-	if maxFail <= 0 {
-		maxFail = 3
-	}
 	store := NewStore(lc.Engine.ProjectRoot, task)
 	for {
 		if state.Paused {
@@ -88,26 +85,20 @@ func (lc *LoopController) Run(ctx context.Context, task *Task, state *State) (*L
 				state.ConsecutiveFailures++
 			}
 		case "verify":
-			finalized, reason, err := lc.runVerify(task, state)
-			if err != nil {
-				state.LastError = err.Error()
-				state.ConsecutiveFailures++
-				break
-			}
+			finalized, reason := lc.runVerify(task, state)
 			if finalized {
 				state.Phase = "finalized"
 				_ = store.Save(state)
 				return &LoopResult{State: state, Finalized: true, Reason: reason, Iterations: state.Iteration}, nil
 			}
+			// Note: diagnose is intentionally not run here. runVerify already
+			// pauses (state.Paused = true) when there are no untried hypotheses;
+			// when untried hypotheses remain, the next iteration's pickPhase
+			// returns "execute" so the loop continues with a fresh attempt. We
+			// still mark state.Phase = "diagnose" so debuggers can see the
+			// intent, but no separate case "diagnose" handler exists below.
 			if state.ConsecutiveFailures >= 1 {
 				state.Phase = "diagnose"
-			}
-		case "diagnose":
-			if err := lc.runDiagnose(ctx, task, state); err != nil {
-				state.LastError = err.Error()
-				state.ConsecutiveFailures++
-			} else {
-				state.ConsecutiveFailures = 0
 			}
 		}
 		state.RecordSnapshot()
@@ -201,10 +192,10 @@ func (lc *LoopController) runExecute(ctx context.Context, task *Task, state *Sta
 	return nil
 }
 
-func (lc *LoopController) runVerify(task *Task, state *State) (bool, string, error) {
+func (lc *LoopController) runVerify(task *Task, state *State) (bool, string) {
 	results, allPassed := lc.Evaluator.EvaluateAll(task, state.AcceptanceStatus)
 	if allPassed {
-		return true, "all acceptance criteria passed", nil
+		return true, "all acceptance criteria passed"
 	}
 	var failures []string
 	for _, r := range results {
@@ -216,18 +207,15 @@ func (lc *LoopController) runVerify(task *Task, state *State) (bool, string, err
 		state.LastError = strings.Join(failures, ", ")
 		state.ConsecutiveFailures++
 	}
-	if state.AllAcceptancePassed() {
-		return true, "all acceptance criteria passed", nil
-	}
 	if state.AllSubtasksDone() {
-		return true, "all subtasks completed", nil
+		return true, "all subtasks completed"
 	}
 	if len(state.UntriedHypotheses()) == 0 && state.ConsecutiveFailures > 0 {
 		state.Paused = true
 		state.PausedReason = "verify failed and no untried hypotheses"
-		return false, state.PausedReason, nil
+		return false, state.PausedReason
 	}
-	return false, "verify incomplete", nil
+	return false, "verify incomplete"
 }
 
 func (lc *LoopController) runDiagnose(ctx context.Context, task *Task, state *State) error {

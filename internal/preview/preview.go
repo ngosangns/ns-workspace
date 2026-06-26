@@ -89,11 +89,11 @@ func Run(args []string) error {
 	fmt.Printf("project: %s\n", opt.projectRoot)
 	fmt.Printf("docs: %s\n", docsRoot(opt.projectRoot, opt.docsDir))
 	if opt.openBrowser {
-		if err := openURL(displayURL); err != nil {
+		if err := openURLForTest(displayURL); err != nil {
 			fmt.Printf("open browser failed: %v\n", err)
 		}
 	}
-	if err := server.srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := servePreviewForTest(server.srv, listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
@@ -126,7 +126,7 @@ func runHotReloadSupervisor(moduleRoot string, args []string, projectRoot string
 	if err != nil {
 		return err
 	}
-	cmd, done, err := startPreviewChild(moduleRoot, childArgs)
+	cmd, done, err := startPreviewChildForTest(moduleRoot, childArgs)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func runHotReloadSupervisor(moduleRoot string, args []string, projectRoot string
 			stopPreviewChild(cmd)
 			<-done
 			childArgs = stripPreviewOpenFlag(childArgs)
-			cmd, done, err = startPreviewChild(moduleRoot, childArgs)
+			cmd, done, err = startPreviewChildForTest(moduleRoot, childArgs)
 			if err != nil {
 				return err
 			}
@@ -185,6 +185,12 @@ type previewSourceTokensValue struct {
 }
 
 func buildPreviewFrontend(moduleRoot string) error {
+	return buildPreviewFrontendForTest(moduleRoot)
+}
+
+// buildPreviewFrontendForTest lets tests stub the frontend build so the build
+// error branches in runHotReloadSupervisor can be exercised without spawning npm.
+var buildPreviewFrontendForTest = func(moduleRoot string) error {
 	if !fileExists(filepath.Join(moduleRoot, "package.json")) || !fileExists(filepath.Join(moduleRoot, "vite.config.ts")) {
 		return nil
 	}
@@ -202,19 +208,29 @@ func previewChildArgs(args []string, projectRoot string) ([]string, error) {
 	if previewArgsHaveAddrFlag(childArgs) {
 		return childArgs, nil
 	}
-	addr, err := pickPreviewAddr()
+	addr, err := pickPreviewAddrForTest()
 	if err != nil {
 		return nil, err
 	}
 	return append(childArgs, "--addr", addr), nil
 }
 
+// pickPreviewAddrForTest lets tests stub the address picker so the error branch
+// in previewChildArgs can be exercised without exhausting real ports.
+var pickPreviewAddrForTest = pickPreviewAddr
+
 func normalizePreviewProjectRoot(path string) string {
 	path = internalutil.ExpandPath(path)
-	if abs, err := filepath.Abs(path); err == nil {
+	if abs, err := filepathAbsForTest(path); err == nil {
 		return abs
 	}
 	return path
+}
+
+// filepathAbsForTest lets tests stub filepath.Abs so the normally-unreachable
+// error branch in normalizePreviewProjectRoot can be exercised.
+var filepathAbsForTest = func(path string) (string, error) {
+	return filepath.Abs(path)
 }
 
 func previewArgsHaveAddrFlag(args []string) bool {
@@ -227,13 +243,23 @@ func previewArgsHaveAddrFlag(args []string) bool {
 }
 
 func pickPreviewAddr() (string, error) {
-	listener, err := net.Listen("tcp", defaultPreviewAddr)
+	return pickPreviewAddrAt(defaultPreviewAddr)
+}
+
+// pickPreviewAddrAt is a testable variant that takes an explicit address so the
+// error branch (already-in-use) can be exercised by binding the address first.
+func pickPreviewAddrAt(addr string) (string, error) {
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", err
 	}
 	defer listener.Close()
 	return listener.Addr().String(), nil
 }
+
+// startPreviewChildForTest lets tests replace the real `go run` child with a stub so
+// runHotReloadSupervisor can be exercised without spawning Go subprocesses.
+var startPreviewChildForTest = startPreviewChild
 
 func startPreviewChild(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
 	goArgs := append([]string{"run", ".", "preview", "--no-reload"}, args...)
@@ -242,7 +268,7 @@ func startPreviewChild(moduleRoot string, args []string) (*exec.Cmd, <-chan prev
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if runtime.GOOS != "windows" {
+	if runtimeGOOSForTest != "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	}
 	if err := cmd.Start(); err != nil {
@@ -256,10 +282,17 @@ func startPreviewChild(moduleRoot string, args []string) (*exec.Cmd, <-chan prev
 }
 
 func stopPreviewChild(cmd *exec.Cmd) {
+	stopPreviewChildForTest(cmd)
+}
+
+// stopPreviewChildForTest lets tests stub the child process killer so
+// runHotReloadSupervisor's interrupt branch can be exercised without
+// actually sending SIGKILL to the test process.
+var stopPreviewChildForTest = func(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	if runtime.GOOS != "windows" {
+	if runtimeGOOSForTest != "windows" {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		return
 	}
@@ -533,6 +566,13 @@ func newestModToken(root string) string {
 }
 
 func newestEmbeddedModToken() string {
+	return newestEmbeddedModTokenForTest()
+}
+
+// newestEmbeddedModTokenForTest lets tests stub the embedded UI walk so
+// branches that depend on file ModTime (which is 0 for embedded files) can
+// be exercised.
+var newestEmbeddedModTokenForTest = func() string {
 	var newest int64
 	var count int
 	_ = fs.WalkDir(previewUIFS, "preview_ui", func(path string, d fs.DirEntry, err error) error {
@@ -552,18 +592,36 @@ func newestEmbeddedModToken() string {
 	return fmt.Sprintf("%d:%d", newest, count)
 }
 
-func openURL(target string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", target)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
-	default:
-		cmd = exec.Command("xdg-open", target)
-	}
-	return cmd.Start()
+// openURL opens the system browser. The variable openURLForTest lets tests
+// override this without spawning a real browser process.
+var openURLForTest = openURL
+
+// servePreviewForTest lets tests substitute the blocking http.Serve call so the
+// rest of Run can be exercised without hanging the test process.
+var servePreviewForTest = func(srv *http.Server, listener net.Listener) error {
+	return srv.Serve(listener)
 }
+
+func openURL(target string) error {
+	var name string
+	var args []string
+	switch runtimeGOOSForTest {
+	case "darwin":
+		name, args = "open", []string{target}
+	case "windows":
+		name, args = "rundll32", []string{"url.dll,FileProtocolHandler", target}
+	default:
+		name, args = "xdg-open", []string{target}
+	}
+	return openURLCmdForTest(name, args...).Start()
+}
+
+// runtimeGOOSForTest lets tests stub runtime.GOOS so all branches of openURL
+// can be exercised without build-tagged files.
+var runtimeGOOSForTest = runtime.GOOS
+
+// openURLCmdForTest lets tests substitute exec.Command construction.
+var openURLCmdForTest = exec.Command
 
 func portOf(addr string) string {
 	_, port, err := net.SplitHostPort(addr)
