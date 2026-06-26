@@ -66,7 +66,7 @@ type ApplyAdapterSettings struct {
 }
 
 func (op ApplyAdapterSettings) Apply(ctx Context) error {
-	profile, err := readAdapterSettingsProfile(ctx, op.ProfilePath)
+	profile, err := readAdapterSettingsProfileHook(ctx, op.ProfilePath)
 	if err != nil {
 		return err
 	}
@@ -91,11 +91,17 @@ func (op ApplyAdapterSettings) Path() string {
 	return op.TargetPath
 }
 
+// readAdapterSettingsProfileHook is a seam for tests; production code
+// uses readAdapterSettingsProfile below.
+var readAdapterSettingsProfileHook = readAdapterSettingsProfile
+
+// readAdapterSettingsProfile reads and validates the JSON profile at
+// profilePath.
 func readAdapterSettingsProfile(ctx Context, profilePath string) (*AdapterSettingsProfile, error) {
 	if profilePath == "" {
 		return nil, fmt.Errorf("adapter settings: empty profile path")
 	}
-	data, err := readPresetFile(ctx, profilePath)
+	data, err := readPresetFileHook(ctx, profilePath)
 	if err != nil {
 		return nil, err
 	}

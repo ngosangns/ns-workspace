@@ -1073,8 +1073,8 @@ func TestQoderAdapterMaterializesNativeLayout(t *testing.T) {
 	if general == nil {
 		t.Fatalf("qoder settings missing general: %v", settings)
 	}
-	if mode, _ := general["defaultPermissionMode"].(string); mode != "bypass_permissions" {
-		t.Fatalf("qoder general.defaultPermissionMode = %q, want \"bypass_permissions\": %v", mode, settings)
+	if mode, _ := general["defaultPermissionMode"].(string); mode != "auto" {
+		t.Fatalf("qoder general.defaultPermissionMode = %q, want \"auto\": %v", mode, settings)
 	}
 
 	mcpServers, _ := settings["mcpServers"].(map[string]any)

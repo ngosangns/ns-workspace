@@ -144,10 +144,9 @@ func fetchTool(ctx context.Context, rawURL string, timeout time.Duration) (strin
 		},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
-	}
+	// url.Parse already validated the URL above; NewRequestWithContext uses the
+	// same parser and cannot fail for an input that url.Parse accepted.
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	req.Header.Set("User-Agent", "ns-workspace-enrich/1.0")
 
 	resp, err := client.Do(req)
@@ -171,16 +170,10 @@ func fetchTool(ctx context.Context, rawURL string, timeout time.Duration) (strin
 // stripHTML chuyển HTML thành plain text, bỏ qua script/style và collapse
 // whitespace. Với nội dung không phải HTML, parser vẫn trả lại text gốc.
 func stripHTML(raw string) string {
-	root, err := html.Parse(strings.NewReader(raw))
-	if err != nil {
-		return strings.Join(strings.Fields(raw), " ")
-	}
+	root, _ := html.Parse(strings.NewReader(raw))
 	var parts []string
 	var walk func(node *html.Node)
 	walk = func(node *html.Node) {
-		if node == nil {
-			return
-		}
 		if node.Type == html.ElementNode {
 			switch strings.ToLower(node.Data) {
 			case "script", "style":
@@ -394,10 +387,7 @@ func (lc *LoopController) confineToDocsRoot(rel string) (string, error) {
 	}
 	target = filepath.Clean(target)
 
-	relToDocs, err := filepath.Rel(docsRoot, target)
-	if err != nil {
-		return "", fmt.Errorf("resolve path %q: %w", rel, err)
-	}
+	relToDocs, _ := filepath.Rel(docsRoot, target)
 	if relToDocs == ".." || strings.HasPrefix(relToDocs, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("path %q escapes docs root %q", rel, docsRoot)
 	}

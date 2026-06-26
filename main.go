@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io"
 	"os"
 
 	synccli "github.com/ngosangns/ns-workspace/internal/cli"
@@ -15,11 +16,25 @@ import (
 //go:embed presets/agents presets/mcp presets/minimax presets/opencode presets/registry presets/settings presets/adapters presets/manifest.json presets/skills/* presets/subagents
 var presetFS embed.FS
 
+// osExit is overridable from tests so they can intercept the exit path.
+var osExit = os.Exit
+
+// stderrWriter is overridable from tests so they can capture the error message.
+var stderrWriter io.Writer = os.Stderr
+
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+	osExit(runMain())
+}
+
+// runMain is the testable entry point. It returns the process exit code
+// (0 on success, 1 on error) and writes the error to stderrWriter.
+func runMain() int {
+	err := run(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(stderrWriter, "error: %v\n", err)
+		return 1
 	}
+	return 0
 }
 
 func run(args []string) error {

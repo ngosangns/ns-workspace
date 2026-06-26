@@ -77,23 +77,30 @@ func UniqueSortedStrings(values []string) []string {
 	return out
 }
 
+// goosVar cho phép test override runtime.GOOS để cover nhánh windows mà không
+// cần build tag.
+var goosVar = runtime.GOOS
+
 func ExecutableFile(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
 	}
-	if runtime.GOOS == "windows" {
+	if goosVar == "windows" {
 		return true
 	}
 	return info.Mode()&0o111 != 0
 }
 
 func ExecutableNames(command string) []string {
-	if runtime.GOOS == "windows" {
+	if goosVar == "windows" {
 		return []string{command, command + ".exe", command + ".cmd", command + ".bat"}
 	}
 	return []string{command}
 }
+
+// execCommand cho phép test override exec.CommandContext (vd: simulate command fail).
+var execCommand = exec.CommandContext
 
 func GoEnvValue(key string) string {
 	if _, err := exec.LookPath("go"); err != nil {
@@ -101,7 +108,7 @@ func GoEnvValue(key string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "go", "env", key).Output()
+	out, err := execCommand(ctx, "go", "env", key).Output()
 	if err != nil {
 		return ""
 	}

@@ -187,11 +187,11 @@ func (b *BaseAdapter) profileAndMcpOps(ctx Context, replace bool) ([]Operation, 
 		return nil, err
 	}
 	if profilePath != "" {
-		homeDir, err := adapterSettingsHomeDir()
+		homeDir, err := adapterSettingsHomeDirFn()
 		if err != nil {
 			return nil, err
 		}
-		targetPath, err := resolveAdapterSettingsTarget(ctx, profilePath, homeDir)
+		targetPath, err := resolveAdapterSettingsTargetHook(ctx, profilePath, homeDir)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +211,7 @@ func (b *BaseAdapter) profileAndMcpOps(ctx Context, replace bool) ([]Operation, 
 			})
 		}
 		if t.HooksPath != "" && len(t.HooksKeyPath) > 0 {
-			manifest, err := readSettingsManifest(ctx)
+			manifest, err := readSettingsManifestHook(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -224,7 +224,7 @@ func (b *BaseAdapter) profileAndMcpOps(ctx Context, replace bool) ([]Operation, 
 		}
 	}
 	if !ctx.NoMCP && b.Spec.Targets.MCPPath != "" && len(b.Spec.Targets.MCPKeyPath) > 0 {
-		manifest, err := readMCPManifest(ctx)
+		manifest, err := readMCPManifestHook(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -281,6 +281,10 @@ func (b *BaseAdapter) StatusPaths(ctx Context) []string {
 // DoctorExecutables returns the executable names Doctor probes via
 // LookPath.
 func (b *BaseAdapter) DoctorExecutables() []string { return b.Spec.Executables }
+
+// adapterSettingsHomeDirFn is a seam for tests; production code uses
+// adapterSettingsHomeDir below.
+var adapterSettingsHomeDirFn = adapterSettingsHomeDir
 
 // adapterSettingsHomeDir returns the user home directory used to
 // resolve the relative target paths declared in adapter settings

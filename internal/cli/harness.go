@@ -9,6 +9,29 @@ import (
 	"github.com/ngosangns/ns-workspace/internal/harness"
 )
 
+// engineAPI là tập các phương thức mà RunHarness gọi. Tách thành interface
+// để test có thể inject mock trả về error / result theo ý muốn.
+type engineAPI interface {
+	ListTasks() ([]*harness.Task, error)
+	Run(ctx context.Context, id string, dryRun bool) (*harness.LoopResult, error)
+	Eval(id string) ([]harness.EvalResult, error)
+	Status(id string) (*harness.State, error)
+	Resume(ctx context.Context, id string) (*harness.LoopResult, error)
+	Stop(id string) error
+}
+
+// filepathAbs là seam test: cho phép thay thế filepath.Abs để mô phỏng error path.
+var filepathAbs = filepath.Abs
+
+// newEngine cho phép test override engine creation (vd: inject mock engine).
+var newEngine = func(root string, reporter harness.Reporter) engineAPI {
+	return harness.NewEngine(root, reporter)
+}
+
+// validSubcommands là danh sách subcommand hợp lệ; biến package-level để test
+// có thể tạm thời mở rộng nếu cần cover nhánh default.
+var validSubcommands = map[string]bool{"list": true, "run": true, "eval": true, "status": true, "resume": true, "stop": true}
+
 func IsHarnessCommand(cmd string) bool {
 	switch cmd {
 	case "harness":
@@ -19,11 +42,10 @@ func IsHarnessCommand(cmd string) bool {
 }
 
 func RunHarness(args []string) error {
-	valid := map[string]bool{"list": true, "run": true, "eval": true, "status": true, "resume": true, "stop": true}
 	cmd := ""
 	cmdIdx := -1
 	for i, arg := range args {
-		if valid[arg] {
+		if validSubcommands[arg] {
 			cmd = arg
 			cmdIdx = i
 			break
@@ -40,11 +62,11 @@ func RunHarness(args []string) error {
 	if err := flagSet.Parse(flagArgs); err != nil {
 		return err
 	}
-	root, err := filepath.Abs(*project)
+	root, err := filepathAbs(*project)
 	if err != nil {
 		return err
 	}
-	engine := harness.NewEngine(root, nil)
+	engine := newEngine(root, nil)
 	ctx := context.Background()
 	switch cmd {
 	case "list":

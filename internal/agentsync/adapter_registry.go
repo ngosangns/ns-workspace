@@ -169,7 +169,7 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 				MCPKeyPath:  []string{"mcpServers"},
 			},
 			Docs: []string{"https://docs.qoder.com/en/cli/Skills", "https://docs.qoder.com/en/cli/subagent", "https://docs.qoder.com/en/cli/mcp-servers", "https://docs.qoder.com/en/cli/permissions"},
-			Notes: "Qoder CLI (qodercli) reads global AGENTS.md, skills, and subagents from ~/.qoder, and stores MCP servers + full-bypass permission mode (general.defaultPermissionMode=bypass_permissions) in ~/.qoder/settings.json. MCP servers keep the Claude-style {type:http,url} shape.",
+			Notes: "Qoder CLI (qodercli) reads global AGENTS.md, skills, and subagents from ~/.qoder, and stores MCP servers + auto-approve permission mode (general.defaultPermissionMode=auto) in ~/.qoder/settings.json. MCP servers keep the Claude-style {type:http,url} shape.",
 		},
 		Plugin: QoderPlugin{},
 	}})

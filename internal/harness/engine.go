@@ -77,10 +77,20 @@ func isInteractive() bool {
 	if os.Getenv("NONINTERACTIVE") != "" {
 		return false
 	}
-	if fileInfo, _ := os.Stdout.Stat(); (fileInfo.Mode() & os.ModeCharDevice) == 0 {
+	mode, isChar := osStdoutStat()
+	if !isChar {
+		return false
+	}
+	if mode&os.ModeCharDevice == 0 {
 		return false
 	}
 	return true
+}
+
+// osStdoutStat là seam test: trả về mode và isChar thay cho os.Stdout.Stat().
+var osStdoutStat = func() (os.FileMode, bool) {
+	fi, _ := os.Stdout.Stat()
+	return fi.Mode(), true
 }
 
 func (e *Engine) ListTasks() ([]*Task, error) {
@@ -148,7 +158,12 @@ func (e *Engine) Status(id string) (*State, error) {
 }
 
 func (e *Engine) Resume(ctx context.Context, id string) (*LoopResult, error) {
-	state, err := e.Status(id)
+	task, err := e.LoadTask(id)
+	if err != nil {
+		return nil, err
+	}
+	store := NewStore(e.ProjectRoot, task)
+	state, err := store.Load()
 	if err != nil {
 		return nil, err
 	}
@@ -157,11 +172,6 @@ func (e *Engine) Resume(ctx context.Context, id string) (*LoopResult, error) {
 	}
 	state.Paused = false
 	state.PausedReason = ""
-	task, err := e.LoadTask(id)
-	if err != nil {
-		return nil, err
-	}
-	store := NewStore(e.ProjectRoot, task)
 	if err := store.Save(state); err != nil {
 		return nil, err
 	}

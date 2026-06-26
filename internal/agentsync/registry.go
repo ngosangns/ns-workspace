@@ -20,7 +20,7 @@ func writeRegistryHelpers(ctx Context, replace bool) error {
 	if err := ensureDir(ctx, registryDir); err != nil {
 		return err
 	}
-	data, err := encodeJSONIndent(manifest)
+	data, err := encodeRegistryManifest(manifest)
 	if err != nil {
 		return err
 	}
@@ -124,4 +124,12 @@ func registryCommandArgs(skill RegistrySkill, global bool, copyMode bool) []stri
 		args = append(args, "--copy")
 	}
 	return args
+}
+
+// encodeRegistryManifest is the seam used by writeRegistryHelpers so tests
+// can inject encoding errors (the production encoding cannot fail because
+// RegistryManifest is a typed struct of strings/slices, but the seam
+// keeps the error branch covered for future schema evolution).
+var encodeRegistryManifest = func(manifest RegistryManifest) ([]byte, error) {
+	return encodeJSONIndent(manifest)
 }

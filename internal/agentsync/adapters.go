@@ -74,7 +74,12 @@ func (s AdapterSpec) aliases() []string {
 //  1. Adapter id is in the filter map.
 //  2. Any alias is in the filter map.
 //  3. The filter requested all (special key "all") or the tier name.
+//  4. The filter is empty (treat as "all" so callers can pass a fresh
+//     map without explicitly inserting the sentinel).
 func selected(opt Options, adapter Adapter) bool {
+	if len(opt.ToolFilter) == 0 {
+		return true
+	}
 	name := strings.ToLower(adapter.Name())
 	if opt.ToolFilter["all"] || opt.ToolFilter[name] {
 		return true

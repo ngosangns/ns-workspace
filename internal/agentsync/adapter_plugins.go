@@ -194,7 +194,7 @@ func (QwenPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return n
 // HTTP servers per Qwen docs. SSE keeps `url`; stdio keeps
 // `command`+`args`.
 func (QwenPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	transformed, err := transformMCPServersForAdapter("qwen", manifest)
+	transformed, err := transformMCPServersForAdapterImpl("qwen", manifest)
 	if err != nil {
 		return MCPManifest{}, fmt.Errorf("qwen transform: %w", err)
 	}
@@ -222,7 +222,7 @@ func (GeminiPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return
 
 // TransformMCPServers drops `type` and renames `url` to `httpUrl`.
 func (GeminiPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	transformed, err := transformMCPServersForAdapter("gemini", manifest)
+	transformed, err := transformMCPServersForAdapterImpl("gemini", manifest)
 	if err != nil {
 		return MCPManifest{}, fmt.Errorf("gemini transform: %w", err)
 	}
@@ -253,7 +253,7 @@ func (ClinePlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return 
 // TransformMCPServers drops `type` and sets `trust: true` per Cline
 // docs.
 func (ClinePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	transformed, err := transformMCPServersForAdapter("cline", manifest)
+	transformed, err := transformMCPServersForAdapterImpl("cline", manifest)
 	if err != nil {
 		return MCPManifest{}, fmt.Errorf("cline transform: %w", err)
 	}
@@ -261,10 +261,10 @@ func (ClinePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 }
 
 // QoderPlugin powers the Qoder CLI adapter. Qoder CLI stores MCP
-// servers and the full-bypass permission mode in ~/.qoder/settings.json
+// servers and the auto-approve permission mode in ~/.qoder/settings.json
 // using a Claude-like schema, so the MCP servers keep the shared
 // {type:"http",url} shape and only the per-provider settings profile
-// (general.defaultPermissionMode=bypass_permissions) is layered on top.
+// (general.defaultPermissionMode=auto) is layered on top.
 type QoderPlugin struct{}
 
 // ExtendCapabilities adds ArtifactMCP for the shared mcpServers path
@@ -287,7 +287,7 @@ func (QoderPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return 
 // canonical {type:"http",url} entry for HTTP servers and
 // command/args for stdio servers, matching the shared preset.
 func (QoderPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	transformed, err := transformMCPServersForAdapter("qoder", manifest)
+	transformed, err := transformMCPServersForAdapterImpl("qoder", manifest)
 	if err != nil {
 		return MCPManifest{}, fmt.Errorf("qoder transform: %w", err)
 	}

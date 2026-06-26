@@ -96,6 +96,15 @@ func (u UserConfig) EntriesUnder(treeRoot string) []string {
 	return out
 }
 
+// userConfigDir is the package-internal seam for tests. External test
+// packages should mutate UserConfigDirForTest (same value), so this
+// variable is just an alias.
+var userConfigDir = func() (string, error) { return UserConfigDirForTest() }
+
+// UserConfigDirForTest exposes userConfigDir to external test packages
+// (e.g. internal/cli) so they can simulate config-dir failures.
+var UserConfigDirForTest = os.UserConfigDir
+
 // DefaultUserConfigPath returns the conventional location for a user
 // config file when no --config flag is supplied. It honors XDG_CONFIG_HOME
 // and falls back to $HOME/.config on POSIX, %AppData% on Windows.
@@ -103,7 +112,7 @@ func DefaultUserConfigPath() (string, error) {
 	if env := strings.TrimSpace(os.Getenv("NS_WORKSPACE_CONFIG")); env != "" {
 		return ExpandPath(env), nil
 	}
-	dir, err := os.UserConfigDir()
+	dir, err := userConfigDir()
 	if err != nil {
 		return "", err
 	}

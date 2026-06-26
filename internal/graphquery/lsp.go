@@ -111,6 +111,23 @@ func (emptySourceDetector) DetectedInstallIDs(string, string) map[string]bool {
 
 var installLocks sync.Map
 
+// getWorkingDir là seam test: cho phép thay thế os.Getwd để mô phỏng error path.
+var getWorkingDir = os.Getwd
+
+// resolveCommandWithSourceImpl là seam test: cho phép thay thế ResolveCommandWithSource
+// để mô phỏng các trạng thái (không tìm thấy / tìm thấy) khi test.
+var resolveCommandWithSourceImpl = ResolveCommandWithSource
+
+// languageSpecsImpl là seam test: cho phép thay thế LanguageSpecs để test các
+// trường hợp đặc biệt (vd: spec không khớp với InstallSpec nào).
+var languageSpecsImpl = LanguageSpecs
+
+// userCacheDirImpl là seam test: cho phép thay thế os.UserCacheDir để mô phỏng error path.
+var userCacheDirImpl = os.UserCacheDir
+
+// userHomeDirImpl là seam test: cho phép thay thế os.UserHomeDir để mô phỏng error path.
+var userHomeDirImpl = os.UserHomeDir
+
 func RunLSP(args []string, detector SourceDetector) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		PrintLSPUsage(os.Stdout)
@@ -128,7 +145,7 @@ func RunLSP(args []string, detector SourceDetector) error {
 }
 
 func RunLSPList(args []string, out io.Writer, detector SourceDetector) error {
-	cwd, err := os.Getwd()
+	cwd, err := getWorkingDir()
 	if err != nil {
 		return err
 	}
@@ -183,7 +200,7 @@ func RunLSPInstall(args []string, out io.Writer, detector SourceDetector) error 
 	if language == "" {
 		return fmt.Errorf("lsp install requires <language|auto>")
 	}
-	cwd, err := os.Getwd()
+	cwd, err := getWorkingDir()
 	if err != nil {
 		return err
 	}
@@ -269,7 +286,7 @@ func ListStatus(projectRoot, docsDir string, detector SourceDetector) []StatusRo
 		if !ok {
 			continue
 		}
-		path, source, err := ResolveCommandWithSource(spec.Command, projectRoot)
+		path, source, err := resolveCommandWithSourceImpl(spec.Command, projectRoot)
 		row := StatusRow{
 			ID:       lang.ID,
 			ServerID: spec.ID,
@@ -337,7 +354,7 @@ func InstallWarnings(results []InstallResult, opts EnsureOptions) []string {
 func InstallLSP(ctx context.Context, impl lspImplementation, projectRoot string, opts EnsureOptions) InstallResult {
 	spec := impl.installSpec()
 	if !opts.Force {
-		if path, source, err := ResolveCommandWithSource(spec.Command, projectRoot); err == nil {
+		if path, source, err := resolveCommandWithSourceImpl(spec.Command, projectRoot); err == nil {
 			return InstallResult{ID: spec.ID, Name: spec.Name, Status: "already-installed", Path: path, Message: "found in " + source}
 		}
 	}
@@ -350,7 +367,7 @@ func InstallLSP(ctx context.Context, impl lspImplementation, projectRoot string,
 	defer lock.Unlock()
 	if !opts.Force {
 		// Re-check after taking the process-local lock in case another ensure call just populated the cache.
-		if path, source, err := ResolveCommandWithSource(spec.Command, projectRoot); err == nil {
+		if path, source, err := resolveCommandWithSourceImpl(spec.Command, projectRoot); err == nil {
 			return InstallResult{ID: spec.ID, Name: spec.Name, Status: "already-installed", Path: path, Message: "found in " + source}
 		}
 	}
@@ -376,12 +393,19 @@ func InstallSpecs() []InstallSpec {
 }
 
 func LanguageSpecs() []LanguageSpec {
+	if len(languageSpecsSnapshotOverride) > 0 {
+		return languageSpecsSnapshotOverride
+	}
 	specs := []LanguageSpec{}
 	for _, impl := range implementations() {
 		specs = append(specs, impl.languageSpecs()...)
 	}
 	return specs
 }
+
+// languageSpecsSnapshotOverride là seam test: khi override != rỗng, LanguageSpecs
+// trả về danh sách từ override thay vì gọi impl.languageSpecs() thật.
+var languageSpecsSnapshotOverride []LanguageSpec
 
 func SupportedIDs() []string {
 	ids := []string{}
@@ -415,10 +439,10 @@ func CacheRoot() string {
 	if value := strings.TrimSpace(os.Getenv(CacheEnv)); value != "" {
 		return internalutil.ExpandPath(value)
 	}
-	if dir, err := os.UserCacheDir(); err == nil && dir != "" {
+	if dir, err := userCacheDirImpl(); err == nil && dir != "" {
 		return filepath.Join(dir, "ns-workspace", "lsp")
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
+	if home, err := userHomeDirImpl(); err == nil && home != "" {
 		return filepath.Join(home, ".cache", "ns-workspace", "lsp")
 	}
 	return filepath.Join(os.TempDir(), "ns-workspace", "lsp")
@@ -612,11 +636,14 @@ func normalizeProjectRoot(root string) string {
 	if root == "" {
 		root = "."
 	}
-	if abs, err := filepath.Abs(root); err == nil {
+	if abs, err := filepathAbs(root); err == nil {
 		return filepath.Clean(abs)
 	}
 	return filepath.Clean(root)
 }
+
+// filepathAbs là seam test: cho phép thay thế filepath.Abs để mô phỏng error path.
+var filepathAbs = filepath.Abs
 
 func normalizeID(id string) string {
 	return strings.ToLower(strings.TrimSpace(id))

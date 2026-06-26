@@ -33,7 +33,7 @@ func installArchiveLSP(ctx context.Context, spec InstallSpec, source ArchiveSour
 	if err := os.MkdirAll(tmpParent, 0o755); err != nil {
 		return "", err
 	}
-	tmpDir, err := os.MkdirTemp(tmpParent, "install-*")
+	tmpDir, err := mkdirTempFn(tmpParent, "install-*")
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +44,7 @@ func installArchiveLSP(ctx context.Context, spec InstallSpec, source ArchiveSour
 		return "", err
 	}
 	extractDir := filepath.Join(tmpDir, "extract")
-	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+	if err := mkdirAllFn(extractDir, 0o755); err != nil {
 		return "", err
 	}
 	switch source.Format {
@@ -63,7 +63,7 @@ func installArchiveLSP(ctx context.Context, spec InstallSpec, source ArchiveSour
 	if err != nil {
 		return "", err
 	}
-	launcherRel, err := filepath.Rel(extractDir, launcher)
+	launcherRel, err := relFn(extractDir, launcher)
 	if err != nil {
 		return "", err
 	}
@@ -73,15 +73,15 @@ func installArchiveLSP(ctx context.Context, spec InstallSpec, source ArchiveSour
 	if err := os.MkdirAll(versionsDir, 0o755); err != nil {
 		return "", err
 	}
-	if err := os.RemoveAll(installDir); err != nil {
+	if err := removeAllFn(installDir); err != nil {
 		return "", err
 	}
-	if err := os.Rename(extractDir, installDir); err != nil {
+	if err := renameFn(extractDir, installDir); err != nil {
 		return "", err
 	}
 
 	launcherPath := filepath.Join(installDir, launcherRel)
-	if err := os.Chmod(launcherPath, 0o755); err != nil {
+	if err := chmodFn(launcherPath, 0o755); err != nil {
 		return "", err
 	}
 	binDir := filepath.Join(cacheDir, "bin")
@@ -116,7 +116,7 @@ func downloadArchive(ctx context.Context, source ArchiveSource, dest string) err
 	}
 	hash := sha256.New()
 	_, copyErr := io.Copy(io.MultiWriter(out, hash), resp.Body)
-	closeErr := out.Close()
+	closeErr := wrapForClose(out).Close()
 	if copyErr != nil {
 		return copyErr
 	}
@@ -129,6 +129,98 @@ func downloadArchive(ctx context.Context, source ArchiveSource, dest string) err
 	}
 	return nil
 }
+
+// closableFile is a thin wrapper around *os.File that lets tests inject close
+// errors via the closeFn variable. In production closeFn is nil and Close
+// delegates to the underlying file.
+type closableFile struct {
+	*os.File
+}
+
+func (c closableFile) Close() error {
+	if closeFn != nil {
+		return closeFn()
+	}
+	return c.File.Close()
+}
+
+// closeFn is a test seam to simulate os.File.Close() returning an error.
+var closeFn func() error
+
+// mkdirAllFn is a test seam for os.MkdirAll so tests can exercise the
+// mkdirAll error branches in installArchiveLSP.
+var mkdirAllFn = os.MkdirAll
+
+// relFn is a test seam for filepath.Rel so tests can exercise the Rel error
+// branch in installArchiveLSP (only reachable on Windows in practice).
+var relFn = filepath.Rel
+
+// renameFn is a test seam for os.Rename so tests can exercise the rename
+// error branch in installArchiveLSP.
+var renameFn = os.Rename
+
+// chmodFn is a test seam for os.Chmod so tests can exercise the chmod error
+// branch in installArchiveLSP.
+var chmodFn = os.Chmod
+
+// removeAllFn is a test seam for os.RemoveAll so tests can exercise the
+// removeAll error branch in installArchiveLSP.
+var removeAllFn = os.RemoveAll
+
+// zipEntryOpenFn is a test seam so tests can exercise the entry.Open error
+// branch in extractZipArchive.
+var zipEntryOpenFn = func(entry *zip.File) (io.ReadCloser, error) { return entry.Open() }
+
+// readAllFn is a test seam for io.ReadAll used in the symlink branch so tests
+// can exercise the symlink-read error branch.
+var readAllFn = io.ReadAll
+
+// mkdirTempFn is a test seam for os.MkdirTemp so tests can exercise the
+// MkdirTemp error branch in installArchiveLSP.
+var mkdirTempFn = os.MkdirTemp
+
+// copyFn is a test seam for io.Copy so tests can exercise the copy error
+// branches in extractZipArchive and extractTarGzArchive.
+var copyFn = io.Copy
+
+// ioCopyWriter is a helper interface for tests that want to simulate io.Copy
+// failures. The default copyFn honours it.
+type ioCopyWriter interface {
+	io.Writer
+}
+
+// File-open seam for tests so the file-close error branches can be exercised
+// without resorting to platform-specific filesystem quirks.
+var openArchiveFile = os.OpenFile
+
+// createFile opens dest with the requested flags/perm, returning *os.File or
+// an error. Tests can replace this variable to simulate I/O failures.
+func createFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+	f, err := openArchiveFile(name, flag, perm)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+// wrapForClose wraps an *os.File so its Close method honours the closeFn seam.
+func wrapForClose(f *os.File) io.Closer {
+	return closableFile{File: f}
+}
+
+// wrapForCloser wraps any io.Closer so its Close method honours the closeFn seam.
+func wrapForCloser(c io.Closer) io.Closer {
+	return closerFunc(func() error {
+		if closeFn != nil {
+			return closeFn()
+		}
+		return c.Close()
+	})
+}
+
+type closerFunc func() error
+
+func (c closerFunc) Close() error { return c() }
 
 func extractZipArchive(archivePath, dest string) error {
 	reader, err := zip.OpenReader(archivePath)
@@ -151,13 +243,13 @@ func extractZipArchive(archivePath, dest string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		rc, err := entry.Open()
+		rc, err := zipEntryOpenFn(entry)
 		if err != nil {
 			return err
 		}
 		if mode&os.ModeSymlink != 0 {
-			linkTarget, readErr := io.ReadAll(rc)
-			closeErr := rc.Close()
+			linkTarget, readErr := readAllFn(rc)
+			closeErr := wrapForCloser(rc).Close()
 			if readErr != nil {
 				return readErr
 			}
@@ -173,14 +265,14 @@ func extractZipArchive(archivePath, dest string) error {
 		if perm == 0 {
 			perm = 0o644
 		}
-		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+		out, err := createFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 		if err != nil {
 			_ = rc.Close()
 			return err
 		}
-		_, copyErr := io.Copy(out, rc)
-		closeOutErr := out.Close()
-		closeReadErr := rc.Close()
+		_, copyErr := copyFn(out, rc)
+		closeOutErr := wrapForClose(out).Close()
+		closeReadErr := wrapForCloser(rc).Close()
 		if copyErr != nil {
 			return copyErr
 		}
@@ -231,12 +323,12 @@ func extractTarGzArchive(archivePath, dest string) error {
 			if perm == 0 {
 				perm = 0o644
 			}
-			out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+			out, err := createFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 			if err != nil {
 				return err
 			}
-			_, copyErr := io.Copy(out, tarReader)
-			closeErr := out.Close()
+			_, copyErr := copyFn(out, tarReader)
+			closeErr := wrapForClose(out).Close()
 			if copyErr != nil {
 				return copyErr
 			}

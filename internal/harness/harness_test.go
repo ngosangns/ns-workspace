@@ -103,6 +103,7 @@ func TestLoopDetectRepeatedState(t *testing.T) {
 			{Command: "exit 1", MustPass: true},
 		},
 		Stopping: StoppingConfig{MaxConsecutiveFailures: 1},
+		Routing:  Routing{Default: "mock"},
 	}
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -188,7 +189,9 @@ stopping:
 		t.Fatal(err)
 	}
 	engine := NewEngine(dir, noopReporter{})
-	engine.Dispatcher = NewDriverRegistry()
+	engine.Dispatcher = NewDriverRegistry(MockDriver{
+		Responses: map[string]DispatchResult{},
+	})
 	res, err := engine.Run(context.Background(), "full", false)
 	if err != nil {
 		t.Fatal(err)
@@ -209,11 +212,14 @@ func TestDecisionRequestWrittenInCIMode(t *testing.T) {
 			{Command: "exit 1", MustPass: true},
 		},
 		Stopping: StoppingConfig{MaxConsecutiveFailures: 1},
+		Routing:  Routing{Default: "mock"},
 	}
 	engine := NewEngine(dir, noopReporter{})
 	engine.Interactive = false
 	engine.DecisionWriter = fileDecisionWriter{}
-	engine.Dispatcher = NewDriverRegistry()
+	engine.Dispatcher = NewDriverRegistry(MockDriver{
+		Responses: map[string]DispatchResult{},
+	})
 	state := NewState(task.ID)
 	lc := &LoopController{
 		Engine:     engine,
