@@ -176,6 +176,19 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 
 	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
 		Spec: AdapterSpec{
+			ID: "zcode", Aliases: []string{"zcode-cli"}, Tier: TierStable, Executables: []string{"zcode"},
+			Targets: AdapterTargets{
+				Instruction: filepath.Join(home, ".zcode", "AGENTS.md"),
+				Skills:      filepath.Join(home, ".zcode", "skills"),
+			},
+			Docs: []string{""},
+			Notes: "ZCode (desktop app by MiniMax) discovers skills from ~/.zcode/skills/ in addition to the shared ~/.agents/skills/ directory; the adapter mirrors shared skills into ~/.zcode/skills/ so ZCode picks them up even when ~/.agents/skills/ is not on the discovery path. The shared ~/.agents/AGENTS.md is file-linked into ~/.zcode/AGENTS.md so project-local discovery also picks it up. There is no first-party user-level MCP config in this ZCode release (MCP servers live per-plugin under ~/.zcode/cli/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json), so the adapter does not write an MCP file yet — the ZCodePlugin skeleton is wired for that future target.",
+		},
+		Plugin: ZCodePlugin{},
+	}})
+
+	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
+		Spec: AdapterSpec{
 			ID: "windsurf", Tier: TierStable,
 			Targets: AdapterTargets{Instruction: filepath.Join(home, ".codeium", "windsurf", "memories", "global_rules.md")},
 			Docs:    []string{"https://docs.windsurf.com/windsurf/cascade/memories"},

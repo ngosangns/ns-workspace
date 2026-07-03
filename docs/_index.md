@@ -38,6 +38,7 @@ compliance: current-state
 | Agentsync refactor      | [specs/planning/refactor-agentsync-preset-architecture.md](./specs/planning/refactor-agentsync-preset-architecture.md)     | in-progress | current | planning      | P1       |
 | Per-adapter settings    | [specs/planning/per-adapter-settings-preset-polymorphism.md](./specs/planning/per-adapter-settings-preset-polymorphism.md) | implemented | current | current-state | P1       |
 | Harness looping agentic | [specs/planning/harness-looping-agentic.md](./specs/planning/harness-looping-agentic.md)                                   | implemented | current | current-state | P1       |
+| Adopt AI DevKit         | [specs/planning/adopt-ai-devkit-concepts.md](./specs/planning/adopt-ai-devkit-concepts.md)                                 | planned     | current | planning      | P1       |
 | Search standalone       | [specs/planning/standalone-search-graph-command.md](./specs/planning/standalone-search-graph-command.md)                   | planned     | current | planning      | P1       |
 | Preview search perf     | [specs/planning/improve-preview-search-performance.md](./specs/planning/improve-preview-search-performance.md)             | planned     | current | planning      | P1       |
 | Preview web cleanup     | [specs/planning/optimize-preview-web-surface.md](./specs/planning/optimize-preview-web-surface.md)                         | implemented | current | current-state | P1       |

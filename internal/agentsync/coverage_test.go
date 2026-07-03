@@ -401,6 +401,46 @@ func TestQoderPlugin(t *testing.T) {
 	}
 }
 
+func TestZCodePlugin(t *testing.T) {
+	_, _ = newTestContext(t)
+	p := ZCodePlugin{}
+	caps := p.ExtendCapabilities(AdapterSpec{}, AgentCapabilities{Tier: TierStable})
+	if !containsKind(caps.Artifacts, ArtifactSkills) {
+		t.Fatalf("ZCode caps missing Skills: %v", caps.Artifacts)
+	}
+	if !containsKind(caps.Artifacts, ArtifactInstructions) {
+		t.Fatalf("ZCode caps missing Instructions: %v", caps.Artifacts)
+	}
+	// ZCode does not yet ship a user-level MCP config file, so the
+	// plugin should not advertise MCP capability until that target
+	// is wired. Cap explicitly omits ArtifactMCP.
+	if containsKind(caps.Artifacts, ArtifactMCP) {
+		t.Fatalf("ZCode caps should not include MCP yet: %v", caps.Artifacts)
+	}
+	// TransformMCPServers is the future hook: verify the identity
+	// transform so the day a ~/.zcode/mcp.json ships, we already
+	// pass the canonical {type:"http",url} / {command,args} shape
+	// through unchanged.
+	out, err := p.TransformMCPServers(MCPManifest{MCPServers: map[string]any{
+		"http":  map[string]any{"type": "http", "url": "https://x"},
+		"stdio": map[string]any{"command": "npx", "args": []any{"-y", "mcp"}},
+	}})
+	if err != nil {
+		t.Fatalf("TransformMCPServers: %v", err)
+	}
+	http, _ := out.MCPServers["http"].(map[string]any)
+	if typ, _ := http["type"].(string); typ != "http" {
+		t.Fatalf("ZCode http should keep type=http, got %v", http)
+	}
+	if url, _ := http["url"].(string); url != "https://x" {
+		t.Fatalf("ZCode http should keep url, got %v", http)
+	}
+	stdio, _ := out.MCPServers["stdio"].(map[string]any)
+	if cmd, _ := stdio["command"].(string); cmd != "npx" {
+		t.Fatalf("ZCode stdio should keep command, got %v", stdio)
+	}
+}
+
 // TestPluginTransformMCPServersError covers the error branches in each
 // plugin's TransformMCPServers method by injecting a custom error via
 // the transformMCPServersForAdapterImpl seam. In production these
@@ -425,6 +465,7 @@ func TestPluginTransformMCPServersError(t *testing.T) {
 		{"Gemini", func(m MCPManifest) (MCPManifest, error) { return GeminiPlugin{}.TransformMCPServers(m) }, "gemini transform: forced plugin transform failure"},
 		{"Cline", func(m MCPManifest) (MCPManifest, error) { return ClinePlugin{}.TransformMCPServers(m) }, "cline transform: forced plugin transform failure"},
 		{"Qoder", func(m MCPManifest) (MCPManifest, error) { return QoderPlugin{}.TransformMCPServers(m) }, "qoder transform: forced plugin transform failure"},
+		{"ZCode", func(m MCPManifest) (MCPManifest, error) { return ZCodePlugin{}.TransformMCPServers(m) }, "zcode transform: forced plugin transform failure"},
 	}
 	manifest := MCPManifest{MCPServers: map[string]any{
 		"x": map[string]any{"type": "http", "url": "https://x"},

@@ -118,6 +118,12 @@ func transformMCPServersForAdapter(adapterID string, manifest MCPManifest) (map[
 			// to a full bypass we can ship from the MCP preset path.
 			delete(next, "type")
 			next["trust"] = true
+		case "zcode":
+			// ZCode does not yet ship a user-level MCP config file, but
+			// when it does the shared {type:"http",url} / {command,args}
+			// shape is what its plugin-cache .mcp.json already uses.
+			// Pass the manifest through verbatim so the ZCode adapter is
+			// ready the day a ~/.zcode/mcp.json target ships.
 		default:
 			// claude, kimi, kiro and other adapters: keep the shared shape.
 		}

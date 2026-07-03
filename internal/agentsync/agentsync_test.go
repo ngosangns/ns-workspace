@@ -746,37 +746,117 @@ func TestProviderMCPServerShapeMatchesVendorDocs(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	// Claude Code: mcpServers.{name}.{type,url} for HTTP servers.
-	claude := readJSONFile(t, filepath.Join(home, ".claude", "settings.json"))
+	// Claude Code: mcpServers.{name}.{type,url} for HTTP servers and
+	// {command,args} for stdio servers (both shapes pass through verbatim).
+	assertClaudeMCPServers(t, readJSONFile(t, filepath.Join(home, ".claude", "settings.json")))
+
+	// OpenCode: mcp.{name}.{type:"remote", url} for HTTP servers and
+	// {command,args} for stdio servers (both shapes pass through verbatim).
+	assertOpenCodeMCPServers(t, readJSONFile(t, filepath.Join(home, ".config", "opencode", "opencode.json")))
+}
+
+// assertClaudeMCPServers asserts that every mcpServers entry written into
+// Claude Code's settings.json keeps the vendor-documented shape: HTTP
+// servers keep `type:"http"` + `url`, stdio servers keep `command` + `args`.
+// The shared preset may contain both kinds of entries.
+func assertClaudeMCPServers(t *testing.T, claude map[string]any) {
+	t.Helper()
 	mcpServers, _ := claude["mcpServers"].(map[string]any)
 	if mcpServers == nil {
 		t.Fatalf("claude settings missing mcpServers: %v", claude)
 	}
 	for name, raw := range mcpServers {
 		server := raw.(map[string]any)
-		if server["type"] != "http" {
-			t.Fatalf("claude mcpServers.%s expected type=http, got %v: %v", name, server["type"], server)
-		}
-		if _, ok := server["url"].(string); !ok {
-			t.Fatalf("claude mcpServers.%s missing url: %v", name, server)
+		switch {
+		case isHTTPServer(server):
+			if server["type"] != "http" {
+				t.Fatalf("claude mcpServers.%s expected type=http, got %v: %v", name, server["type"], server)
+			}
+			if _, ok := server["url"].(string); !ok {
+				t.Fatalf("claude mcpServers.%s missing url: %v", name, server)
+			}
+		case isStdioServer(server):
+			if cmd, _ := server["command"].(string); cmd == "" {
+				t.Fatalf("claude mcpServers.%s missing command: %v", name, server)
+			}
+			if _, ok := server["args"].([]any); !ok {
+				t.Fatalf("claude mcpServers.%s missing args: %v", name, server)
+			}
+			if tVal, ok := server["type"]; ok && tVal != nil {
+				t.Fatalf("claude mcpServers.%s stdio should not have type field, got %v: %v", name, tVal, server)
+			}
+		default:
+			t.Fatalf("claude mcpServers.%s has unrecognized shape (no url/url+type for HTTP, no command for stdio): %v", name, server)
 		}
 	}
+}
 
-	// OpenCode: mcp.{name}.{type:"remote", url}.
-	opencode := readJSONFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
+// assertOpenCodeMCPServers asserts that every mcp.{name} entry written
+// into OpenCode's config.json keeps the vendor-documented shape: HTTP
+// servers keep `type:"remote"` + `url`, stdio servers keep `command` +
+// `args`. The shared preset may contain both kinds of entries.
+func assertOpenCodeMCPServers(t *testing.T, opencode map[string]any) {
+	t.Helper()
 	opencodeMCP, _ := opencode["mcp"].(map[string]any)
 	if opencodeMCP == nil {
 		t.Fatalf("opencode config missing mcp: %v", opencode)
 	}
 	for name, raw := range opencodeMCP {
 		server := raw.(map[string]any)
-		if server["type"] != "remote" {
-			t.Fatalf("opencode mcp.%s expected type=remote, got %v: %v", name, server["type"], server)
-		}
-		if _, ok := server["url"].(string); !ok {
-			t.Fatalf("opencode mcp.%s missing url: %v", name, server)
+		switch {
+		case isHTTPServer(server):
+			if server["type"] != "remote" {
+				t.Fatalf("opencode mcp.%s expected type=remote, got %v: %v", name, server["type"], server)
+			}
+			if _, ok := server["url"].(string); !ok {
+				t.Fatalf("opencode mcp.%s missing url: %v", name, server)
+			}
+		case isStdioServer(server):
+			if cmd, _ := server["command"].(string); cmd == "" {
+				t.Fatalf("opencode mcp.%s missing command: %v", name, server)
+			}
+			if _, ok := server["args"].([]any); !ok {
+				t.Fatalf("opencode mcp.%s missing args: %v", name, server)
+			}
+		default:
+			t.Fatalf("opencode mcp.%s has unrecognized shape (no url/url+type for HTTP, no command for stdio): %v", name, server)
 		}
 	}
+}
+
+// isHTTPServer reports whether an mcpServers entry is an HTTP server.
+// It accepts any HTTP-flavoured transport signal:
+//
+//   - shared preset: `type:"http"` + `url`
+//   - qwen / gemini output: `httpUrl` (no `type`)
+//   - cline output: `url` (no `type`)
+//   - opencode output: `type:"remote"` + `url`
+//
+// The presence of a URL field (`url` or `httpUrl`) is the canonical
+// signal after the per-adapter transform; we also accept `type` values
+// `http`, `sse`, or `remote` for completeness, covering raw preset
+// entries and transport-renamed outputs.
+func isHTTPServer(server map[string]any) bool {
+	if _, hasURL := server["url"]; hasURL {
+		return true
+	}
+	if _, hasHTTPURL := server["httpUrl"]; hasHTTPURL {
+		return true
+	}
+	if typ, ok := server["type"].(string); ok {
+		switch typ {
+		case "http", "sse", "remote":
+			return true
+		}
+	}
+	return false
+}
+
+// isStdioServer reports whether an mcpServers entry is a stdio server
+// (i.e. has a `command` field). Stdio servers do not carry a `url`.
+func isStdioServer(server map[string]any) bool {
+	_, hasCmd := server["command"]
+	return hasCmd
 }
 
 func TestAdapterSettingsBuildsCorrectContent(t *testing.T) {
@@ -878,8 +958,30 @@ func TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	// Qwen Code: mcpServers.{name}.httpUrl for HTTP servers, no type field.
-	qwen := readJSONFile(t, filepath.Join(home, ".qwen", "settings.json"))
+	// Qwen Code: mcpServers.{name}.httpUrl for HTTP servers (no type
+	// field), {command,args} unchanged for stdio servers.
+	assertQwenMCPServers(t, readJSONFile(t, filepath.Join(home, ".qwen", "settings.json")))
+
+	// Gemini CLI: mcpServers.{name}.httpUrl, no type, no hooks key.
+	gemini := readJSONFile(t, filepath.Join(home, ".gemini", "settings.json"))
+	if _, ok := gemini["hooks"]; ok {
+		t.Fatalf("gemini settings should NOT have hooks key (Gemini CLI ignores it): %v", gemini)
+	}
+	assertGeminiMCPServers(t, gemini)
+
+	// Cline: mcpServers.{name}.{url} for HTTP servers, {command,args}
+	// for stdio servers; the `type` field is stripped on every entry,
+	// and `trust:true` is set on every entry (so Cline auto-approves
+	// MCP tool calls without per-tool confirmation prompts).
+	assertClineMCPServers(t, readJSONFile(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json")))
+}
+
+// assertQwenMCPServers asserts Qwen's MCP shape: HTTP servers use
+// `httpUrl` (not `url` + `type`); stdio servers keep `command` + `args`
+// verbatim. The `type` field is dropped across the board because Qwen
+// does not document that discriminator.
+func assertQwenMCPServers(t *testing.T, qwen map[string]any) {
+	t.Helper()
 	qwenServers, _ := qwen["mcpServers"].(map[string]any)
 	if qwenServers == nil {
 		t.Fatalf("qwen settings missing mcpServers: %v", qwen)
@@ -889,16 +991,29 @@ func TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline(t *testing.T) {
 		if _, ok := server["type"]; ok {
 			t.Fatalf("qwen mcpServers.%s should NOT have type field: %v", name, server)
 		}
-		if _, ok := server["httpUrl"].(string); !ok {
-			t.Fatalf("qwen mcpServers.%s missing httpUrl: %v", name, server)
+		switch {
+		case isHTTPServer(server):
+			if _, ok := server["httpUrl"].(string); !ok {
+				t.Fatalf("qwen mcpServers.%s missing httpUrl: %v", name, server)
+			}
+		case isStdioServer(server):
+			if cmd, _ := server["command"].(string); cmd == "" {
+				t.Fatalf("qwen mcpServers.%s missing command: %v", name, server)
+			}
+			if _, ok := server["args"].([]any); !ok {
+				t.Fatalf("qwen mcpServers.%s missing args: %v", name, server)
+			}
+		default:
+			t.Fatalf("qwen mcpServers.%s has unrecognized shape: %v", name, server)
 		}
 	}
+}
 
-	// Gemini CLI: mcpServers.{name}.httpUrl, no type, no hooks key.
-	gemini := readJSONFile(t, filepath.Join(home, ".gemini", "settings.json"))
-	if _, ok := gemini["hooks"]; ok {
-		t.Fatalf("gemini settings should NOT have hooks key (Gemini CLI ignores it): %v", gemini)
-	}
+// assertGeminiMCPServers asserts Gemini's MCP shape: HTTP servers use
+// `httpUrl` (not `url` + `type`); stdio servers keep `command` + `args`
+// verbatim. The `type` field is dropped across the board.
+func assertGeminiMCPServers(t *testing.T, gemini map[string]any) {
+	t.Helper()
 	geminiServers, _ := gemini["mcpServers"].(map[string]any)
 	if geminiServers == nil {
 		t.Fatalf("gemini settings missing mcpServers: %v", gemini)
@@ -908,14 +1023,30 @@ func TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline(t *testing.T) {
 		if _, ok := server["type"]; ok {
 			t.Fatalf("gemini mcpServers.%s should NOT have type field: %v", name, server)
 		}
-		if _, ok := server["httpUrl"].(string); !ok {
-			t.Fatalf("gemini mcpServers.%s missing httpUrl: %v", name, server)
+		switch {
+		case isHTTPServer(server):
+			if _, ok := server["httpUrl"].(string); !ok {
+				t.Fatalf("gemini mcpServers.%s missing httpUrl: %v", name, server)
+			}
+		case isStdioServer(server):
+			if cmd, _ := server["command"].(string); cmd == "" {
+				t.Fatalf("gemini mcpServers.%s missing command: %v", name, server)
+			}
+			if _, ok := server["args"].([]any); !ok {
+				t.Fatalf("gemini mcpServers.%s missing args: %v", name, server)
+			}
+		default:
+			t.Fatalf("gemini mcpServers.%s has unrecognized shape: %v", name, server)
 		}
 	}
+}
 
-	// Cline: mcpServers.{name}.{url}; the `type` field is not part of
-	// Cline's schema and must be stripped.
-	cline := readJSONFile(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
+// assertClineMCPServers asserts Cline's MCP shape: HTTP servers keep
+// `url` (no `type`); stdio servers keep `command` + `args`. The `type`
+// field is dropped on every entry and `trust:true` is set on every
+// entry so Cline auto-approves MCP tool calls.
+func assertClineMCPServers(t *testing.T, cline map[string]any) {
+	t.Helper()
 	clineServers, _ := cline["mcpServers"].(map[string]any)
 	if clineServers == nil {
 		t.Fatalf("cline settings missing mcpServers: %v", cline)
@@ -925,8 +1056,23 @@ func TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline(t *testing.T) {
 		if _, ok := server["type"]; ok {
 			t.Fatalf("cline mcpServers.%s should NOT have type field: %v", name, server)
 		}
-		if _, ok := server["url"].(string); !ok {
-			t.Fatalf("cline mcpServers.%s missing url: %v", name, server)
+		if trust, ok := server["trust"].(bool); !ok || !trust {
+			t.Fatalf("cline mcpServers.%s should have trust=true (full bypass): %v", name, server)
+		}
+		switch {
+		case isHTTPServer(server):
+			if _, ok := server["url"].(string); !ok {
+				t.Fatalf("cline mcpServers.%s missing url: %v", name, server)
+			}
+		case isStdioServer(server):
+			if cmd, _ := server["command"].(string); cmd == "" {
+				t.Fatalf("cline mcpServers.%s missing command: %v", name, server)
+			}
+			if _, ok := server["args"].([]any); !ok {
+				t.Fatalf("cline mcpServers.%s missing args: %v", name, server)
+			}
+		default:
+			t.Fatalf("cline mcpServers.%s has unrecognized shape: %v", name, server)
 		}
 	}
 }
@@ -1112,4 +1258,63 @@ func TestQoderAliasResolvesAdapter(t *testing.T) {
 		t.Fatalf("init via qodercli alias failed: %v", err)
 	}
 	mustExist(t, filepath.Join(home, ".qoder", "skills", "execution", "SKILL.md"))
+}
+
+// TestZCodeAdapterMaterializesNativeLayout verifies that selecting
+// the zcode adapter materializes the shared AGENTS.md into
+// ~/.zcode/AGENTS.md and mirrors shared skills into
+// ~/.zcode/skills/<name>/SKILL.md. There is no first-party
+// user-level MCP config in this ZCode release, so no mcp.json
+// assertion is made; the test confirms sibling providers are
+// untouched to keep filter scoping honest.
+func TestZCodeAdapterMaterializesNativeLayout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("zcode"),
+	}
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	mustExist(t, filepath.Join(home, ".zcode", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".zcode", "skills", "cleanup", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".zcode", "skills", "commit", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".zcode", "skills", "init", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".zcode", "skills", "_shared", "CONVENTIONS.md"))
+	// Selecting only zcode must not touch sibling providers.
+	mustNotExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
+	mustNotExist(t, filepath.Join(home, ".qoder", "AGENTS.md"))
+}
+
+// TestZCodeAliasResolvesAdapter confirms the zcode-cli alias selects
+// the same adapter as the canonical id.
+func TestZCodeAliasResolvesAdapter(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("zcode-cli"),
+	}
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init via zcode-cli alias failed: %v", err)
+	}
+	mustExist(t, filepath.Join(home, ".zcode", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
 }

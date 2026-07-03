@@ -1,0 +1,21 @@
+{
+  "id": "kimi",
+  "target": ".kimi/config.json",
+  "defaultPreset": "presets/settings/default.json",
+  "preset": "presets/settings/kimi.json",
+  "raw": true,
+  "merge": {
+    "hooks": {
+      "strategy": "merge-deep",
+      "from": "default"
+    },
+    "permissions": {
+      "strategy": "replace",
+      "from": "preset"
+    },
+    "mcpServers": {
+      "strategy": "merge-shallow",
+      "from": "shared"
+    }
+  }
+}

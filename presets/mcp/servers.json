@@ -11,6 +11,14 @@
     "local-figma": {
       "type": "http",
       "url": "http://127.0.0.1:3845/mcp"
+    },
+    "safari": {
+      "command": "npx",
+      "args": ["safari-mcp"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
     }
   }
 }

@@ -50,6 +50,17 @@
         "https://docs.qoder.com/en/cli/permissions"
       ],
       "settingsProfile": "presets/adapters/qoder.json"
+    },
+    {
+      "id": "kimi",
+      "tier": "stable",
+      "executable": "kimi",
+      "docs": [
+        "https://moonshotai.github.io/kimi-cli/en/configuration/config-files.html",
+        "https://moonshotai.github.io/kimi-cli/en/guides/agent-access-config.html",
+        "https://kimi.moonshot.cn/docs"
+      ],
+      "settingsProfile": "presets/adapters/kimi.json"
     }
   ]
 }

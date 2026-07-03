@@ -294,6 +294,45 @@ func (QoderPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 	return MCPManifest{MCPServers: transformed}, nil
 }
 
+// ZCodePlugin powers the ZCode adapter. ZCode (the desktop app by
+// MiniMax) discovers skills from ~/.zcode/skills/ in addition to the
+// shared ~/.agents/skills/ directory. There is no first-party
+// user-level MCP config file, so the plugin currently does not emit
+// ArtifactMCP — file fan-out via BaseAdapter covers skills and
+// instructions. When a stable ~/.zcode/mcp.json target ships, the
+// plugin's TransformMCPServers will become the dispatch point and
+// keep the canonical {type:"http",url} / {command,args} shape.
+type ZCodePlugin struct{}
+
+// ExtendCapabilities adds ArtifactSkills and ArtifactInstructions so
+// `agents` reports the file fan-out. MCP is intentionally absent
+// until ZCode ships a user-level MCP config path.
+func (ZCodePlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
+	caps.Artifacts = append(caps.Artifacts, ArtifactSkills, ArtifactInstructions)
+	return caps
+}
+
+// ExtraOperations returns no extras; the template method handles the
+// file fan-out.
+func (ZCodePlugin) ExtraOperations(_ Context, _ AdapterSpec, _ bool) ([]Operation, error) {
+	return nil, nil
+}
+
+// ExtraStatusPaths returns no extras.
+func (ZCodePlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return nil }
+
+// TransformMCPServers returns the manifest unchanged. Reserved for the
+// day ZCode ships a user-level mcp.json / mcpServers target so the
+// shared preset can flow through without a rewrite. Other Claude-lineage
+// agents that ZCode inherits from also accept the canonical shape.
+func (ZCodePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
+	transformed, err := transformMCPServersForAdapterImpl("zcode", manifest)
+	if err != nil {
+		return MCPManifest{}, fmt.Errorf("zcode transform: %w", err)
+	}
+	return MCPManifest{MCPServers: transformed}, nil
+}
+
 // compile-time interface checks. Every concrete plugin must satisfy
 // AdapterPlugin so the BaseAdapter constructor can wire it directly.
 var (
@@ -306,5 +345,6 @@ var (
 	_ AdapterPlugin = GeminiPlugin{}
 	_ AdapterPlugin = ClinePlugin{}
 	_ AdapterPlugin = QoderPlugin{}
+	_ AdapterPlugin = ZCodePlugin{}
 	_ AdapterPlugin = NoopPlugin{}
 )
