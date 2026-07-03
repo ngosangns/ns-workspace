@@ -1,6 +1,6 @@
 {
   "name": "ns-full",
-  "description": "ns-workspace managed agent: every tool available and pre-approved (full permissions).",
+  "description": "ns-workspace managed agent: every tool available and pre-approved (full permissions). Loads synced skills and steering from ~/.kiro.",
   "prompt": null,
   "mcpServers": {},
   "tools": [
@@ -11,7 +11,10 @@
     "@builtin",
     "@*"
   ],
-  "resources": [],
+  "resources": [
+    "skill://~/.kiro/skills/*/SKILL.md",
+    "file://~/.kiro/steering/**/*.md"
+  ],
   "hooks": {},
   "toolsSettings": {},
   "includeMcpJson": true,

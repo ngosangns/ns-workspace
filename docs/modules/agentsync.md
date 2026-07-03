@@ -80,7 +80,7 @@ Plugin adapter hiện có:
 - Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers.
 - Aider append managed conventions block vào `~/.aider.conf.yml`.
 - Qoder CLI (`qodercli`, alias `qoder-cli`) link AGENTS.md/skills/subagents vào `~/.qoder` và ghi MCP servers + full-bypass mode vào `~/.qoder/settings.json`; MCP giữ shape chuẩn Claude (`type:http`/`url`).
-- Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`.
+- Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`. Ghi custom agent `~/.kiro/agents/ns-full.json` với `tools: ["*"]`, `allowedTools: ["@builtin", "@*"]`, `includeMcpJson: true` và `resources` trỏ đến synced skills/steering.
 
 ## Preset Và Registry Rules
 

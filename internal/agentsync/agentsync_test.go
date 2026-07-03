@@ -335,6 +335,77 @@ func TestKiroHomeOverrideUsesKiroPresetPaths(t *testing.T) {
 	mustNotExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
 }
 
+func TestKiroAgentConfigLoadsSkillsAndSteering(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("kiro"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	agent := readJSONFile(t, filepath.Join(home, ".kiro", "agents", "ns-full.json"))
+	if agent["name"] != "ns-full" {
+		t.Fatalf("agent name = %v, want ns-full", agent["name"])
+	}
+	if !reflect.DeepEqual(agent["tools"], []any{"*"}) {
+		t.Fatalf("agent tools = %v, want [*]", agent["tools"])
+	}
+	if !reflect.DeepEqual(agent["allowedTools"], []any{"@builtin", "@*"}) {
+		t.Fatalf("agent allowedTools = %v, want [@builtin @*]", agent["allowedTools"])
+	}
+	if agent["includeMcpJson"] != true {
+		t.Fatalf("agent includeMcpJson = %v, want true", agent["includeMcpJson"])
+	}
+	resources, ok := agent["resources"].([]any)
+	if !ok || len(resources) == 0 {
+		t.Fatalf("agent resources missing or empty: %v", agent["resources"])
+	}
+	hasSkillResource, hasSteeringResource := false, false
+	for _, r := range resources {
+		rs, _ := r.(string)
+		if strings.Contains(rs, "skill://") && strings.Contains(rs, ".kiro/skills") {
+			hasSkillResource = true
+		}
+		if strings.Contains(rs, "file://") && strings.Contains(rs, ".kiro/steering") {
+			hasSteeringResource = true
+		}
+	}
+	if !hasSkillResource {
+		t.Fatalf("agent resources missing skill URI: %v", resources)
+	}
+	if !hasSteeringResource {
+		t.Fatalf("agent resources missing steering URI: %v", resources)
+	}
+
+	mcp := readJSONFile(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
+	servers, ok := mcp["mcpServers"].(map[string]any)
+	if !ok || len(servers) == 0 {
+		t.Fatalf("kiro mcp.json missing mcpServers: %v", mcp)
+	}
+	for name, server := range servers {
+		s, ok := server.(map[string]any)
+		if !ok {
+			t.Fatalf("mcp server %q is not an object: %v", name, server)
+		}
+		hasHTTP := s["type"] == "http" && s["url"] != nil
+		hasCommand := s["command"] != nil
+		if !hasHTTP && !hasCommand {
+			t.Fatalf("mcp server %q missing http or command config: %v", name, s)
+		}
+	}
+}
+
 func TestStableToolSelectionSkipsManualAdapters(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1127,7 +1198,6 @@ func TestTransformMCPServersForAdapter(t *testing.T) {
 		})
 	}
 }
-
 
 // TestPresetSkillsOverrideProviderTargetSkills asserts that every skill
 // shipped in a preset overrides the matching skill already present in a
