@@ -4,13 +4,13 @@ import vue from "eslint-plugin-vue";
 
 export default tseslint.config(
   {
-    ignores: ["internal/preview/preview_ui/**/*.js", "node_modules/**"],
+    ignores: ["internal/preview/preview_ui/**/*.js", "internal/portal/portal_ui/**/*.js", "node_modules/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...vue.configs["flat/base"],
   {
-    files: ["internal/preview/preview_ui_src/**/*.{ts,vue}"],
+    files: ["internal/preview/preview_ui_src/**/*.{ts,vue}", "internal/portal/portal_ui_src/**/*.{ts,vue}"],
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,

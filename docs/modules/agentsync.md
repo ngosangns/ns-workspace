@@ -135,14 +135,14 @@ Cấu trúc adapter profiles:
 
 Mỗi provider CLI có field riêng để enable auto-approve, preset đã được cấu hình sẵn cho full bypass:
 
-| Provider    | Field trong settings            | Value preset           | Ghi chú                                                                                |
-| ----------- | ------------------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
-| Claude Code | `permissions.defaultMode`       | `"bypassPermissions"`  | Bypass mọi permission prompt.                                                          |
-| OpenCode    | `permission`                    | `"allow"`              | Allow mọi tool call mà không prompt.                                                   |
-| Qwen Code   | `permissions.defaultMode`       | `"yolo"`               | Full bypass mode. Cộng thêm `confirmShellCommands: false` + `confirmFileEdits: false`. |
-| Gemini CLI  | `general.defaultApprovalMode`   | `"auto_edit"`          | Auto-approve edit tools (YOLO mode chỉ enable qua CLI flag).                           |
-| Cline       | per-MCP-server `trust`          | `true`                 | Auto-approve MCP tool calls. YOLO mode riêng quản lý qua UI (global-settings.json).    |
-| Qoder CLI   | `general.defaultPermissionMode` | `"auto"`               | Auto-approve mode: skip mọi permission prompt, allow mọi tool call.                   |
+| Provider    | Field trong settings            | Value preset          | Ghi chú                                                                                |
+| ----------- | ------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
+| Claude Code | `permissions.defaultMode`       | `"bypassPermissions"` | Bypass mọi permission prompt.                                                          |
+| OpenCode    | `permission`                    | `"allow"`             | Allow mọi tool call mà không prompt.                                                   |
+| Qwen Code   | `permissions.defaultMode`       | `"yolo"`              | Full bypass mode. Cộng thêm `confirmShellCommands: false` + `confirmFileEdits: false`. |
+| Gemini CLI  | `general.defaultApprovalMode`   | `"auto_edit"`         | Auto-approve edit tools (YOLO mode chỉ enable qua CLI flag).                           |
+| Cline       | per-MCP-server `trust`          | `true`                | Auto-approve MCP tool calls. YOLO mode riêng quản lý qua UI (global-settings.json).    |
+| Qoder CLI   | `general.defaultPermissionMode` | `"auto"`              | Auto-approve mode: skip mọi permission prompt, allow mọi tool call.                    |
 
 Test `TestProviderFullBypassConfig` assert cả 5 provider đều sinh ra config full bypass đúng schema docs.
 

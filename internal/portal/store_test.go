@@ -1,0 +1,147 @@
+package portal
+
+import (
+	"io/fs"
+	"os"
+	"path/filepath"
+	"testing"
+	"testing/fstest"
+
+	"github.com/ngosangns/ns-workspace/internal/agentsync"
+)
+
+func newTestStore(t *testing.T) (*Store, fs.FS, string) {
+	t.Helper()
+	tmp := t.TempDir()
+	configPath := filepath.Join(tmp, "config.json")
+	overlayDir := filepath.Join(tmp, "portal")
+
+	fsys := fstest.MapFS{
+		"presets/skills/commit/SKILL.md": &fstest.MapFile{Data: []byte("# commit\n")},
+		"presets/skills/cleanup/SKILL.md": &fstest.MapFile{Data: []byte("# cleanup\n")},
+		"presets/mcp/servers.json": &fstest.MapFile{Data: []byte(`{"mcpServers":{"context7":{"type":"http","url":"https://example.com/mcp"}}}`)},
+		"presets/registry/skills.json": &fstest.MapFile{Data: []byte(`{"skills":[{"name":"find-skills","source":"vercel-labs/skills","skill":"find-skills"}]}`)},
+	}
+
+	store := &Store{
+		presets:    fsys,
+		config:     agentsync.UserConfig{},
+		overlayDir: overlayDir,
+		configPath: configPath,
+	}
+	return store, fsys, tmp
+}
+
+func TestListSkills(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	skills, err := store.ListSkills()
+	if err != nil {
+		t.Fatalf("ListSkills error: %v", err)
+	}
+	if len(skills) != 2 {
+		t.Fatalf("expected 2 skills, got %d", len(skills))
+	}
+}
+
+func TestReadWriteSkill(t *testing.T) {
+	store, _, tmp := newTestStore(t)
+
+	skill, err := store.ReadSkill("commit")
+	if err != nil {
+		t.Fatalf("ReadSkill error: %v", err)
+	}
+	if skill.Content != "# commit\n" {
+		t.Fatalf("unexpected content: %q", skill.Content)
+	}
+	if skill.Overridden {
+		t.Fatal("expected skill not overridden")
+	}
+
+	if err := store.WriteSkill("commit", []byte("# updated\n")); err != nil {
+		t.Fatalf("WriteSkill error: %v", err)
+	}
+
+	skill, err = store.ReadSkill("commit")
+	if err != nil {
+		t.Fatalf("ReadSkill after write error: %v", err)
+	}
+	if skill.Content != "# updated\n" {
+		t.Fatalf("unexpected content after write: %q", skill.Content)
+	}
+	if !skill.Overridden {
+		t.Fatal("expected skill overridden")
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmp, "config.json"))
+	if err != nil {
+		t.Fatalf("read config error: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatal("expected config file to be written")
+	}
+
+	if err := store.ResetSkill("commit"); err != nil {
+		t.Fatalf("ResetSkill error: %v", err)
+	}
+
+	skill, err = store.ReadSkill("commit")
+	if err != nil {
+		t.Fatalf("ReadSkill after reset error: %v", err)
+	}
+	if skill.Content != "# commit\n" {
+		t.Fatalf("unexpected content after reset: %q", skill.Content)
+	}
+	if skill.Overridden {
+		t.Fatal("expected skill not overridden after reset")
+	}
+}
+
+func TestReadWriteMCPs(t *testing.T) {
+	store, _, _ := newTestStore(t)
+
+	servers, err := store.ReadMCPs()
+	if err != nil {
+		t.Fatalf("ReadMCPs error: %v", err)
+	}
+	if len(servers.MCPServers) != 1 {
+		t.Fatalf("expected 1 server, got %d", len(servers.MCPServers))
+	}
+
+	servers.MCPServers["new"] = map[string]any{"type": "stdio", "command": "echo"}
+	if err := store.WriteMCPs(servers); err != nil {
+		t.Fatalf("WriteMCPs error: %v", err)
+	}
+
+	servers, err = store.ReadMCPs()
+	if err != nil {
+		t.Fatalf("ReadMCPs after write error: %v", err)
+	}
+	if len(servers.MCPServers) != 2 {
+		t.Fatalf("expected 2 servers after write, got %d", len(servers.MCPServers))
+	}
+}
+
+func TestReadWriteRegistry(t *testing.T) {
+	store, _, _ := newTestStore(t)
+
+	reg, err := store.ReadRegistry()
+	if err != nil {
+		t.Fatalf("ReadRegistry error: %v", err)
+	}
+	if len(reg.Skills) != 1 {
+		t.Fatalf("expected 1 registry skill, got %d", len(reg.Skills))
+	}
+
+	reg.Skills = append(reg.Skills, RegistrySkill{Name: "new", Source: "org/repo", Skill: "new"})
+	if err := store.WriteRegistry(reg); err != nil {
+		t.Fatalf("WriteRegistry error: %v", err)
+	}
+
+	reg, err = store.ReadRegistry()
+	if err != nil {
+		t.Fatalf("ReadRegistry after write error: %v", err)
+	}
+	if len(reg.Skills) != 2 {
+		t.Fatalf("expected 2 registry skills after write, got %d", len(reg.Skills))
+	}
+}

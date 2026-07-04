@@ -406,6 +406,10 @@ func (m Manager) Apply(opt Options, update bool) error {
 	if err != nil {
 		return err
 	}
+	return m.apply(ctx, update)
+}
+
+func (m Manager) apply(ctx Context, update bool) error {
 	ctx.Update = update
 	mode := "init"
 	if update {
@@ -428,6 +432,10 @@ func (m Manager) Status(opt Options) error {
 	if err != nil {
 		return err
 	}
+	return m.status(ctx)
+}
+
+func (m Manager) status(ctx Context) error {
 	paths := []string{
 		filepath.Join(ctx.Options.AgentsDir, "AGENTS.md"),
 		filepath.Join(ctx.Options.AgentsDir, "agents"),
@@ -452,6 +460,10 @@ func (m Manager) Doctor(opt Options) error {
 	if err != nil {
 		return err
 	}
+	return m.doctor(ctx)
+}
+
+func (m Manager) doctor(ctx Context) error {
 	ctx.Report.Line("os: %s/%s", runtime.GOOS, runtime.GOARCH)
 	ctx.Report.Line("agents home: %s", ctx.Options.AgentsDir)
 	printPathStatus(ctx, ctx.Options.AgentsDir)
@@ -509,10 +521,47 @@ func (m Manager) InstallRegistrySkills(opt Options) error {
 	if err != nil {
 		return err
 	}
+	return m.installRegistrySkills(ctx)
+}
+
+func (m Manager) installRegistrySkills(ctx Context) error {
 	if err := writeRegistryHelpers(ctx, true); err != nil {
 		return err
 	}
 	return installRegistrySkills(ctx)
+}
+
+// ContextWithReporter builds a Context for the given options with a custom
+// status reporter. It is exported for the portal UI so sync output can be
+// streamed to the frontend instead of stdout.
+func (m Manager) ContextWithReporter(opt Options, report StatusReporter) (Context, error) {
+	ctx, err := m.context(opt)
+	if err != nil {
+		return Context{}, err
+	}
+	ctx.Report = report
+	return ctx, nil
+}
+
+// ApplyWithContext runs Apply using an already-built Context.
+func (m Manager) ApplyWithContext(ctx Context, update bool) error {
+	return m.apply(ctx, update)
+}
+
+// StatusWithContext runs Status using an already-built Context.
+func (m Manager) StatusWithContext(ctx Context) error {
+	return m.status(ctx)
+}
+
+// DoctorWithContext runs Doctor using an already-built Context.
+func (m Manager) DoctorWithContext(ctx Context) error {
+	return m.doctor(ctx)
+}
+
+// InstallRegistrySkillsWithContext runs registry skill installation using an
+// already-built Context.
+func (m Manager) InstallRegistrySkillsWithContext(ctx Context) error {
+	return m.installRegistrySkills(ctx)
 }
 
 func (m Manager) context(opt Options) (Context, error) {

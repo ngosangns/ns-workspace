@@ -1,3 +1,9 @@
+---
+type: working-document
+title: "Working Document: Kiro Agent tự động load synced skills và steering"
+description: "Mô tả thay đổi để Kiro custom agent ns-full tự động load synced skills và steering."
+---
+
 # Working Document: Kiro Agent tự động load synced skills và steering
 
 ## Tổng quan

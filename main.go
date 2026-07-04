@@ -9,6 +9,7 @@ import (
 	synccli "github.com/ngosangns/ns-workspace/internal/cli"
 	"github.com/ngosangns/ns-workspace/internal/graphquery"
 	"github.com/ngosangns/ns-workspace/internal/kbmcp"
+	"github.com/ngosangns/ns-workspace/internal/portal"
 	"github.com/ngosangns/ns-workspace/internal/preview"
 	"github.com/ngosangns/ns-workspace/internal/setup"
 )
@@ -63,6 +64,8 @@ func run(args []string) error {
 		return preview.RunExport(args[1:])
 	case "graph":
 		return preview.RunGraph(args[1:])
+	case "portal":
+		return portal.Run(args[1:], presetFS)
 	case "mcp":
 		return kbmcp.Run(args[1:])
 	case "kb":
@@ -87,6 +90,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest doctor [flags]
   go run github.com/ngosangns/ns-workspace@latest registry [flags]
   go run github.com/ngosangns/ns-workspace@latest agents [flags]
+  go run github.com/ngosangns/ns-workspace@latest portal [flags]
   go run github.com/ngosangns/ns-workspace@latest harness <list|run|eval|status|resume|stop> [flags]
   go run github.com/ngosangns/ns-workspace@latest preview [flags]
   go run github.com/ngosangns/ns-workspace@latest search [flags]
@@ -111,6 +115,10 @@ Flags:
   --copy              copy instead of symlink
   --no-mcp            skip MCP config
   --no-registry       skip skills registry installation
+
+Portal flags:
+  --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
+  --open              open browser after the server starts
 
 Harness flags:
   --project PATH      project root to inspect, default current directory

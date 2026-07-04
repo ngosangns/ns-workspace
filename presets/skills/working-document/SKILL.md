@@ -48,19 +48,26 @@ Trước khi bắt đầu, xác định (hỏi người dùng nếu chưa rõ):
 Chạy các lệnh git ở chế độ non-interactive (KHÔNG dùng pager). Gợi ý:
 
 - Lấy danh sách commits của branch so với nền:
+
   ```bash
   git log --no-pager --oneline <base>..<branch>
   ```
+
 - Lấy chi tiết một commit (message + diff):
+
   ```bash
   git show --no-pager --stat <sha>
   git show --no-pager <sha>
   ```
+
 - Lấy toàn bộ diff của branch:
+
   ```bash
   git diff --no-pager <base>...<branch>
   ```
+
 - Xem các file bị ảnh hưởng:
+
   ```bash
   git diff --no-pager --stat <base>...<branch>
   ```
@@ -96,20 +103,23 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 
 ## Cấu trúc tài liệu đầu ra
 
-```markdown
+````markdown
 # Working Document: <Tiêu đề / tên branch hoặc commit>
 
 ## Tổng quan
+
 - **Phạm vi**: <commit sha | branch base..head>
 - **Mục tiêu chung**: <1-2 câu mô tả thay đổi giải quyết vấn đề gì>
 - **Các file chính bị ảnh hưởng**: <danh sách ngắn>
 
 ## Bối cảnh & Vấn đề
+
 <Mô tả trạng thái trước khi thay đổi và lý do cần thay đổi>
 
 ## Chi tiết thay đổi theo từng bước
 
 ### Bước 1 — <Tiêu đề thay đổi> (`<commit sha ngắn>` nếu có)
+
 - **Vấn đề / Nguyên nhân**: <tại sao cần làm>
 - **Cách thay đổi**: <làm gì, theo hướng nào>
 - **Vị trí trong code**:
@@ -121,17 +131,22 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
   flowchart TD
     A[...] --> B[...]
   ```
+````
 
-### Bước 2 — ...
+### Bước 2 —
+
 ...
 
 ## Sơ đồ tổng thể (nếu cần)
+
 <Mermaid diagram thể hiện luồng/kiến trúc sau thay đổi>
 
 ## Tác động & Lưu ý
+
 - Ảnh hưởng đến phần nào của hệ thống
 - Rủi ro, breaking changes, điểm cần kiểm thử
 - Các bước tiếp theo (nếu có)
+
 ```
 
 ## Quy tắc bắt buộc
@@ -142,3 +157,4 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 - Diagram chỉ thêm khi nó làm rõ luồng/kiến trúc; bỏ qua nếu thay đổi đơn giản.
 - Viết để người đọc không quen codebase vẫn hiểu được.
 - KHÔNG sửa code trong skill này; chỉ đọc git + code và viết tài liệu.
+```

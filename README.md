@@ -34,6 +34,7 @@ go run github.com/ngosangns/ns-workspace@latest setup --target ~/p   # ghi Taskf
 ```
 
 Setup flags:
+
 ```bash
 --target PATH     directory to write Taskfile.yml, default current directory
 --dry-run         print planned Taskfile.yml on stdout instead of writing
@@ -80,7 +81,7 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 | `export`   | Xuất toàn bộ docs + graph thành một file HTML tĩnh self-contained, mở offline qua `file://`.                                                   |
 | `mcp`      | Khởi động MCP server stdio local expose `docs/` cho agent (list/lookup/search/modify).                                                         |
 | `kb`       | Thao tác OKF trên docs: `kb validate` kiểm conformance, `kb index` sinh lại `index.md` từng thư mục.                                           |
-| `setup`    | Sinh hoặc merge `Taskfile.yml` ở cwd để chạy toàn bộ scripts/commands của ns-workspace qua [go-task](https://taskfile.dev/). |
+| `setup`    | Sinh hoặc merge `Taskfile.yml` ở cwd để chạy toàn bộ scripts/commands của ns-workspace qua [go-task](https://taskfile.dev/).                   |
 | `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                                                       |
 
 ## Flag Hay Dùng
@@ -162,20 +163,20 @@ MiniMax CLI (`mmx`) được hỗ trợ như một stable adapter, chọn bằng
 
 Stable adapters ghi vào các user-level path đã biết:
 
-| Agent         | User-level targets                                                                                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands          |
-| OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                         |
-| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build                   |
-| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                           |
+| Agent         | User-level targets                                                                                                                                                                 |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands                                                         |
+| OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                                                                        |
+| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build                                                                  |
+| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                                                                          |
 | Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`, `~/.kiro/agents/ns-full.json` (full-permissions custom agent); `--tools kiro-cli` là alias của `kiro` |
-| Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                                       |
-| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root) |
-| Codex CLI     | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml`                                             |
-| Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                    |
-| Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                                      |
-| Aider         | Managed conventions block trong `~/.aider.conf.yml`                                                                                 |
-| MiniMax CLI   | `~/.mmx/config.json` (default model presets); alias `minimax-cli` / `mmx` qua `--tools`                                             |
+| Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                                                                                      |
+| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root)                                                |
+| Codex CLI     | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml`                                                                                            |
+| Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                   |
+| Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                                                                                     |
+| Aider         | Managed conventions block trong `~/.aider.conf.yml`                                                                                                                                |
+| MiniMax CLI   | `~/.mmx/config.json` (default model presets); alias `minimax-cli` / `mmx` qua `--tools`                                                                                            |
 
 Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<agent>/` thay vì ghi trực tiếp vào native path chưa chắc chắn. Nhóm này hiện gồm Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 

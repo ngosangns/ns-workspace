@@ -55,7 +55,7 @@ func (u UserConfig) Lookup(embeddedPath string) (string, bool) {
 	if u.IsZero() {
 		return "", false
 	}
-	key := normalizePresetKey(embeddedPath)
+	key := NormalizePresetKey(embeddedPath)
 	value, ok := u.entries[key]
 	return value, ok
 }
@@ -80,7 +80,7 @@ func (u UserConfig) EntriesUnder(treeRoot string) []string {
 	if u.IsZero() {
 		return nil
 	}
-	root := normalizePresetKey(treeRoot)
+	root := NormalizePresetKey(treeRoot)
 	rootWithSlash := root
 	if !strings.HasSuffix(rootWithSlash, "/") {
 		rootWithSlash += "/"
@@ -119,13 +119,17 @@ func DefaultUserConfigPath() (string, error) {
 	return filepath.Join(dir, "ns-workspace", "config.json"), nil
 }
 
-// loadUserConfig resolves the effective user config and loads it. The
+// LoadUserConfig resolves the effective user config and loads it. The
 // resolution order is:
 //  1. opt.ConfigPath if non-empty
 //  2. DefaultUserConfigPath() if it exists
 //
 // Returns a zero UserConfig (no error) when no config file is present so
 // callers can treat "no overlay" as the default state.
+func (m Manager) LoadUserConfig(opt Options) (UserConfig, error) {
+	return loadUserConfig(opt)
+}
+
 func loadUserConfig(opt Options) (UserConfig, error) {
 	candidates := []string{}
 	if p := strings.TrimSpace(opt.ConfigPath); p != "" {
@@ -168,7 +172,7 @@ func readUserConfigFile(path string) (*UserConfig, error) {
 	}
 	entries := make(map[string]string, len(raw))
 	for key, value := range raw {
-		normalized := normalizePresetKey(key)
+		normalized := NormalizePresetKey(key)
 		if !strings.HasPrefix(normalized, "presets/") {
 			return nil, fmt.Errorf("user config %s: key %q must start with \"presets/\"", path, key)
 		}
@@ -194,7 +198,9 @@ func readUserConfigFile(path string) (*UserConfig, error) {
 // readPresetFile returns the bytes for a preset path, preferring the user
 // overlay and falling back to the embedded preset FS. Returns fs.ErrNotExist
 // when neither source has the file.
-func normalizePresetKey(key string) string {
+// NormalizePresetKey normalizes a preset path key to forward-slash form
+// starting with "presets/". It is exported for use by the portal UI.
+func NormalizePresetKey(key string) string {
 	key = strings.TrimSpace(key)
 	// Convert Windows-style backslashes to forward slashes before the
 	// OS-native ToSlash pass. This makes the config format forgiving when
