@@ -80,16 +80,43 @@ func Run(args []string) error {
 	fmt.Printf("docs: %s\n", docsAbs)
 
 	if opt.openBrowser {
-		// Open after a short delay so Quartz has time to start serving.
+		// Wait until Quartz is serving before opening the browser so the tab
+		// does not land on a "refused to connect" page. The first build can
+		// take several seconds, so the timeout is generous.
 		go func() {
-			time.Sleep(800 * time.Millisecond)
-			if err := openURLForTest(displayURL); err != nil {
+			if err := waitForServerAndOpen(displayURL); err != nil {
 				fmt.Printf("open browser failed: %v\n", err)
 			}
 		}()
 	}
 
 	return runQuartzServeForTest(repoDir, workspace, port, portOf(wsPort), os.Stdout, os.Stderr)
+}
+
+// waitForServerAndOpen polls the display URL until it responds, then opens it
+// in the system browser. It gives up after a timeout so the preview command
+// does not hang indefinitely if Quartz fails to start.
+func waitForServerAndOpen(url string) error {
+	if err := waitForServerForTest(url, 30*time.Second); err != nil {
+		return err
+	}
+	return openURLForTest(url)
+}
+
+// waitForServerForTest lets tests stub the readiness poll.
+var waitForServerForTest = func(url string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil {
+			_ = resp.Body.Close()
+			// Quartz may return 404 at root until it finishes indexing, so any
+			// HTTP response means the server is up and accepting connections.
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("server did not become ready at %s within %v", url, timeout)
 }
 
 // previewPort extracts or allocates a TCP port from the address string.

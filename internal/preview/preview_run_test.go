@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestRunHelpReturnsNil(t *testing.T) {
@@ -25,11 +26,13 @@ func TestRunQuartzServeReplaced(t *testing.T) {
 	origPrepare := prepareQuartzWorkspaceForTest
 	origServe := runQuartzServeForTest
 	origOpen := openURLForTest
+	origWait := waitForServerForTest
 	defer func() {
 		resolveQuartzRepoForTest = origResolve
 		prepareQuartzWorkspaceForTest = origPrepare
 		runQuartzServeForTest = origServe
 		openURLForTest = origOpen
+		waitForServerForTest = origWait
 	}()
 
 	resolveCalled := false
@@ -48,6 +51,7 @@ func TestRunQuartzServeReplaced(t *testing.T) {
 		prepareCalled = true
 		return "/quartz/workspace", func() {}, nil
 	}
+	waitForServerForTest = func(string, time.Duration) error { return nil }
 	serveDone := make(chan struct{})
 	runQuartzServeForTest = func(repoDir, workspaceDir, port, wsPort string, stdout, stderr io.Writer) error {
 		serveCalled = true
