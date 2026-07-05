@@ -93,14 +93,18 @@ func Run(args []string) error {
 }
 
 // previewPort extracts or allocates a TCP port from the address string.
-// Quartz always binds to 127.0.0.1, so only the port is used.
+// Quartz always binds to 127.0.0.1, so only the port number is returned.
 func previewPort(addr string) (string, error) {
 	_, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "", fmt.Errorf("invalid preview address %q: %w", addr, err)
 	}
 	if port == "0" {
-		return pickPreviewAddrForTest()
+		picked, err := pickPreviewAddrForTest()
+		if err != nil {
+			return "", err
+		}
+		port = portOf(picked)
 	}
 	return port, nil
 }
