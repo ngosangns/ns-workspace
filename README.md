@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent nhận cùng workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có các lệnh đọc knowledge base: `preview` chạy web dashboard local cho `docs/`, `search` mở Search/Code Graph standalone, `graph` chạy query terminal dạng text/JSON, `export` dump docs + graph thành một file HTML tĩnh self-contained, `mcp` expose `docs/` cho AI agent qua MCP server stdio local, còn `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
+Repo cũng có các lệnh đọc knowledge base: `preview` chạy Quartz dev server cho `docs/`, `search` mở Search/Code Graph standalone, `graph` chạy query terminal dạng text/JSON, `export` dump docs + graph thành một file HTML tĩnh self-contained, `mcp` cung cấp command-line truy cập `docs/` dưới dạng JSON (list/lookup/search), còn `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
 
 ## Trạng Thái
 
@@ -75,11 +75,11 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 | `agents`   | Liệt kê adapter được hỗ trợ, support tier và artifact support.                                                                                 |
 | `catalog`  | Alias của `agents`.                                                                                                                            |
 | `harness`  | Chạy harness task: list, run, eval, status, resume, stop. Hỗ trợ self-correct loop, multi-agent routing và memory persistence.                 |
-| `preview`  | Chạy web dashboard local để đọc và search thư mục `docs/` của một project.                                                                     |
+| `preview`  | Chạy Quartz dev server cho thư mục `docs/` của một project.                                                                                    |
 | `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                                                        |
 | `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                                                   |
 | `export`   | Xuất toàn bộ docs + graph thành một file HTML tĩnh self-contained, mở offline qua `file://`.                                                   |
-| `mcp`      | Khởi động MCP server stdio local expose `docs/` cho agent (list/lookup/search/modify).                                                         |
+| `mcp`      | Command-line truy cập `docs/` dưới dạng JSON: `list-docs`, `lookup-doc`, `search-docs` (mỗi lần chạy một command).                             |
 | `kb`       | Thao tác OKF trên docs: `kb validate` kiểm conformance, `kb index` sinh lại `index.md` từng thư mục.                                           |
 | `setup`    | Sinh hoặc merge `Taskfile.yml` ở cwd để chạy toàn bộ scripts/commands của ns-workspace qua [go-task](https://taskfile.dev/).                   |
 | `lsp`      | Liệt kê hoặc cài language server mà LSP Code Graph dùng.                                                                                       |
@@ -248,16 +248,25 @@ Export flags:
 --open                open the generated file after writing
 ```
 
-`mcp` khởi động một MCP server local-only giao tiếp JSON-RPC 2.0 qua stdin/stdout (không bind network port), để AI agent đọc/sửa knowledge base trực tiếp. Server expose bốn tool: `list_docs` (liệt kê docs, filter theo `type`/`tag`), `lookup_doc` (lấy full content + metadata theo id), `search_docs` (search bằng cùng pipeline với preview/search), và `modify_doc` (tạo/sửa doc, chặn path traversal ra ngoài docs root). Server được spawn như stdio subprocess bởi agent MCP-capable.
+`mcp` chạy các command một lần để truy vấn `docs/` và in kết quả JSON ra stdout. Các command hiện có: `list-docs` (liệt kê docs, filter theo `type`/`tag`), `lookup-doc` (lấy full content + metadata theo id), `search-docs` (search bằng cùng pipeline với preview/search). Không còn vòng lặp server persistent; command được gọi khi cần và thoát ngay sau khi trả kết quả.
 
 ```bash
-task ns:mcp -- --project .
+task ns:mcp -- list-docs --type module
 ```
 
-MCP flags:
+`preview` chạy Quartz dev server để xem docs dưới dạng digital garden. Lần chạy đầu tiên cần mạng để clone Quartz và cài npm dependencies.
 
 ```bash
---project PATH        project root to expose, default current directory
+task ns:preview
+```
+
+MCP usage:
+
+```bash
+mcp [global-flags] <command> [command-flags]
+
+# Global flags (phải đứng trước command):
+--project PATH        project root, default current directory
 --docs PATH           docs directory, default docs
 ```
 

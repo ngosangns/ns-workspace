@@ -21,6 +21,7 @@ const isValid = computed(() => {
 async function load() {
   loading.value = true;
   error.value = "";
+  success.value = "";
   try {
     registry.value = await api.getRegistry();
     raw.value = JSON.stringify(registry.value, null, 2);
@@ -56,16 +57,31 @@ onMounted(load);
 
 <template>
   <div>
-    <h2 class="page-title">Registry Skills</h2>
-    <div class="toolbar">
-      <button class="btn primary" :disabled="saving || !isValid" @click="save">{{ saving ? "Saving..." : "Save" }}</button>
+    <h2 class="text-h5 q-mb-md">Registry Skills</h2>
+
+    <div class="row q-gutter-sm q-mb-md">
+      <q-btn color="primary" icon="sym_o_save" :disable="!isValid" :loading="saving" label="Save" @click="save" />
+      <q-chip v-if="isValid" icon="sym_o_check" color="positive" text-color="white">Valid JSON</q-chip>
+      <q-chip v-else icon="sym_o_error" color="negative" text-color="white">Invalid JSON</q-chip>
     </div>
-    <p v-if="loading" class="empty">Loading...</p>
-    <p v-else-if="error" class="empty" style="color: var(--danger)">{{ error }}</p>
-    <template v-else>
-      <p v-if="success" class="empty" style="color: var(--accent)">{{ success }}</p>
-      <p class="meta">These skills are installed via <code>npx skills add</code> when running sync.</p>
-      <textarea v-model="raw" class="editor json-editor" />
-    </template>
+
+    <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
+    <q-banner v-if="success" class="bg-positive text-white q-mb-md" rounded>{{ success }}</q-banner>
+
+    <p class="text-caption text-grey-5 q-mb-md">These skills are installed via <code>npx skills add</code> when running sync.</p>
+
+    <div v-if="loading" class="flex flex-center q-pa-xl">
+      <q-spinner color="primary" size="3em" />
+    </div>
+    <q-input
+      v-else
+      v-model="raw"
+      type="textarea"
+      filled
+      bg-color="grey-10"
+      input-class="text-mono"
+      :input-style="{ minHeight: '400px', fontFamily: 'monospace' }"
+      label="Registry skills JSON"
+    />
   </div>
 </template>

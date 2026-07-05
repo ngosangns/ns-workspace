@@ -265,12 +265,11 @@ func TestRunContainsExpectedTasks(t *testing.T) {
 
 	expectedTasks := []string{
 		"ns:status", "ns:doctor", "ns:init", "ns:update",
-		"ns:preview", "ns:search", "ns:export", "ns:graph", "ns:mcp",
+		"ns:preview", "ns:portal", "ns:search", "ns:export", "ns:graph", "ns:mcp",
 		"ns:kb:validate", "ns:kb:index", "ns:lsp:list", "ns:lsp:install",
 		"ns:harness:list", "ns:harness:run",
-		"lint:docs", "lint:docs:fix", "lint:preview", "lint:preview:fix",
-		"format:docs", "format:docs:check", "format:preview", "format:preview:check",
-		"build:preview",
+		"lint:portal", "lint:portal:fix", "lint:preview", "lint:preview:fix",
+		"lint:doc", "lint:doc:fix",
 		"go:build", "go:test",
 	}
 	for _, name := range expectedTasks {
@@ -280,7 +279,7 @@ func TestRunContainsExpectedTasks(t *testing.T) {
 	}
 
 	// Đếm tổng số task phải đúng.
-	if got, want := len(ScriptNames()), 26; got != want {
+	if got, want := len(ScriptNames()), 24; got != want {
 		t.Errorf("DefaultScripts length = %d, want %d", got, want)
 	}
 }

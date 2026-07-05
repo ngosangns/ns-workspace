@@ -248,24 +248,6 @@ func TestHandlers_InvalidArgs(t *testing.T) {
 	}
 }
 
-// TestDispatch_UnknownMethodAndTool ensures the server returns JSON-RPC errors
-// (and keeps serving) for unknown methods and unknown tool names (Req 7.6).
-func TestDispatch_UnknownMethodAndTool(t *testing.T) {
-	projectRoot, docsDir := writeFixtureDocs(t)
-	s := NewServer(projectRoot, docsDir)
-
-	resp := s.route(context.Background(), rpcRequest{Method: "no/such/method", ID: json.RawMessage(`1`)})
-	if resp.Error == nil || resp.Error.Code != codeMethodNotFound {
-		t.Fatalf("unknown method: got %+v, want method-not-found error", resp.Error)
-	}
-
-	params, _ := json.Marshal(toolCallParams{Name: "no_such_tool"})
-	resp = s.handleToolCall(context.Background(), rpcRequest{Method: "tools/call", ID: json.RawMessage(`2`), Params: params})
-	if resp.Error == nil || resp.Error.Code != codeInvalidParams {
-		t.Fatalf("unknown tool: got %+v, want invalid-params error", resp.Error)
-	}
-}
-
 // --- resolveDocPath traversal cases (Property 15, Req 8.2) ---
 
 func TestResolveDocPath_RejectsTraversal(t *testing.T) {

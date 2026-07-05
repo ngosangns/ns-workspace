@@ -3,7 +3,7 @@
 These files are committed to the repo on purpose so that the static HTML export
 (`export --inline-assets=true`, the default) is fully self-contained and opens
 over `file://` with **no network requests**. This is a deliberate tradeoff: the
-export must not depend on the Vite build pipeline used by `preview_ui_src/`.
+export must not depend on the Vite build pipeline used by the portal UI.
 
 The export viewer itself (`../viz.html.tmpl`, `../viz.css`, `../viz.js`) is the
 **OKF Bundle Viewer**, ported from

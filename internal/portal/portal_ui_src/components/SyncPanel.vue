@@ -46,20 +46,37 @@ function stream(jobId: string) {
 </script>
 
 <template>
-  <div class="card">
-    <h3>Sync</h3>
-    <div class="toolbar">
-      <button class="btn" :disabled="running" @click="run('status')">Status</button>
-      <button class="btn" :disabled="running" @click="run('doctor')">Doctor</button>
-      <button class="btn" :disabled="running" @click="run('init')">Init</button>
-      <button class="btn" :disabled="running" @click="run('update', true)">Dry Run Update</button>
-      <button class="btn primary" :disabled="running" @click="run('update')">Update</button>
-      <button class="btn" :disabled="running" @click="run('registry')">Install Registry</button>
-    </div>
-    <p v-if="error" class="empty" style="color: var(--danger)">{{ error }}</p>
-    <div v-if="logs.length === 0 && running" class="empty">Starting...</div>
-    <div v-else class="logs">
-      <p v-for="(line, i) in logs" :key="i" class="log-line">{{ line }}</p>
-    </div>
-  </div>
+  <q-card class="bg-secondary" bordered>
+    <q-card-section>
+      <div class="text-h6">Sync</div>
+    </q-card-section>
+    <q-separator />
+    <q-card-section>
+      <div class="row q-gutter-sm q-mb-md">
+        <q-btn :disable="running" color="secondary" label="Status" @click="run('status')" />
+        <q-btn :disable="running" color="secondary" label="Doctor" @click="run('doctor')" />
+        <q-btn :disable="running" color="secondary" label="Init" @click="run('init')" />
+        <q-btn :disable="running" color="info" label="Dry Run Update" @click="run('update', true)" />
+        <q-btn :disable="running" color="primary" label="Update" @click="run('update')" />
+        <q-btn :disable="running" color="secondary" label="Install Registry" @click="run('registry')" />
+      </div>
+
+      <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
+
+      <q-scroll-area v-if="logs.length > 0 || running" class="bg-dark rounded-borders" style="height: 300px">
+        <div class="q-pa-sm text-mono text-caption">
+          <div v-for="(line, i) in logs" :key="i" class="log-line">{{ line }}</div>
+          <div v-if="running && logs.length === 0" class="text-grey-5">Starting...</div>
+        </div>
+      </q-scroll-area>
+    </q-card-section>
+  </q-card>
 </template>
+
+<style scoped>
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 1px 0;
+}
+</style>

@@ -814,8 +814,9 @@ func shouldSkipLSPSourcePath(rel string) bool {
 	if rel == "" || shouldSkipGitSearchPath(rel) {
 		return true
 	}
-	// The embedded preview UI is generated from preview_ui_src and tracked only so Go can serve it.
-	// Indexing it through LSP spends graph budget on duplicate artifacts instead of source symbols.
+	// The legacy standalone preview UI build output is tracked only so older checkouts can still
+	// serve it. Indexing it through LSP spends graph budget on duplicate artifacts instead of
+	// source symbols.
 	return rel == "internal/preview/preview_ui" || strings.HasPrefix(rel, "internal/preview/preview_ui/")
 }
 

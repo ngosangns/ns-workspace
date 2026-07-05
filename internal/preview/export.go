@@ -110,7 +110,7 @@ func normalizeExportOutputPath(cwd, out string) string {
 // third-party render libraries) so that `export --inline-assets=true` produces a
 // fully self-contained HTML file that opens over file:// with no network
 // requests. The assets live under export_ui/ and are hand-maintained (no Vite
-// build), keeping the export independent of the preview_ui_src/ pipeline.
+// build), keeping the export independent of the portal UI pipeline.
 //
 //go:embed export_ui
 var exportUIFS embed.FS

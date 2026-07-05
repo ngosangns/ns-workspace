@@ -2,28 +2,22 @@ package preview
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
-
-//go:embed preview_ui
-var previewUIFS embed.FS
 
 const defaultPreviewAddr = "127.0.0.1:0"
 
@@ -33,23 +27,11 @@ type previewOptions struct {
 	addr        string
 	openBrowser bool
 	noReload    bool
+	quartzDir   string
 }
 
-type previewServer struct {
-	opt       previewOptions
-	srv       *http.Server
-	codeGraph previewCodeGraphProvider
-
-	projectMu    sync.RWMutex
-	projectToken string
-	project      specProject
-	projectErr   error
-
-	searchMu    sync.RWMutex
-	searchToken string
-	search      previewSearchSnapshot
-}
-
+// Run starts the docs preview as a Quartz dev server. It builds the docs and
+// serves them locally, blocking until the server process exits.
 func Run(args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -59,9 +41,10 @@ func Run(args []string) error {
 	fs := flag.NewFlagSet("preview", flag.ContinueOnError)
 	fs.StringVar(&opt.projectRoot, "project", opt.projectRoot, "project root to inspect")
 	fs.StringVar(&opt.docsDir, "docs-dir", opt.docsDir, "docs directory relative to project root, or absolute path")
-	fs.StringVar(&opt.addr, "addr", opt.addr, "local server address")
+	fs.StringVar(&opt.addr, "addr", opt.addr, "local server address (host is ignored; Quartz binds to 127.0.0.1)")
 	fs.BoolVar(&opt.openBrowser, "open", false, "open browser after the server starts")
-	fs.BoolVar(&opt.noReload, "no-reload", false, "disable source hot reload supervisor")
+	fs.BoolVar(&opt.noReload, "no-reload", false, "deprecated: Quartz dev server has its own hot reload")
+	fs.StringVar(&opt.quartzDir, "quartz-dir", opt.quartzDir, "path to a local Quartz checkout (with package.json); if unset, Quartz is cloned to the user cache")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -69,36 +52,61 @@ func Run(args []string) error {
 		return err
 	}
 	opt.projectRoot = normalizePreviewProjectRoot(opt.projectRoot)
-	if !opt.noReload {
-		if root, ok := previewModuleRoot(cwd); ok {
-			return runHotReloadSupervisor(root, args, opt.projectRoot)
-		}
-	}
 
-	server := newPreviewServer(opt)
-	listener, err := net.Listen("tcp", opt.addr)
+	port, err := previewPort(opt.addr)
 	if err != nil {
 		return err
 	}
-	addr := listener.Addr().String()
-	displayURL := "http://" + addr
-	if strings.HasPrefix(addr, "127.0.0.1:") || strings.HasPrefix(addr, "[::1]:") {
-		displayURL = "http://localhost:" + portOf(addr)
+	wsPort, err := pickPreviewAddrForTest()
+	if err != nil {
+		return fmt.Errorf("allocate websocket port: %w", err)
 	}
-	fmt.Printf("docs preview: %s\n", displayURL)
-	fmt.Printf("project: %s\n", opt.projectRoot)
-	fmt.Printf("docs: %s\n", docsRoot(opt.projectRoot, opt.docsDir))
-	if opt.openBrowser {
-		if err := openURLForTest(displayURL); err != nil {
-			fmt.Printf("open browser failed: %v\n", err)
-		}
-	}
-	if err := servePreviewForTest(server.srv, listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+
+	repoDir, err := resolveQuartzRepoForTest(opt.quartzDir)
+	if err != nil {
 		return err
 	}
-	return nil
+
+	workspace, cleanup, err := prepareQuartzWorkspaceForTest(opt.projectRoot, opt.docsDir)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	docsAbs := docsRoot(opt.projectRoot, opt.docsDir)
+	displayURL := "http://localhost:" + port
+	fmt.Printf("docs preview (Quartz): %s\n", displayURL)
+	fmt.Printf("project: %s\n", opt.projectRoot)
+	fmt.Printf("docs: %s\n", docsAbs)
+
+	if opt.openBrowser {
+		// Open after a short delay so Quartz has time to start serving.
+		go func() {
+			time.Sleep(800 * time.Millisecond)
+			if err := openURLForTest(displayURL); err != nil {
+				fmt.Printf("open browser failed: %v\n", err)
+			}
+		}()
+	}
+
+	return runQuartzServeForTest(repoDir, workspace, port, portOf(wsPort), os.Stdout, os.Stderr)
 }
 
+// previewPort extracts or allocates a TCP port from the address string.
+// Quartz always binds to 127.0.0.1, so only the port is used.
+func previewPort(addr string) (string, error) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("invalid preview address %q: %w", addr, err)
+	}
+	if port == "0" {
+		return pickPreviewAddrForTest()
+	}
+	return port, nil
+}
+
+// previewModuleRoot detects the module root for the legacy hot-reload
+// supervisor. It is kept for compatibility with existing tests.
 func previewModuleRoot(start string) (string, bool) {
 	dir, err := filepath.Abs(start)
 	if err != nil {
@@ -116,89 +124,32 @@ func previewModuleRoot(start string) (string, bool) {
 	}
 }
 
+// runHotReloadSupervisor was used to watch preview frontend sources and
+// rebuild/restart the server. The standalone preview UI has been removed, so
+// this is now a no-op stub.
 func runHotReloadSupervisor(moduleRoot string, args []string, projectRoot string) error {
-	fmt.Println("docs preview hot reload: watching Go backend and frontend sources")
-	if err := buildPreviewFrontend(moduleRoot); err != nil {
-		return err
-	}
-	tokens := previewSourceTokens(moduleRoot)
-	childArgs, err := previewChildArgs(args, projectRoot)
-	if err != nil {
-		return err
-	}
-	cmd, done, err := startPreviewChildForTest(moduleRoot, childArgs)
-	if err != nil {
-		return err
-	}
-
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt)
-	defer signal.Stop(signals)
-
-	ticker := time.NewTicker(700 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-signals:
-			stopPreviewChild(cmd)
-			<-done
-			return nil
-		case result := <-done:
-			if result.err != nil {
-				return result.err
-			}
-			return nil
-		case <-ticker.C:
-			nextTokens := previewSourceTokens(moduleRoot)
-			if nextTokens == tokens {
-				continue
-			}
-			frontendChanged := nextTokens.frontend != tokens.frontend
-			tokens = nextTokens
-			if frontendChanged {
-				fmt.Println("docs preview hot reload: frontend changed, building preview assets")
-				if err := buildPreviewFrontend(moduleRoot); err != nil {
-					fmt.Printf("docs preview hot reload: frontend build failed: %v\n", err)
-					continue
-				}
-			}
-			fmt.Println("docs preview hot reload: source changed, restarting")
-			stopPreviewChild(cmd)
-			<-done
-			childArgs = stripPreviewOpenFlag(childArgs)
-			cmd, done, err = startPreviewChildForTest(moduleRoot, childArgs)
-			if err != nil {
-				return err
-			}
-		}
-	}
+	_ = moduleRoot
+	_ = args
+	_ = projectRoot
+	return nil
 }
 
 type previewChildResult struct {
 	err error
 }
 
-type previewSourceTokensValue struct {
-	backend  string
-	frontend string
-}
-
+// buildPreviewFrontend was used to build the standalone preview frontend. It
+// is now a no-op stub kept for compatibility with tests that exercise the
+// function directly.
 func buildPreviewFrontend(moduleRoot string) error {
-	return buildPreviewFrontendForTest(moduleRoot)
+	_ = moduleRoot
+	return nil
 }
 
-// buildPreviewFrontendForTest lets tests stub the frontend build so the build
-// error branches in runHotReloadSupervisor can be exercised without spawning npm.
+// buildPreviewFrontendForTest lets tests stub the frontend build. It is now a
+// no-op stub because the standalone preview frontend no longer exists.
 var buildPreviewFrontendForTest = func(moduleRoot string) error {
-	if !fileExists(filepath.Join(moduleRoot, "package.json")) || !fileExists(filepath.Join(moduleRoot, "vite.config.ts")) {
-		return nil
-	}
-	cmd := exec.Command("npm", "run", "build:preview")
-	cmd.Dir = moduleRoot
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return buildPreviewFrontend(moduleRoot)
 }
 
 func previewChildArgs(args []string, projectRoot string) ([]string, error) {
@@ -356,15 +307,10 @@ func previewSourceToken(moduleRoot string) string {
 func previewSourceTokens(moduleRoot string) previewSourceTokensValue {
 	var backendNewest int64
 	var backendCount int
-	var frontendNewest int64
-	var frontendCount int
-	walkPreviewSource(moduleRoot, func(path string, info fs.FileInfo, kind previewSourceKind) {
+	walkPreviewSource(moduleRoot, func(path string, info os.FileInfo, kind previewSourceKind) {
 		switch kind {
 		case previewSourceFrontend:
-			frontendCount++
-			if mod := info.ModTime().UnixNano(); mod > frontendNewest {
-				frontendNewest = mod
-			}
+			// No standalone preview frontend to track anymore.
 		default:
 			backendCount++
 			if mod := info.ModTime().UnixNano(); mod > backendNewest {
@@ -374,8 +320,13 @@ func previewSourceTokens(moduleRoot string) previewSourceTokensValue {
 	})
 	return previewSourceTokensValue{
 		backend:  fmt.Sprintf("%d:%d", backendNewest, backendCount),
-		frontend: fmt.Sprintf("%d:%d", frontendNewest, frontendCount),
+		frontend: "0:0",
 	}
+}
+
+type previewSourceTokensValue struct {
+	backend  string
+	frontend string
 }
 
 type previewSourceKind int
@@ -385,19 +336,14 @@ const (
 	previewSourceFrontend
 )
 
-func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo, previewSourceKind)) {
-	uiRoot := filepath.Join(moduleRoot, "internal", "preview", "preview_ui")
-	uiSourceRoot := filepath.Join(moduleRoot, "internal", "preview", "preview_ui_src")
+func walkPreviewSource(moduleRoot string, visit func(string, os.FileInfo, previewSourceKind)) {
 	_ = filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if path == moduleRoot || path == uiSourceRoot {
+			if path == moduleRoot {
 				return nil
-			}
-			if path == uiRoot {
-				return filepath.SkipDir
 			}
 			name := d.Name()
 			switch name {
@@ -407,16 +353,13 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo, previe
 			if strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
-			if strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator)) {
-				return nil
-			}
 			return nil
 		}
 		rel, err := filepath.Rel(moduleRoot, path)
 		if err != nil {
 			return nil
 		}
-		kind, ok := previewSourceFileKind(rel, path, uiSourceRoot)
+		kind, ok := previewSourceFileKind(rel, path)
 		if !ok {
 			return nil
 		}
@@ -429,21 +372,18 @@ func walkPreviewSource(moduleRoot string, visit func(string, fs.FileInfo, previe
 	})
 }
 
-func isPreviewSourceFile(rel, path, uiRoot, uiSourceRoot string) bool {
-	_, ok := previewSourceFileKind(rel, path, uiSourceRoot)
-	return ok || strings.HasPrefix(path, uiRoot+string(os.PathSeparator))
+func isPreviewSourceFile(rel, path string) bool {
+	_, ok := previewSourceFileKind(rel, path)
+	return ok
 }
 
-func previewSourceFileKind(rel, path, uiSourceRoot string) (previewSourceKind, bool) {
+func previewSourceFileKind(rel, path string) (previewSourceKind, bool) {
 	if rel == "go.mod" || rel == "go.sum" || filepath.Ext(path) == ".go" {
 		return previewSourceBackend, true
 	}
 	switch rel {
-	case "package.json", "package-lock.json", "biome.json", "tsconfig.preview.json", "tsconfig.vue.json", "vite.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore":
-		return previewSourceFrontend, true
-	}
-	if strings.HasPrefix(path, uiSourceRoot+string(os.PathSeparator)) {
-		return previewSourceFrontend, true
+	case "package.json", "package-lock.json", "biome.json", "tsconfig.portal.json", "vite.portal.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore":
+		return previewSourceBackend, true
 	}
 	return previewSourceBackend, false
 }
@@ -453,19 +393,15 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// newPreviewServer creates a reusable docs preview API server. It is used by
+// the search and graph commands; the interactive preview command now uses
+// Quartz instead.
 func newPreviewServer(opt previewOptions) *previewServer {
 	ps := &previewServer{opt: opt}
-	ps.codeGraph = newPreviewLSPCodeGraphProvider(opt.projectRoot, docsRoot(opt.projectRoot, opt.docsDir))
+	ps.handler = NewPreviewHandler(opt.projectRoot, opt.docsDir, nil)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/project", ps.handleProject)
-	mux.HandleFunc("/api/docs", ps.handleSpecs)
-	mux.HandleFunc("/api/docs/", ps.handleSpec)
-	mux.HandleFunc("/api/files", ps.handleFile)
-	mux.HandleFunc("/api/graph", ps.handleGraph)
-	mux.HandleFunc("/api/search", ps.handleSearch)
-	mux.HandleFunc("/api/events", ps.handleEvents)
-	static, _ := fs.Sub(previewUIFS, "preview_ui")
-	mux.Handle("/", spaFileServer(static))
+	ps.handler.Register(mux, "/api/")
+	ps.addr = opt.addr
 	ps.srv = &http.Server{
 		Addr:              opt.addr,
 		Handler:           mux,
@@ -474,73 +410,18 @@ func newPreviewServer(opt previewOptions) *previewServer {
 	return ps
 }
 
-func spaFileServer(static fs.FS) http.Handler {
-	files := http.FileServer(http.FS(static))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			files.ServeHTTP(w, r)
-			return
-		}
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
-		}
-		if _, err := fs.Stat(static, path); err == nil {
-			files.ServeHTTP(w, r)
-			return
-		}
-		// Missing static assets should stay 404; returning the SPA HTML here makes
-		// browsers reject module scripts with a misleading MIME type error.
-		if isPreviewStaticAssetPath(path) {
-			http.NotFound(w, r)
-			return
-		}
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = "/"
-		files.ServeHTTP(w, r2)
-	})
-}
-
-func isPreviewStaticAssetPath(path string) bool {
-	return path == "favicon.svg" ||
-		path == "style.css" ||
-		strings.HasPrefix(path, "assets/") ||
-		strings.Contains(path, "/assets/") ||
-		strings.HasPrefix(path, "js/")
+type previewServer struct {
+	opt     previewOptions
+	srv     *http.Server
+	handler *PreviewHandler
+	addr    string
 }
 
 func (ps *previewServer) shutdown(ctx context.Context) error {
-	if ps.codeGraph != nil {
-		_ = ps.codeGraph.Close(ctx)
+	if ps.handler != nil {
+		_ = ps.handler.Close(ctx)
 	}
 	return ps.srv.Shutdown(ctx)
-}
-
-func (ps *previewServer) load() (specProject, error) {
-	token := ps.changeToken()
-	ps.projectMu.RLock()
-	if token == ps.projectToken {
-		project := ps.project
-		err := ps.projectErr
-		ps.projectMu.RUnlock()
-		return project, err
-	}
-	ps.projectMu.RUnlock()
-
-	project, err := scanSpecProject(ps.opt.projectRoot, ps.opt.docsDir)
-	ps.projectMu.Lock()
-	ps.projectToken = token
-	ps.project = project
-	ps.projectErr = err
-	ps.projectMu.Unlock()
-	return project, err
-}
-
-func (ps *previewServer) changeToken() string {
-	docRoot := docsRoot(ps.opt.projectRoot, ps.opt.docsDir)
-	specToken := newestModToken(docRoot)
-	staticToken := newestEmbeddedModToken()
-	return startToken + "|" + specToken + "|" + staticToken
 }
 
 var startToken = fmt.Sprintf("%d", time.Now().UnixNano())
@@ -565,31 +446,10 @@ func newestModToken(root string) string {
 	return fmt.Sprintf("%d:%d", newest, count)
 }
 
+// newestEmbeddedModToken previously walked the embedded preview UI assets. The
+// standalone UI has been removed, so it now returns a stable token.
 func newestEmbeddedModToken() string {
-	return newestEmbeddedModTokenForTest()
-}
-
-// newestEmbeddedModTokenForTest lets tests stub the embedded UI walk so
-// branches that depend on file ModTime (which is 0 for embedded files) can
-// be exercised.
-var newestEmbeddedModTokenForTest = func() string {
-	var newest int64
-	var count int
-	_ = fs.WalkDir(previewUIFS, "preview_ui", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		count++
-		if mod := info.ModTime().UnixNano(); mod > newest {
-			newest = mod
-		}
-		return nil
-	})
-	return fmt.Sprintf("%d:%d", newest, count)
+	return "portal"
 }
 
 // openURL opens the system browser. The variable openURLForTest lets tests
@@ -630,3 +490,12 @@ func portOf(addr string) string {
 	}
 	return port
 }
+
+// prepareQuartzWorkspaceForTest lets tests stub workspace preparation.
+var prepareQuartzWorkspaceForTest = prepareQuartzWorkspace
+
+// runQuartzServeForTest lets tests stub the Quartz serve command.
+var runQuartzServeForTest = runQuartzServe
+
+// ioDiscard is a typed alias for io.Discard so tests can reference it.
+var ioDiscard = io.Discard

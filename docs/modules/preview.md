@@ -1,7 +1,7 @@
 ---
 type: module
 title: "Module Preview"
-description: "Tài liệu module `internal/preview`, mô tả data models, API read-only, parser metadata Markdown/HTML, search, graph và ràng buộc build frontend."
+description: "Tài liệu module `internal/preview`: scan docs, search/graph, export, kb, và lệnh `preview` dùng Quartz để serve docs dưới dạng digital garden."
 tags: ["module", "preview"]
 timestamp: 2026-06-23T00:00:00Z
 status: active
@@ -13,55 +13,64 @@ compliance: current-state
 ## Meta
 
 - **Status**: active
-- **Description**: Tài liệu module `internal/preview`, mô tả data models, API read-only, parser metadata Markdown/HTML, search, graph và ràng buộc build frontend.
+- **Description**: Tài liệu module `internal/preview`: scan docs, search/graph, export, kb, và lệnh `preview` dùng Quartz để serve docs dưới dạng digital garden.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Preview web](../features/preview-web.md), [Module graph query](./graphquery.md), [Kiến trúc tổng quan](../architecture/overview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md)
+- **Links**: [Chỉ mục](../_index.md), [Module graph query](./graphquery.md), [Kiến trúc tổng quan](../architecture/overview.md)
 
 ## Tổng Quan
 
-`internal/preview` cung cấp HTTP preview read-only cho knowledge base. Backend Go scan docs, parse metadata Markdown/HTML, dựng graph, cache project/search snapshot trong đời sống server, trả API JSON, sinh HTML launcher cho Search standalone và query LSP Code Graph. Registry/setup/cache LSP thuộc package `internal/graphquery`; preview chỉ cung cấp detector source file và tái sử dụng API đó cho graph query. Frontend Vue/TypeScript render UI, router, Markdown preview bằng TOAST UI Viewer, HTML fragment preview bằng custom tag normalizer dùng chung giữa Doc view và preview modal, Mermaid/Mermaid C4/LikeC4 rendering, graph Sigma/Graphology, search panels và modal preview với raw/rendered toggle.
+`internal/preview` là knowledge-base backend của `ns-workspace`. Nó scan docs, parse metadata Markdown/HTML, dựng graph, chạy search hybrid, query LSP Code Graph, validate/index OKF và export static bundle. Lệnh `preview` giờ dùng [Quartz](https://quartz.jzhao.xyz/) để build và serve docs như một digital garden static site, thay vì custom Vue SPA cũ.
 
-## Data Models Và APIs
+Preview và portal đã được tách riêng:
 
-- `specProject` gom `projectSummary`, danh sách `specDocument` và `specGraph`.
-- `projectSummary` mô tả project root, docs root, trạng thái `_index.md`, `_sync.md`, số lượng tài liệu, category, status, compliance và warning.
-- `specDocument` đại diện cho từng file text trong docs với `id`, `title`, `path`, `language`, `format`, metadata (gồm `status`, `version`, `compliance`, `priority`, `description`, `type`, `tags`, `timestamp`, `resource`), raw content và search text đã normalize.
-- `specGraph` chứa nodes, edges, relationships, constraints và dependency diagram.
-- `previewServer` giữ project snapshot theo token thay đổi để các API đọc docs/graph không scan lại `docs/` ở mỗi request.
-- `previewSearchSnapshot` giữ docs/code corpus, warning và các field đã tính trước như headings/symbols để query search nóng không đọc lại toàn bộ corpus khi token chưa đổi.
-- `GET /api/docs/{id}` trả raw document content và metadata đã scan; `PUT /api/docs/{id}` bị từ chối vì preview không còn chỉnh sửa tài liệu.
-- `/api/search` trả response hybrid với bốn panel để UI render độc lập và hỗ trợ `keywordOp=sum|difference` cho query nhiều keyword phân tách bằng dấu phẩy.
-- Docs semantic search dùng `docsSearchDoc` để gom spec documents dạng Markdown/HTML trong docs root và mọi file Markdown/HTML khác trong repo; trong Git checkout, corpus này chỉ giữ file tracked bởi Git và bỏ generated preview UI artifacts trong `internal/preview/preview_ui/**`. Kết quả thuộc docs root có `specId` để mở doc preview, còn Markdown/HTML ngoài docs root mở qua file preview.
-- Code semantic search scan file tracked bởi Git khi có repo Git, bỏ qua Markdown/HTML, docs root, cache, dependency folders, generated folders lớn, generated preview UI artifacts và binary file; ngoài Git checkout, nó fallback về project walk cũ. Code Semantic hybrid chỉ giữ kết quả có bằng chứng lexical trong title, path, symbol hoặc nội dung file; embedding hits và fallback local đều đi qua cùng evidence gate để tránh trả code files không chứa keyword truy vấn. Symbol extraction nhận các declaration phổ biến trong Go, JavaScript/TypeScript, Vue-style method shorthand, Kotlin `fun`, Java/C#-style methods và các khai báo class/interface/const; search snapshot precompute symbols để query không parse lại từng file.
-- `specDocument.description` được parse từ metadata `Description`; docs semantic results truyền field này sang `previewSearchResult.description` để UI search hiển thị mô tả metadata trước excerpt nội dung.
-- Keyword operator mặc định là `sum`, giữ hành vi cộng dồn match từ mọi keyword. Khi operator là `difference`, backend dùng keyword/nhóm đầu làm truy vấn chính và loại docs, code files hoặc graph nodes match các keyword/nhóm còn lại trước khi score.
-- Docs Graph và Code Graph search trực tiếp trên docs graph hoặc LSP code graph bằng query hiện tại, độc lập với semantic results, rồi trả neighbors quanh node match để UI hiển thị context. Code Graph index source file tracked bởi Git, bỏ docs root, cache, dependency folders, generated folders lớn, file quá lớn và artifact frontend generated `internal/preview/preview_ui/**`; source frontend thật trong `internal/preview/preview_ui_src/**` vẫn được index. Go, JavaScript, TypeScript và Kotlin dùng mode callable nên chỉ function/method/constructor thành result node; HTML dùng mode document symbol; CSS/SCSS/Sass dùng mode selector để giữ selector/rule/property có tên rõ. Class/interface/module/struct vẫn là owner/container cho code language để tạo nhãn như `ClassName.methodName()`, không thành result node riêng trong mode callable. Kết quả direct symbol matches được sort theo score/evidence/title/path rồi mỗi anchor mở rộng relation bằng LSP call hierarchy; direct incoming `calls` được đánh dấu là caller, direct outgoing `calls` là callee. Symbol indexing dùng timeout toàn cục kèm timeout từng file, nên một file chậm chỉ tạo warning và các file còn lại vẫn tiếp tục được index; index bị total timeout không được cache như graph hoàn chỉnh. Nếu language server không hỗ trợ call hierarchy hoặc call hierarchy timeout, backend fallback sang `textDocument/references` bằng timeout riêng và map reference về symbol chứa vị trí đó. Thiếu LSP binary hoặc lỗi relation expansion chỉ tạo warning fail-open có lệnh sửa lỗi, không làm hỏng Docs/Code Semantic hoặc Docs Graph.
-- `/api/files` đọc file UTF-8 trong project root; file trong docs root được preview dù extension không nằm trong allowlist code.
-- Lệnh `search` dùng cùng API `/api/project`, `/api/docs`, `/api/search` và `/api/files`, nhưng mở tab Search trong cùng preview shell qua route `/search`. Command ghi HTML launcher mặc định `ns-workspace-search.html` vào current working directory, mở browser mặc định trừ khi có `--no-open`, và cần giữ process sống để API search động tiếp tục hoạt động. Lệnh `graph` chỉ chạy query terminal bằng `--query`, scan project trực tiếp, tự chạy ensure LSP theo mặc định, gọi cùng `buildPreviewSearchResponse()` với LSP Code Graph provider, in text hoặc JSON theo `--json`, rồi đóng language server trước khi exit. `--ensure-lsp` vẫn được chấp nhận để tương thích; `--no-ensure-lsp` bỏ qua bước cài tự động và giữ behavior fail-open cũ.
-- Nhóm lệnh `lsp` expose phần setup của Code Graph từ `internal/graphquery`: `lsp list` phát hiện HTML, CSS, SCSS/Sass, JavaScript, TypeScript, Go/Golang và Kotlin từ source files cùng bộ lọc với Code Graph, trả trạng thái installed/missing và command cài đặt; `lsp install <language|auto>` cài server còn thiếu vào cache user của `ns-workspace` khi có installer an toàn, hỗ trợ `--force`, `--dry-run` và `--json`. Kotlin dùng `kotlin-lsp` cài từ JetBrains standalone archive theo OS/arch, có SHA-256 pinned, rồi tạo wrapper trong cache để resolver tìm được sau khi install.
-- Lệnh `export` (`RunExport` trong `export.go`) build một file HTML tĩnh self-contained từ cùng `scanSpecProject`, render bằng **OKF Bundle Viewer** (port từ GoogleCloudPlatform/knowledge-catalog, Apache 2.0, trong `export_ui/viz.html.tmpl` + `viz.css` + `viz.js`). Go side port `generator.py`: mỗi doc thành một concept (id = path bỏ đuôi `.md`), build graph từ link `.md` giữa các doc, serialize thành OKF bundle `window.BUNDLE = {nodes, edges, bodies, types, palette}`. Viewer render graph bằng Cytoscape.js, body bằng marked, có detail panel (frontmatter + backlinks "Cited by"), search title/id/tag, filter type và đổi layout. Internal link được rewrite sang dạng bundle-relative `/<id>.md`; frontmatter bị strip khỏi body để không hiển thị hai lần; `<script>`/`<style>` bị scrub khỏi body trước khi nhúng. `--inline-assets=true` (mặc định) nhúng vendored Cytoscape.js/marked để mở offline qua `file://`; `--inline-assets=false` tham chiếu CDN cùng version. `--no-graph` bỏ edges (nodes vẫn duyệt được). `--name` đặt tên header. Command validate docs dir trước khi ghi (lỗi rõ ràng, không ghi file khi invalid).
-- `Knowledge` façade (`knowledge.go`) là lớp public mỏng trên knowledge core: `OpenKnowledge(projectRoot, docsDir)` scan project và trả snapshot read-only với `Documents()`, `Document(id)`, `DocsRoot()`, `Name()` và `Search()`. Package `internal/kbmcp` dùng façade này để đọc/search docs mà không phụ thuộc symbol private của preview; `Search()` gọi đúng `buildPreviewSearchResponse` nên kết quả MCP khớp với preview/search (code graph để nil vì façade nhắm docs knowledge base).
-- Lệnh `kb` (`kb.go`) gom thao tác OKF trên docs bundle, tái dùng `docsRoot`/`normalizePreviewProjectRoot`: `kb validate` walk mọi `.md` (trừ reserved `index.md`/`log.md`), kiểm frontmatter parse được + `type` không rỗng (OKF SPEC §9), báo warning cho key khuyến nghị thiếu (`--strict` nâng thành lỗi, `--json` xuất report, exit non-zero khi không conformant để gate CI). `kb index` (port `index.py`) sinh `index.md` cho mọi thư mục từ file `.md` tới root, group entry theo frontmatter `type` kèm description và liệt kê subdirectory; mô tả thư mục dùng heuristic local (không gọi LLM), `--dry-run` chỉ in. Frontmatter đọc bằng `readFrontmatterMap` (YAML generic, tolerate ISO timestamp auto-typed thành time.Time).
-- LSP setup dùng interface `lspImplementation` trong `internal/graphquery` làm boundary giữa luồng chính và từng server. Mỗi server LSP có implementation riêng khai báo language specs, install spec, cache dirs, command dry-run và install routine. Go, TypeScript/JavaScript, HTML, CSS/SCSS/Sass và Kotlin nằm trong các file implementation riêng của `internal/graphquery`; `internal/preview/preview_lsp_setup.go` chỉ là adapter mỏng cung cấp detector source file và alias type để preview/search tái sử dụng cùng LSP của graph query.
+- `preview` — docs preview bằng Quartz.
+- `portal` — quản lý preset/skills/MCP/registry, không còn docs preview.
+
+## Thành Phần
+
+| File                | Vai trò                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `preview.go`        | Lệnh `preview`: chuẩn bị Quartz workspace và chạy `npx quartz build --serve`       |
+| `quartz.go`         | Quản lý Quartz repo cache, workspace per-project, symlink/copy docs vào `content/` |
+| `preview_api.go`    | `PreviewHandler` HTTP API cho `search`/`graph` commands                            |
+| `preview_search.go` | Search pipeline hybrid (docs semantic, docs graph, code semantic, code graph)      |
+| `spec_project.go`   | Scanner docs, parser metadata OKF, graph builder                                   |
+| `graph.go`          | Lệnh `graph` và `search` CLI                                                       |
+| `kb.go`             | Lệnh `kb validate` / `kb index`                                                    |
+| `export.go`         | Lệnh `export`: self-contained OKF HTML bundle                                      |
+| `knowledge.go`      | `Knowledge` façade cho `internal/kbmcp`                                            |
+| `preview_lsp*.go`   | LSP Code Graph provider và setup adapter                                           |
+
+## Lệnh `preview` Với Quartz
+
+`go run . preview --project .` thực hiện:
+
+1. Clone Quartz vào `~/.cache/ns-workspace/quartz/repo` (nếu chưa có) và `npm install`.
+2. Tạo workspace per-project trong `~/.cache/ns-workspace/quartz/workspaces/<hash>/`.
+3. Symlink/copy thư mục `docs/` vào `content/` của workspace.
+4. Chạy `npx quartz build --serve --directory <workspace> --port <port>` từ repo cache.
+5. In URL và mở browser nếu `--open`.
+
+Khi Quartz chưa được clone, lần chạy đầu tiên cần mạng để tải repo và npm dependencies. Các lần sau dùng cache.
+
+Dùng `--quartz-dir <path>` để chỉ đến một Quartz checkout local (có `package.json`) thay vì clone tự động. Điều này hữu ích khi muốn custom theme/plugin hoặc chạy offline sau khi đã chuẩn bị sẵn Quartz.
+
+## Các Lệnh Khác
+
+- `search` — serve `PreviewHandler` API tại `/api/search` và ghi HTML launcher mở tab Search.
+- `graph` — query terminal, dùng `buildPreviewSearchResponse` với LSP Code Graph provider, in text/JSON.
+- `export` — build self-contained HTML bundle bằng OKF Viewer.
+- `kb` — validate/index OKF docs.
 
 ## Quy Tắc Nghiệp Vụ
 
-Preview và Search không yêu cầu Node ở runtime vì Go embed static assets đã build. Khi sửa frontend, source of truth là Vue components và shared modules trong `internal/preview/preview_ui_src/`; legacy vanilla shell files không còn là source of truth. Sau đó chạy build để cập nhật `internal/preview/preview_ui/`, gồm HTML/CSS/favicon và hashed JavaScript bundle trong `preview_ui/assets/`. Vite build một HTML entry duy nhất `index.html`; route `/search` do SPA fallback xử lý và hiển thị tab Search.
-
-Doc tab không có edit mode và không có raw Markdown/source toggle. Markdown docs luôn render bằng TOAST UI Viewer; frontmatter đầu file và section `## Meta` được chuyển thành metadata table read-only, còn body Markdown còn lại được sanitize sau khi viewer render. HTML docs render bằng sanitize + custom tag normalizer và dùng MVP.css đã scope vào `.html-doc` làm baseline cho semantic HTML. `doc-meta` thành metadata table, `doc-title`/`doc-description` thành heading/copy, `<a href="...">label</a>` thành badge link metadata/router, `doc-relation` thành typed badge, `doc-callout` thành tone-aware callout, `doc-code` thành labelled code block và `doc-diagram`/`doc-graph` thành diagram source. Advanced layout tags include `doc-section`, `doc-grid`, `doc-card`, `doc-steps`, `doc-step`, `doc-flow`, `doc-flow-step`, `doc-metrics` and `doc-metric`. HTML preview root dùng class `html-doc` để padding, table, list, heading, code, report panel classes and custom tag styles không phụ thuộc vào TOAST UI Markdown DOM. Doc view và preview modal dùng chung shared renderer modules cho metadata, Markdown, HTML docs, code preview và diagram lifecycle để tránh lệch contract.
-
-Diagram rendering chạy ở client cho cả Markdown và HTML. Code fence `mermaid`, `c4`, `c4-context`, `c4-container`, `c4-component`, `c4-dynamic`, `c4-deployment` và HTML `doc-diagram` được normalize vào cùng pipeline. Code fence `likec4` hoặc `c4-model` chỉ auto-render khi nội dung là `model { ... }`; frontend parse subset kiến trúc gồm `softwareSystem`, `container`, `component`, `description` và quan hệ `a.b -> c.d`, rồi chuyển sang Mermaid C4 để dùng cùng pipeline render, sanitize và pan/zoom. Diagram wheel zoom chỉ chạy khi người dùng giữ Command hoặc Ctrl trong lúc scroll, để scroll thường vẫn cuộn trang. Mermaid được khởi tạo theo theme sáng/tối hiện tại.
-
-Metadata parser ưu tiên bảng `## Modules` trong `docs/_index.md` khi có. Fallback trong từng doc merge hai nguồn theo tinh thần OKF: YAML frontmatter `---` ở đầu file (cao nhất) và section `## Meta` prose (điền các field còn trống). Với key trùng, frontmatter thắng; frontmatter lỗi cú pháp sẽ fallback hoàn toàn sang `## Meta`, ghi warning ra stderr và không panic. Parser nhận `type`, `description`, `tags`, `timestamp`, `resource` cùng các key tương thích (`status`, `version`, `compliance`, `priority`, `links`); `tags` nhận cả string đơn lẫn array YAML và normalize về `[]string`, là permissive consumer nên key lạ hoặc `type` không biết không gây lỗi. Frontend render metadata thành bảng read-only để preview dễ đọc; scalar string được bỏ quote ngoài, array như `["docs", "compliance"]` hiển thị thành danh sách badge, còn docs refs như `related`, `Links`, HTML `<a href>` và `doc-relation` hiển thị thành badge links. Các metadata rows cùng key được gom trước khi render, nên nhiều link trong `doc-meta` hiện thành một field `link` với nhiều badge thay vì nhiều dòng `link` lặp lại. Graph metadata đọc các key liên kết như `Links`, `Depends`, `Provides`, `Consumes`, HTML `<a href="...">label</a>` trong `doc-meta` và `doc-relation`.
-
-Internal link router resolve cả Markdown và HTML docs. Anchors thường, `<a href="...">label</a>`, `doc-relation target="..."`, `.md`/`.html` path và mention `@doc/...`/`@spec/...` đều được map qua alias của `specDocument` trước khi điều hướng trong SPA. Route `/spec/...` cũng nhận folder path trong docs root; khi path trỏ tới folder thay vì file, frontend render trang listing gồm folder con và docs trực tiếp bên trong folder đó.
-
-Trang tổng quan không còn là route hoặc tab riêng. Nếu URL cũ `/overview` được mở, router rơi về Doc tab mặc định. Sidebar chỉ tô active tài liệu khi route hiện tại là `/spec/...`, nên Graph và Search không giữ active doc cũ bằng state nội bộ. Preview shell chỉ gọi `/api/graph` khi Graph view được mở hoặc route ban đầu là `/graph`, giúp Doc/Search load không dựng graph tài liệu trước. Search là một tab trong preview shell; lệnh `search` mở trực tiếp route `/search` để hiển thị tab Search trong cùng app.
-
-## Ràng Buộc Và Giả Định
-
-Server preview chạy local, mặc định bind `127.0.0.1:0` để hệ điều hành tự chọn port rảnh, và frontend runtime dùng CDN giống các thư viện UI hiện có. Khi chạy hot reload trong checkout của module, supervisor chọn một port rảnh một lần rồi truyền xuống child process để URL preview ổn định qua các lần restart. Semantic search hiện có fallback local khi embedding runtime không khả dụng. Code Graph phụ thuộc vào language server cài trong môi trường local, hiện hỗ trợ HTML qua `vscode-html-language-server --stdio`, CSS/SCSS/Sass qua `vscode-css-language-server --stdio`, JavaScript/TypeScript qua `typescript-language-server --stdio`, Go qua `gopls serve` và Kotlin qua `kotlin-lsp --stdio`; resolver tìm binary trong `PATH`, `GOBIN`, `GOPATH/bin`, `~/go/bin`, project `node_modules/.bin`, checkout `node_modules/.bin` và cache `ns-workspace` dưới `os.UserCacheDir()/ns-workspace/lsp` hoặc `NS_WORKSPACE_LSP_CACHE`. Cache path và installer command được định nghĩa trong `internal/graphquery`, còn preview runtime chỉ gọi resolver/cache dirs đó. `lsp install go` dùng `GOBIN=<cache>/go/bin go install golang.org/x/tools/gopls@latest`; `lsp install typescript` dùng `npm install --prefix <cache>/typescript typescript-language-server typescript`; `lsp install html` và `lsp install css` dùng `npm install --prefix <cache>/<id> vscode-langservers-extracted`; `lsp install kotlin` tải JetBrains Kotlin LSP standalone archive pinned theo version/checksum, extract vào `<cache>/kotlin/versions/<version>` và ghi wrapper `<cache>/kotlin/bin/kotlin-lsp`. Preview/Search HTTP không tự cài package trong request; CLI `graph --query` tự ensure LSP theo mặc định và có `--no-ensure-lsp` để bỏ qua network/install side effect. Khi server thiếu, panel trả warning và có thể rỗng còn Docs Graph vẫn dùng typed docs graph nếu có node match query. Graph UI dùng Sigma/Graphology WebGL renderer với layout ForceAtlas2 để xem graph nhiều nodes/edges nhẹ hơn D3 SVG force-layout cũ. Click node chỉ chọn node và cập nhật details panel; click nền graph bỏ chọn node; incoming/outgoing edge rows trong details panel chọn node liên quan trong graph hiện tại. Người dùng mở preview doc/file bằng nút trong details panel; Search Graph details cũng có nút mở file cho focused node có path. Wheel zoom trên graph chỉ chạy khi người dùng giữ `Ctrl` hoặc `Meta`, để scroll trang không bị graph bắt ngoài ý muốn.
+- `preview` yêu cầu Node.js và npm để chạy Quartz.
+- `search`/`graph` vẫn dùng backend Go; không phụ thuộc Quartz.
+- Portal không còn tab Docs; docs preview là command riêng biệt.
+- `Knowledge` façade tiếp tục cung cấp `OpenKnowledge`, `Documents`, `Document`, `Search` cho `internal/kbmcp`.
 
 ## Quan Hệ
 
-Module này implements [Preview web](../features/preview-web.md), consumes docs structure trong [Chỉ mục](../_index.md), tái sử dụng LSP setup/cache từ [Module graph query](./graphquery.md), cung cấp `Knowledge` façade cho [Module kbmcp](./kbmcp.md), và được phát triển theo [Quy ước frontend preview](../development/conventions/preview-frontend.md).
+- Module này consumes docs structure trong [Chỉ mục](../_index.md).
+- Tái sử dụng LSP setup/cache từ [Module graph query](./graphquery.md).
+- Cung cấp `Knowledge` façade cho [Module kbmcp](./kbmcp.md).

@@ -11,6 +11,8 @@ import (
 
 func TestLoadUserConfigReturnsZeroWhenFileMissing(t *testing.T) {
 	dir := t.TempDir()
+	// Isolate from the real user config dir (e.g. ~/Library/Application Support/ns-workspace).
+	t.Setenv("NS_WORKSPACE_CONFIG", filepath.Join(dir, "no-such.json"))
 	cfg, err := loadUserConfig(Options{ConfigPath: filepath.Join(dir, "no-such.json")})
 	if err != nil {
 		t.Fatalf("loadUserConfig: %v", err)

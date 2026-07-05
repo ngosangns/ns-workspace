@@ -63,7 +63,7 @@ docs/
 
 - Giữ diff nhỏ, có chủ đích. Không rewrite hàng loạt chỉ đổi style.
 - Sau khi edit, đọc lại diff bắt link sai, stale statement, duplicate section.
-- Chạy `npm run format:docs` rồi `npm run lint:docs` khi repo có script.
+- Chạy `npm run lint:doc:fix` khi repo có script (lint fix đã bao gồm format).
 - Khi repo có CLI `ns-workspace`, chạy `kb validate` để xác nhận docs còn OKF-conformant (mọi doc có frontmatter + `type`).
 
 ## Quy Trình

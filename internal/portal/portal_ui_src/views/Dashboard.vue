@@ -33,38 +33,60 @@ onMounted(load);
 
 <template>
   <div>
-    <h2 class="page-title">Dashboard</h2>
-    <p v-if="loading" class="empty">Loading...</p>
-    <p v-else-if="error" class="empty" style="color: var(--danger)">{{ error }}</p>
+    <h2 class="text-h5 q-mb-md">Dashboard</h2>
+
+    <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
+    <div v-else-if="loading" class="flex flex-center q-pa-xl">
+      <q-spinner color="primary" size="3em" />
+    </div>
     <template v-else>
-      <div class="grid">
-        <div class="card metric">
-          <div class="value">{{ skills.length }}</div>
-          <div class="label">Skills</div>
+      <div class="row q-col-gutter-md q-mb-md">
+        <div class="col-12 col-sm-6 col-md-3">
+          <q-card class="bg-secondary" bordered>
+            <q-card-section class="text-center">
+              <div class="text-h3 text-primary">{{ skills.length }}</div>
+              <div class="text-caption text-grey-5">SKILLS</div>
+            </q-card-section>
+          </q-card>
         </div>
-        <div class="card metric">
-          <div class="value">{{ Object.keys(mcps?.mcpServers || {}).length }}</div>
-          <div class="label">MCP Servers</div>
+        <div class="col-12 col-sm-6 col-md-3">
+          <q-card class="bg-secondary" bordered>
+            <q-card-section class="text-center">
+              <div class="text-h3 text-primary">{{ Object.keys(mcps?.mcpServers || {}).length }}</div>
+              <div class="text-caption text-grey-5">MCP SERVERS</div>
+            </q-card-section>
+          </q-card>
         </div>
-        <div class="card metric">
-          <div class="value">{{ registry?.skills.length || 0 }}</div>
-          <div class="label">Registry Skills</div>
+        <div class="col-12 col-sm-6 col-md-3">
+          <q-card class="bg-secondary" bordered>
+            <q-card-section class="text-center">
+              <div class="text-h3 text-primary">{{ registry?.skills.length || 0 }}</div>
+              <div class="text-caption text-grey-5">REGISTRY SKILLS</div>
+            </q-card-section>
+          </q-card>
         </div>
-        <div class="card metric">
-          <div class="value">{{ adapters.length }}</div>
-          <div class="label">Adapters</div>
+        <div class="col-12 col-sm-6 col-md-3">
+          <q-card class="bg-secondary" bordered>
+            <q-card-section class="text-center">
+              <div class="text-h3 text-primary">{{ adapters.length }}</div>
+              <div class="text-caption text-grey-5">ADAPTERS</div>
+            </q-card-section>
+          </q-card>
         </div>
       </div>
 
-      <div class="card">
-        <h3>Shared Agents Home</h3>
-        <p class="meta">{{ status?.agentsDir }}</p>
-        <table class="table">
+      <q-card class="bg-secondary q-mb-md" bordered>
+        <q-card-section>
+          <div class="text-h6">Shared Agents Home</div>
+          <div class="text-caption text-grey-5">{{ status?.agentsDir }}</div>
+        </q-card-section>
+        <q-separator />
+        <q-markup-table flat class="bg-secondary text-grey-1">
           <thead>
             <tr>
-              <th>Path</th>
-              <th>Exists</th>
-              <th>Type</th>
+              <th class="text-left">Path</th>
+              <th class="text-left">Exists</th>
+              <th class="text-left">Type</th>
             </tr>
           </thead>
           <tbody>
@@ -74,8 +96,8 @@ onMounted(load);
               <td>{{ p.isDir ? "Directory" : "File" }}</td>
             </tr>
           </tbody>
-        </table>
-      </div>
+        </q-markup-table>
+      </q-card>
 
       <SyncPanel @done="load" />
     </template>

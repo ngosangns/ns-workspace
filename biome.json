@@ -7,17 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "internal/preview/preview_ui_src/**/*",
-      "internal/portal/portal_ui_src/**/*",
-      "package.json",
-      "tsconfig.preview.json",
-      "tsconfig.vue.json",
-      "tsconfig.portal.json",
-      "vite.config.ts",
-      "vite.portal.config.ts",
-      "eslint.config.mjs"
-    ]
+    "includes": ["internal/portal/portal_ui_src/**/*", "package.json", "tsconfig.portal.json", "vite.portal.config.ts", "eslint.config.mjs"]
   },
   "formatter": {
     "enabled": false

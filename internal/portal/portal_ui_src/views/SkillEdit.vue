@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { api, type Skill } from "../api";
-import { useRouter } from "../router";
 
-const { params, navigate } = useRouter();
-const id = ref(params.value.id || "");
+const route = useRoute();
+const router = useRouter();
+const id = ref<string>((route.query.id as string) || "");
 const skill = ref<Skill | null>(null);
 const content = ref("");
 const loading = ref(true);
@@ -16,6 +17,7 @@ async function load() {
   if (!id.value) return;
   loading.value = true;
   error.value = "";
+  success.value = "";
   try {
     skill.value = await api.getSkill(id.value);
     content.value = skill.value.content || "";
@@ -42,7 +44,6 @@ async function save() {
 }
 
 async function reset() {
-  if (!confirm(`Reset skill "${id.value}" to default?`)) return;
   try {
     await api.resetSkill(id.value);
     await load();
@@ -52,9 +53,9 @@ async function reset() {
 }
 
 watch(
-  () => params.value.id,
+  () => route.query.id,
   (newId) => {
-    id.value = newId || "";
+    id.value = (newId as string) || "";
     load();
   },
 );
@@ -64,17 +65,30 @@ onMounted(load);
 
 <template>
   <div>
-    <div class="toolbar">
-      <button class="btn" @click="navigate('#skills')">← Back</button>
-      <button class="btn primary" :disabled="saving" @click="save">{{ saving ? "Saving..." : "Save" }}</button>
-      <button v-if="skill?.overridden" class="btn danger" @click="reset">Reset to default</button>
+    <div class="row q-gutter-sm q-mb-md items-center">
+      <q-btn flat icon="sym_o_arrow_back" label="Back" @click="router.push('/skills')" />
+      <q-space />
+      <q-btn v-if="skill?.overridden" flat color="negative" icon="sym_o_restore" label="Reset to default" @click="reset" />
+      <q-btn color="primary" icon="sym_o_save" :loading="saving" label="Save" @click="save" />
     </div>
-    <h2 class="page-title">Edit Skill: {{ id }}</h2>
-    <p v-if="loading" class="empty">Loading...</p>
-    <p v-else-if="error" class="empty" style="color: var(--danger)">{{ error }}</p>
-    <template v-else>
-      <p v-if="success" class="empty" style="color: var(--accent)">{{ success }}</p>
-      <textarea v-model="content" class="editor" />
-    </template>
+
+    <h2 class="text-h5 q-mb-md">Edit Skill: {{ id }}</h2>
+
+    <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
+    <q-banner v-if="success" class="bg-positive text-white q-mb-md" rounded>{{ success }}</q-banner>
+
+    <div v-if="loading" class="flex flex-center q-pa-xl">
+      <q-spinner color="primary" size="3em" />
+    </div>
+    <q-input
+      v-else
+      v-model="content"
+      type="textarea"
+      filled
+      bg-color="grey-10"
+      input-class="text-mono"
+      :input-style="{ minHeight: '400px' }"
+      label="Skill content"
+    />
   </div>
 </template>

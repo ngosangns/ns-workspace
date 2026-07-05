@@ -62,7 +62,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 ### Preview, Search Và Docs Graph
 
 - **Lý do**: Preview web là workflow đọc knowledge base, search docs/code, mở graph và validate metadata docs.
-- **Source paths**: `internal/preview/preview.go`, `internal/preview/preview_api.go`, `internal/preview/spec_project.go`, `internal/preview/preview_search.go`, `internal/preview/preview_ui_src/`, `internal/preview/preview_ui/`, `vite.config.ts`, `package.json`.
+- **Source paths**: `internal/preview/preview.go`, `internal/preview/quartz.go`, `internal/preview/preview_api.go`, `internal/preview/spec_project.go`, `internal/preview/preview_search.go`, `package.json`.
 - **Docs hiện có**: [Preview web](../features/preview-web.md), [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md).
 - **Khoảng trống**: Planning docs còn mô tả một số context lịch sử; shipped behavior đã nằm trong feature/module docs.
 - **Doc target**: [Preview web](../features/preview-web.md), [Module preview](../modules/preview.md).
@@ -91,7 +91,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 ### Data Models Và Managed Artifacts
 
 - **Lý do**: Người sửa cần biết data structs nào là API nội bộ ổn định và artifact nào là generated output.
-- **Source paths**: `internal/agentsync/agentsync.go`, `internal/preview/spec_project.go`, `internal/preview/preview_search.go`, `internal/graphquery/lsp.go`, `internal/preview/preview_ui/`, `internal/preview/preview_ui_src/`.
+- **Source paths**: `internal/agentsync/agentsync.go`, `internal/preview/spec_project.go`, `internal/preview/preview_search.go`, `internal/graphquery/lsp.go`.
 - **Docs hiện có**: [Module agentsync](../modules/agentsync.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md).
 - **Khoảng trống**: Nếu API JSON preview trở thành external contract, tách thêm doc shared/API contract riêng.
 - **Doc target**: [Module preview](../modules/preview.md), [Module agentsync](../modules/agentsync.md).
@@ -145,7 +145,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 ### Dev, Test Và Build Workflow
 
 - **Lý do**: Repo kết hợp Go CLI, Vue/Vite preview, generated static assets, markdown/html lint và docs sync; validation phải chọn đúng phạm vi.
-- **Source paths**: `DEVELOPER.md`, `package.json`, `go.mod`, `vite.config.ts`, `internal/preview/preview_ui_src/`, `internal/preview/preview_ui/`.
+- **Source paths**: `DEVELOPER.md`, `package.json`, `go.mod`, `vite.portal.config.ts`, `internal/portal/portal_ui_src/`, `internal/portal/portal_ui/`.
 - **Docs hiện có**: `DEVELOPER.md`, [Quy ước frontend preview](../development/conventions/preview-frontend.md), [Module preview](../modules/preview.md).
 - **Khoảng trống**: Không cần doc mới; developer guide là source vận hành chính.
 - **Doc target**: [Quy ước frontend preview](../development/conventions/preview-frontend.md), `DEVELOPER.md`.
@@ -153,8 +153,8 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 ### Generated Artifacts
 
-- **Lý do**: `internal/preview/preview_ui/` là static build output được Go embed; graph/search phải ưu tiên source thật trong `preview_ui_src` và bỏ artifact generated khi index LSP Code Graph.
-- **Source paths**: `internal/preview/preview_ui/`, `internal/preview/preview_ui_src/`, `internal/preview/preview_lsp.go`, `internal/preview/preview_search.go`, `vite.config.ts`.
+- **Lý do**: Lệnh `preview` giờ dùng Quartz dev server, không còn generated UI artifacts trong `internal/preview/preview_ui/`; graph/search vẫn cần bỏ generated artifacts khỏi LSP Code Graph index.
+- **Source paths**: `internal/preview/preview_lsp.go`, `internal/preview/preview_search.go`.
 - **Docs hiện có**: [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md), [Preview web](../features/preview-web.md).
 - **Khoảng trống**: Search Semantic generated filtering còn là planning scope trong [Tối ưu và rút gọn Preview Web](../specs/planning/optimize-preview-web-surface.md); LSP Code Graph filtering đã shipped.
 - **Doc target**: [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md).

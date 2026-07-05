@@ -85,10 +85,14 @@ type previewSearchNeighbor struct {
 	Line       int    `json:"line,omitempty"`
 }
 
-type previewCodeGraphProvider interface {
+type PreviewCodeGraphProvider interface {
 	SearchCodeGraph(ctx context.Context, query string, tokens []string, exclusionQuery string, exclusionTokens []string, limit int) ([]previewSearchResult, []string)
 	Close(ctx context.Context) error
 }
+
+// previewCodeGraphProvider is the old unexported alias, kept for compatibility
+// with existing code in this package until a full rename pass is done.
+type previewCodeGraphProvider = PreviewCodeGraphProvider
 
 type graphSearchAnchor struct {
 	ID     string
@@ -194,52 +198,6 @@ type knownsEmbeddingSettings struct {
 
 type ollamaModel struct {
 	Name string `json:"name"`
-}
-
-func (ps *previewServer) handleSearch(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	project, err := ps.load()
-	warnings := []string{}
-	if err != nil {
-		project = emptySearchProject(ps.opt.projectRoot, ps.opt.docsDir)
-		warnings = append(warnings, "Docs directory is unavailable; searching code and LSP code graph only: "+err.Error())
-	}
-
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	mode := "hybrid"
-	keywordOperator := parseSearchKeywordOperator(r.URL.Query().Get("keywordOp"))
-	limit := parseSearchLimit(r.URL.Query().Get("limit"))
-	snapshot := ps.searchSnapshot(project)
-	response := buildPreviewSearchResponseFromCorpus(r.Context(), project, ps.codeGraph, query, mode, keywordOperator, limit, snapshot.Docs, snapshot.Code, snapshot.Warnings)
-	response.Warnings = append(warnings, response.Warnings...)
-	writeJSON(w, response)
-}
-
-func (ps *previewServer) searchSnapshot(project specProject) previewSearchSnapshot {
-	token := searchSnapshotToken(ps.opt.projectRoot, project.Summary.DocsRoot)
-	ps.searchMu.RLock()
-	if token != "" && token == ps.searchToken {
-		snapshot := ps.search
-		ps.searchMu.RUnlock()
-		return snapshot
-	}
-	ps.searchMu.RUnlock()
-
-	docsDocs, docsWarnings := scanDocsSearchDocs(ps.opt.projectRoot, project.Summary.DocsRoot, project.Documents)
-	codeDocs, codeWarnings := scanCodeSearchDocs(ps.opt.projectRoot, project.Summary.DocsRoot)
-	snapshot := previewSearchSnapshot{
-		Docs:     docsDocs,
-		Code:     codeDocs,
-		Warnings: append(docsWarnings, codeWarnings...),
-	}
-	ps.searchMu.Lock()
-	ps.searchToken = token
-	ps.search = snapshot
-	ps.searchMu.Unlock()
-	return snapshot
 }
 
 func emptySearchProject(projectRoot, docsDir string) specProject {

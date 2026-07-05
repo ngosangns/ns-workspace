@@ -96,7 +96,7 @@ Usage:
   go run github.com/ngosangns/ns-workspace@latest search [flags]
   go run github.com/ngosangns/ns-workspace@latest export [flags]
   go run github.com/ngosangns/ns-workspace@latest graph [flags]
-  go run github.com/ngosangns/ns-workspace@latest mcp [flags]
+  go run github.com/ngosangns/ns-workspace@latest mcp <command> [flags]
   go run github.com/ngosangns/ns-workspace@latest kb <validate|index> [flags]
   go run github.com/ngosangns/ns-workspace@latest setup [flags]
   go run github.com/ngosangns/ns-workspace@latest lsp <list|install> [flags]
@@ -119,6 +119,7 @@ Flags:
 Portal flags:
   --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
   --open              open browser after the server starts
+  --agents-home PATH  shared agents home
 
 Harness flags:
   --project PATH      project root to inspect, default current directory
@@ -128,8 +129,9 @@ Harness flags:
 Preview flags:
   --project PATH      project root to inspect, default current directory
   --docs-dir PATH     docs directory, default docs
-  --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
+  --addr HOST:PORT    local server address (only the port is used; Quartz binds to 127.0.0.1)
   --open              open browser after the server starts
+  --quartz-dir PATH   local Quartz checkout (with package.json); default clones to user cache
 
 Search flags:
   --project PATH      project root to inspect, default current directory
@@ -147,8 +149,16 @@ Export flags:
   --inline-assets     inline render libraries for fully offline output, default true
   --open              open the generated file after writing
 
-MCP flags:
-  --project PATH      project root to expose, default current directory
+MCP usage:
+  mcp [global-flags] <command> [command-flags]
+
+MCP commands:
+  list-docs [--type T] [--tag G]         list docs as JSON
+  lookup-doc --id ID                     get a doc by id as JSON
+  search-docs --query Q [--limit N]      search docs as JSON
+
+MCP global flags (before the command):
+  --project PATH      project root, default current directory
   --docs PATH         docs directory, default docs
 
 KB commands:

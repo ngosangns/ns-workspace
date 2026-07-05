@@ -18,5 +18,5 @@
     "MD060": false,
   },
   "gitignore": true,
-  "ignores": ["node_modules", "graphify-out", "internal/preview/preview_ui"],
+  "ignores": ["node_modules", "graphify-out"],
 }

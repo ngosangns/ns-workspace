@@ -2162,7 +2162,7 @@ func TestHandleSearch(t *testing.T) {
 
 	// POST → 405
 	req := httptest.NewRequest(http.MethodPost, "/api/search?q=foo", nil)
-	server.handleSearch(rec, req)
+	server.handler.HandleSearch(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST: got %d, want 405", rec.Code)
 	}
@@ -2170,7 +2170,7 @@ func TestHandleSearch(t *testing.T) {
 	// GET → 200
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/search?q=foo", nil)
-	server.handleSearch(rec, req)
+	server.handler.HandleSearch(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET: got %d, want 200", rec.Code)
 	}
@@ -2187,7 +2187,7 @@ func TestHandleSearchLoadError(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/search?q=foo", nil)
-	server.handleSearch(rec, req)
+	server.handler.HandleSearch(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 with warnings, got %d", rec.Code)
 	}

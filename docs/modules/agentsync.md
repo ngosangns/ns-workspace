@@ -268,8 +268,8 @@ go test ./...
 Nếu sửa preset Markdown hoặc docs liên quan, chạy thêm:
 
 ```bash
-npm run lint:docs
-npm run format:docs:check
+npm run lint:doc    # lint + format check
+npm run lint:doc:fix # lint fix + format
 ```
 
 ## Quan Hệ

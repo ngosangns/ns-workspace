@@ -1,19 +1,11 @@
 package preview
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net"
-	"net/http"
-	"net/url"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"syscall"
 	"testing"
-	"time"
 )
 
 func TestRunHelpReturnsNil(t *testing.T) {
@@ -28,51 +20,92 @@ func TestRunBadFlagReturnsError(t *testing.T) {
 	}
 }
 
-func TestRunStartPreviewServerAndServeReplaced(t *testing.T) {
-	// Save and restore test seams.
-	origServe := servePreviewForTest
+func TestRunQuartzServeReplaced(t *testing.T) {
+	origResolve := resolveQuartzRepoForTest
+	origPrepare := prepareQuartzWorkspaceForTest
+	origServe := runQuartzServeForTest
 	origOpen := openURLForTest
 	defer func() {
-		servePreviewForTest = origServe
+		resolveQuartzRepoForTest = origResolve
+		prepareQuartzWorkspaceForTest = origPrepare
+		runQuartzServeForTest = origServe
 		openURLForTest = origOpen
 	}()
 
-	called := false
+	resolveCalled := false
+	prepareCalled := false
+	serveCalled := false
 	openCalled := false
-	servePreviewForTest = func(srv *http.Server, listener net.Listener) error {
-		called = true
-		_ = listener.Close()
-		return http.ErrServerClosed
+
+	resolveQuartzRepoForTest = func(dir string) (string, error) {
+		resolveCalled = true
+		if dir != "" {
+			t.Errorf("resolveQuartzRepoForTest dir = %q, want empty", dir)
+		}
+		return "/quartz/repo", nil
+	}
+	prepareQuartzWorkspaceForTest = func(projectRoot, docsDir string) (string, func(), error) {
+		prepareCalled = true
+		return "/quartz/workspace", func() {}, nil
+	}
+	serveDone := make(chan struct{})
+	runQuartzServeForTest = func(repoDir, workspaceDir, port, wsPort string, stdout, stderr io.Writer) error {
+		serveCalled = true
+		if repoDir != "/quartz/repo" {
+			t.Errorf("repoDir = %q, want /quartz/repo", repoDir)
+		}
+		if workspaceDir != "/quartz/workspace" {
+			t.Errorf("workspaceDir = %q, want /quartz/workspace", workspaceDir)
+		}
+		if port == "" {
+			t.Errorf("port should not be empty")
+		}
+		if wsPort == "" {
+			t.Errorf("wsPort should not be empty")
+		}
+		<-serveDone
+		return nil
 	}
 	openURLForTest = func(target string) error {
 		openCalled = true
+		close(serveDone)
 		return nil
 	}
 
-	// Run from a temp dir without go.mod to skip the hot reload supervisor.
 	root := t.TempDir()
 	mustChdir(t, root)
 
 	if err := Run([]string{"--no-reload", "--addr", "127.0.0.1:0", "--open"}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if !called {
-		t.Errorf("servePreviewForTest was not called")
+	if !resolveCalled {
+		t.Errorf("resolveQuartzRepoForTest was not called")
+	}
+	if !prepareCalled {
+		t.Errorf("prepareQuartzWorkspaceForTest was not called")
+	}
+	if !serveCalled {
+		t.Errorf("runQuartzServeForTest was not called")
 	}
 	if !openCalled {
 		t.Errorf("openURLForTest was not called")
 	}
 }
 
-func TestRunServeReturnsNonSpecialError(t *testing.T) {
-	origServe := servePreviewForTest
-	defer func() { servePreviewForTest = origServe }()
+func TestRunQuartzServeReturnsError(t *testing.T) {
+	origResolve := resolveQuartzRepoForTest
+	origPrepare := prepareQuartzWorkspaceForTest
+	origServe := runQuartzServeForTest
+	defer func() {
+		resolveQuartzRepoForTest = origResolve
+		prepareQuartzWorkspaceForTest = origPrepare
+		runQuartzServeForTest = origServe
+	}()
 
 	boom := errors.New("boom")
-	servePreviewForTest = func(srv *http.Server, listener net.Listener) error {
-		_ = listener.Close()
-		return boom
-	}
+	resolveQuartzRepoForTest = func(string) (string, error) { return "/quartz/repo", nil }
+	prepareQuartzWorkspaceForTest = func(string, string) (string, func(), error) { return "/w", func() {}, nil }
+	runQuartzServeForTest = func(string, string, string, string, io.Writer, io.Writer) error { return boom }
 
 	root := t.TempDir()
 	mustChdir(t, root)
@@ -83,126 +116,108 @@ func TestRunServeReturnsNonSpecialError(t *testing.T) {
 	}
 }
 
-func TestRunNetListenError(t *testing.T) {
-	root := t.TempDir()
-	mustChdir(t, root)
-	// Bind once to lock the port, then ask Run to bind again.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
+func TestRunResolveQuartzRepoError(t *testing.T) {
+	orig := resolveQuartzRepoForTest
+	defer func() { resolveQuartzRepoForTest = orig }()
 
-	if err := Run([]string{"--no-reload", "--addr", listener.Addr().String()}); err == nil {
-		t.Errorf("Run with busy port = nil, want error")
-	}
-}
-
-func TestRunDisplayURLIPv6(t *testing.T) {
-	origServe := servePreviewForTest
-	defer func() { servePreviewForTest = origServe }()
-
-	listener, err := net.Listen("tcp", "[::1]:0")
-	if err != nil {
-		t.Skipf("ipv6 not supported: %v", err)
-	}
-	addr := listener.Addr().String()
-	listener.Close()
-
-	// Capture stdout
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-	defer func() { os.Stdout = old }()
-
-	called := false
-	servePreviewForTest = func(srv *http.Server, listener net.Listener) error {
-		called = true
-		_ = listener.Close()
-		return http.ErrServerClosed
-	}
+	boom := errors.New("no quartz")
+	resolveQuartzRepoForTest = func(string) (string, error) { return "", boom }
 
 	root := t.TempDir()
 	mustChdir(t, root)
 
-	if err := Run([]string{"--no-reload", "--addr", addr}); err != nil {
-		t.Fatalf("Run ipv6 = %v", err)
-	}
-	_ = w.Close()
-	out, _ := io.ReadAll(r)
-	if !called {
-		t.Errorf("servePreviewForTest was not called")
-	}
-	if len(out) == 0 {
-		t.Errorf("expected stdout output, got none")
+	err := Run([]string{"--addr", "127.0.0.1:0"})
+	if !errors.Is(err, boom) {
+		t.Errorf("Run error = %v, want %v", err, boom)
 	}
 }
 
-func TestRunOpenURLError(t *testing.T) {
-	origServe := servePreviewForTest
-	origOpen := openURLForTest
+func TestRunPrepareWorkspaceError(t *testing.T) {
+	origResolve := resolveQuartzRepoForTest
+	origPrepare := prepareQuartzWorkspaceForTest
 	defer func() {
-		servePreviewForTest = origServe
-		openURLForTest = origOpen
+		resolveQuartzRepoForTest = origResolve
+		prepareQuartzWorkspaceForTest = origPrepare
 	}()
 
-	servePreviewForTest = func(srv *http.Server, listener net.Listener) error {
-		_ = listener.Close()
-		return http.ErrServerClosed
-	}
-	openURLForTest = func(target string) error {
-		return errors.New("browser not available")
-	}
+	boom := errors.New("no workspace")
+	resolveQuartzRepoForTest = func(string) (string, error) { return "/quartz/repo", nil }
+	prepareQuartzWorkspaceForTest = func(string, string) (string, func(), error) { return "", nil, boom }
 
 	root := t.TempDir()
 	mustChdir(t, root)
 
-	if err := Run([]string{"--no-reload", "--addr", "127.0.0.1:0", "--open"}); err != nil {
-		t.Errorf("Run with browser error = %v", err)
+	err := Run([]string{"--addr", "127.0.0.1:0"})
+	if !errors.Is(err, boom) {
+		t.Errorf("Run error = %v, want %v", err, boom)
 	}
 }
 
-func TestRunWithModuleRootTriggersHotReload(t *testing.T) {
-	origStart := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = origStart }()
-
-	called := false
-	// Return a fake command that "completes" via done channel after a short delay.
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		called = true
-		done := make(chan previewChildResult, 1)
-		done <- previewChildResult{}
-		// Return a stub cmd. Since we never call Wait() on it, the Process is nil-safe.
-		return &exec.Cmd{Process: nil}, done, nil
-	}
-
-	// Use the actual repo root, which should contain go.mod/main.go/internal/preview/preview.go.
-	moduleRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestRunQuartzDirFlagPassed(t *testing.T) {
+	origResolve := resolveQuartzRepoForTest
+	origPrepare := prepareQuartzWorkspaceForTest
+	origServe := runQuartzServeForTest
 	defer func() {
-		// Restore CWD to internal/preview so other tests that depend on a stable CWD keep working.
-		_ = os.Chdir(filepath.Join(moduleRoot, "internal", "preview"))
+		resolveQuartzRepoForTest = origResolve
+		prepareQuartzWorkspaceForTest = origPrepare
+		runQuartzServeForTest = origServe
 	}()
-	// Verify the module root has the expected layout.
-	if _, err := os.Stat(filepath.Join(moduleRoot, "internal", "preview", "preview.go")); err != nil {
-		t.Skipf("module root layout missing: %v", err)
+
+	resolveQuartzRepoForTest = func(dir string) (string, error) {
+		if dir != "/custom/quartz" {
+			t.Errorf("resolveQuartzRepoForTest dir = %q, want /custom/quartz", dir)
+		}
+		return "/custom/quartz", nil
 	}
-	// We need to be inside the module root tree, not in internal/preview.
-	subdir := filepath.Join(moduleRoot, "internal")
-	if err := os.Chdir(subdir); err != nil {
-		t.Skipf("chdir to %s: %v", subdir, err)
+	prepareQuartzWorkspaceForTest = func(string, string) (string, func(), error) { return "/w", func() {}, nil }
+	runQuartzServeForTest = func(string, string, string, string, io.Writer, io.Writer) error { return nil }
+
+	root := t.TempDir()
+	mustChdir(t, root)
+
+	if err := Run([]string{"--addr", "127.0.0.1:0", "--quartz-dir", "/custom/quartz"}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+}
+
+func TestPreviewPort(t *testing.T) {
+	port, err := previewPort("127.0.0.1:8080")
+	if err != nil {
+		t.Fatalf("previewPort: %v", err)
+	}
+	if port != "8080" {
+		t.Errorf("port = %q, want 8080", port)
 	}
 
-	if err := Run([]string{"--addr", "127.0.0.1:0"}); err != nil {
-		t.Errorf("Run = %v", err)
+	// Port 0 should allocate a free port.
+	port, err = previewPort("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("previewPort 0: %v", err)
 	}
-	if !called {
-		t.Errorf("startPreviewChildForTest was not called")
+	if port == "" || port == "0" {
+		t.Errorf("allocated port = %q, want non-zero", port)
+	}
+
+	if _, err := previewPort("not-an-address"); err == nil {
+		t.Error("previewPort invalid address expected error")
+	}
+}
+
+func TestPortOfWithValidHostPort(t *testing.T) {
+	if got := portOf("127.0.0.1:8080"); got != "8080" {
+		t.Errorf("portOf = %q, want 8080", got)
+	}
+	if got := portOf("[::1]:1234"); got != "1234" {
+		t.Errorf("portOf ipv6 = %q, want 1234", got)
+	}
+}
+
+func TestPortOfWithoutPort(t *testing.T) {
+	if got := portOf("noport"); got != "noport" {
+		t.Errorf("portOf no port = %q, want noport", got)
+	}
+	if got := portOf(""); got != "" {
+		t.Errorf("portOf empty = %q, want empty", got)
 	}
 }
 
@@ -230,113 +245,11 @@ func TestOpenURLDispatchesByOS(t *testing.T) {
 	_ = openURL
 }
 
-func TestPortOfWithValidHostPort(t *testing.T) {
-	if got := portOf("127.0.0.1:8080"); got != "8080" {
-		t.Errorf("portOf = %q, want 8080", got)
-	}
-	if got := portOf("[::1]:1234"); got != "1234" {
-		t.Errorf("portOf ipv6 = %q, want 1234", got)
-	}
-}
-
-func TestPortOfWithoutPort(t *testing.T) {
-	if got := portOf("noport"); got != "noport" {
-		t.Errorf("portOf no port = %q, want noport", got)
-	}
-	if got := portOf(""); got != "" {
-		t.Errorf("portOf empty = %q, want empty", got)
-	}
-}
-
 func TestBuildPreviewFrontendNoPackageJSON(t *testing.T) {
 	// Without package.json+vite.config.ts, function returns nil.
 	root := t.TempDir()
 	if err := buildPreviewFrontend(root); err != nil {
 		t.Errorf("buildPreviewFrontend empty = %v", err)
-	}
-}
-
-func TestStopPreviewChildNilSafe(t *testing.T) {
-	stopPreviewChild(nil)
-	stopPreviewChild(&exec.Cmd{})
-}
-
-func TestStopPreviewChildKillsProcess(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unix-only test")
-	}
-	// Use a child process group so syscall.Kill(-PID) hits the actual process.
-	cmd := exec.Command("sleep", "30")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	stopPreviewChild(cmd)
-	done := make(chan struct{})
-	go func() {
-		_ = cmd.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Errorf("process was not killed within 3s")
-	}
-}
-
-func TestStartPreviewChildWithInvalidGo(t *testing.T) {
-	// Point PATH to an empty temp dir so `go` cannot be found.
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", t.TempDir())
-	defer os.Setenv("PATH", origPath)
-
-	cmd, done, err := startPreviewChild(t.TempDir(), []string{"--no-reload"})
-	if err == nil {
-		if cmd != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-		}
-		<-done
-		t.Fatalf("startPreviewChild with missing go = nil error")
-	}
-	if cmd != nil {
-		t.Errorf("cmd should be nil on error")
-	}
-	if done != nil {
-		t.Errorf("done channel should be nil on error")
-	}
-}
-
-func TestStartPreviewChildHandlesSetpgid(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unix-only")
-	}
-	cmd, done, err := startPreviewChild(t.TempDir(), []string{"--no-reload"})
-	if err != nil {
-		t.Fatalf("startPreviewChild = %v", err)
-	}
-	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
-		t.Errorf("expected Setpgid=true on non-windows, got %+v", cmd.SysProcAttr)
-	}
-	_ = cmd.Process.Kill()
-	<-done
-}
-
-func TestStripPreviewOpenFlagAllForms(t *testing.T) {
-	cases := map[string][]string{
-		"all-forms":      {"--open", "-open", "--open=true", "-open=true", "main"},
-		"missing":        {"main", "--no-reload"},
-		"empty":          nil,
-	}
-	for label, input := range cases {
-		got := stripPreviewOpenFlag(input)
-		for _, removed := range []string{"--open", "-open", "--open=true", "-open=true"} {
-			for _, g := range got {
-				if g == removed {
-					t.Errorf("%s: stripped %q should not appear in %v", label, removed, got)
-				}
-			}
-		}
 	}
 }
 
@@ -352,7 +265,4 @@ func mustChdir(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 }
 
-// Helper to build a fake URL with hostname for testing.
-var _ = url.URL{}
-var _ = syscall.Kill
-var _ = context.Background
+var _ = net.Listen

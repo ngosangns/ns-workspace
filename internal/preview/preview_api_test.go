@@ -23,7 +23,7 @@ func TestHandleProjectReturnsSummary(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/project", nil)
-	server.handleProject(rec, req)
+	server.handler.HandleProject(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("handleProject code = %d, want 200", rec.Code)
@@ -44,7 +44,7 @@ func TestHandleProjectMethodNotAllowed(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/project", nil)
-	server.handleProject(rec, req)
+	server.handler.HandleProject(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("handleProject POST code = %d, want 405", rec.Code)
@@ -57,7 +57,7 @@ func TestHandleProjectInvalidProjectRoot(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/project", nil)
-	server.handleProject(rec, req)
+	server.handler.HandleProject(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("handleProject invalid code = %d, want 500", rec.Code)
@@ -73,7 +73,7 @@ func TestHandleSpecsMethodNotAllowed(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/docs", nil)
-	server.handleSpecs(rec, req)
+	server.handler.HandleSpecs(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("handleSpecs PUT code = %d, want 405", rec.Code)
@@ -89,7 +89,7 @@ func TestHandleSpecNotFound(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/docs/nonexistent.md", nil)
-	server.handleSpec(rec, req)
+	server.handler.HandleSpec(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("handleSpec nonexistent code = %d, want 404", rec.Code)
@@ -106,7 +106,7 @@ func TestHandleSpecInvalidPath(t *testing.T) {
 	// Empty id (after trimming prefix) → 400.
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/docs/", nil)
-	server.handleSpec(rec, req)
+	server.handler.HandleSpec(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("handleSpec empty code = %d, want 400", rec.Code)
@@ -120,7 +120,7 @@ func TestHandleSpecMethodNotAllowed(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/docs/x.md", nil)
-	server.handleSpec(rec, req)
+	server.handler.HandleSpec(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("handleSpec POST code = %d, want 405", rec.Code)
@@ -134,7 +134,7 @@ func TestHandleFileMethodNotAllowed(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/files", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("handleFile POST code = %d, want 405", rec.Code)
@@ -150,7 +150,7 @@ func TestHandleFileInvalidPath(t *testing.T) {
 	for _, p := range cases {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/api/files?path="+url.QueryEscape(p), nil)
-		server.handleFile(rec, req)
+		server.handler.HandleFile(rec, req)
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("handleFile path %q code = %d, want 400", p, rec.Code)
 		}
@@ -164,7 +164,7 @@ func TestHandleFileNotFound(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=missing.txt", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("handleFile missing code = %d, want 404", rec.Code)
@@ -180,7 +180,7 @@ func TestHandleFileReturnsPreviewable(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs/example.md", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("handleFile code = %d, want 200: %s", rec.Code, rec.Body.String())
@@ -203,7 +203,7 @@ func TestHandleFileReturnsFolder(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("handleFile folder code = %d, want 200: %s", rec.Code, rec.Body.String())
@@ -227,7 +227,7 @@ func TestHandleFileFolderSkipsDotfiles(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("handleFile folder code = %d", rec.Code)
@@ -253,7 +253,7 @@ func TestHandleFileRejectsOversizeFile(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs/big.txt", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("handleFile oversize code = %d, want 400", rec.Code)
@@ -269,7 +269,7 @@ func TestHandleFileRejectsInvalidUTF8(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs/binary.txt", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("handleFile invalid utf8 code = %d, want 400", rec.Code)
@@ -285,7 +285,7 @@ func TestHandleFileRejectsNonPreviewableExtension(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=foo.bin", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("handleFile non-previewable code = %d, want 400", rec.Code)
@@ -299,7 +299,7 @@ func TestHandleGraphMethodNotAllowed(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/graph", nil)
-	server.handleGraph(rec, req)
+	server.handler.HandleGraph(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("handleGraph POST code = %d, want 405", rec.Code)
@@ -329,7 +329,7 @@ overview → editor.core
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/graph", nil)
-	server.handleGraph(rec, req)
+	server.handler.HandleGraph(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("handleGraph code = %d, want 200: %s", rec.Code, rec.Body.String())
@@ -350,7 +350,7 @@ func TestHandleEventsMethodNotAllowed(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/events", nil)
-	server.handleEvents(rec, req)
+	server.handler.HandleEvents(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("handleEvents POST code = %d, want 405", rec.Code)
@@ -372,7 +372,7 @@ func TestHandleEventsStreamsInitialEvent(t *testing.T) {
 	}()
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
 	rec := httptest.NewRecorder()
-	server.handleEvents(rec, req)
+	server.handler.HandleEvents(rec, req)
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "event: ready") {
@@ -450,7 +450,7 @@ func TestHandleFileAllBranchesP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ps := &previewServer{opt: previewOptions{projectRoot: dir, docsDir: "docs"}}
+	ps := &previewServer{opt: previewOptions{projectRoot: dir, docsDir: "docs"}, handler: NewPreviewHandler(dir, "docs", nil)}
 
 	cases := []struct {
 		name      string
@@ -472,7 +472,7 @@ func TestHandleFileAllBranchesP(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "/api/file?path="+tc.path, nil)
 			w := httptest.NewRecorder()
-			ps.handleFile(w, r)
+			ps.handler.HandleFile(w, r)
 			if w.Code != tc.wantCode {
 				t.Errorf("path=%q got code %d want %d body=%s", tc.path, w.Code, tc.wantCode, w.Body.String())
 			}
@@ -492,10 +492,10 @@ func TestHandleFileDirectoryListingP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sub, ".hidden"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ps := &previewServer{opt: previewOptions{projectRoot: dir, docsDir: "docs"}}
+	ps := &previewServer{opt: previewOptions{projectRoot: dir, docsDir: "docs"}, handler: NewPreviewHandler(dir, "docs", nil)}
 	r := httptest.NewRequest(http.MethodGet, "/api/file?path=sub", nil)
 	w := httptest.NewRecorder()
-	ps.handleFile(w, r)
+	ps.handler.HandleFile(w, r)
 	if w.Code != 200 {
 		t.Errorf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -511,7 +511,7 @@ func TestHandleFileMethodNotAllowedP(t *testing.T) {
 	ps := &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "docs"}}
 	r := httptest.NewRequest(http.MethodPost, "/api/file?path=x", nil)
 	w := httptest.NewRecorder()
-	ps.handleFile(w, r)
+	ps.handler.HandleFile(w, r)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
 	}
@@ -527,7 +527,7 @@ func TestHandleSpecsAllBranchesP(t *testing.T) {
 	// Wrong method.
 	r := httptest.NewRequest(http.MethodPost, "/api/docs", nil)
 	w := httptest.NewRecorder()
-	server.handleSpecs(w, r)
+	server.handler.HandleSpecs(w, r)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
 	}
@@ -535,7 +535,7 @@ func TestHandleSpecsAllBranchesP(t *testing.T) {
 	// Correct method.
 	r = httptest.NewRequest(http.MethodGet, "/api/docs", nil)
 	w = httptest.NewRecorder()
-	server.handleSpecs(w, r)
+	server.handler.HandleSpecs(w, r)
 	if w.Code != 200 {
 		t.Errorf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -550,7 +550,7 @@ func TestHandleSpecAllBranchesP(t *testing.T) {
 	// Wrong method.
 	r := httptest.NewRequest(http.MethodPost, "/api/docs/example", nil)
 	w := httptest.NewRecorder()
-	server.handleSpec(w, r)
+	server.handler.HandleSpec(w, r)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
 	}
@@ -558,7 +558,7 @@ func TestHandleSpecAllBranchesP(t *testing.T) {
 	// Missing ID.
 	r = httptest.NewRequest(http.MethodGet, "/api/docs/", nil)
 	w = httptest.NewRecorder()
-	server.handleSpec(w, r)
+	server.handler.HandleSpec(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
@@ -566,13 +566,13 @@ func TestHandleSpecAllBranchesP(t *testing.T) {
 	// ID not found.
 	r = httptest.NewRequest(http.MethodGet, "/api/docs/missing", nil)
 	w = httptest.NewRecorder()
-	server.handleSpec(w, r)
+	server.handler.HandleSpec(w, r)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
 	}
 
 	// Valid ID.
-	project, err := server.load()
+	project, err := server.handler.load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +582,7 @@ func TestHandleSpecAllBranchesP(t *testing.T) {
 	id := project.Documents[0].ID
 	r = httptest.NewRequest(http.MethodGet, "/api/docs/"+id, nil)
 	w = httptest.NewRecorder()
-	server.handleSpec(w, r)
+	server.handler.HandleSpec(w, r)
 	if w.Code != 200 {
 		t.Errorf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -597,11 +597,11 @@ func TestHandleFileEscapesRootP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(other, "secret.md"), []byte("secret"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ps := &previewServer{opt: previewOptions{projectRoot: dir, docsDir: "docs"}}
+	ps := &previewServer{opt: previewOptions{projectRoot: dir, docsDir: "docs"}, handler: NewPreviewHandler(dir, "docs", nil)}
 	rel, _ := filepath.Rel(dir, filepath.Join(other, "secret.md"))
 	r := httptest.NewRequest(http.MethodGet, "/api/file?path="+rel, nil)
 	w := httptest.NewRecorder()
-	ps.handleFile(w, r)
+	ps.handler.HandleFile(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for escaping path, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -661,7 +661,7 @@ func TestHandleSpecsLoadError(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/specs", nil)
-	server.handleSpecs(rec, req)
+	server.handler.HandleSpecs(rec, req)
 	if rec.Code == http.StatusOK {
 		t.Errorf("expected error status, got %d", rec.Code)
 	}
@@ -678,7 +678,7 @@ func TestHandleSpecLoadError(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/docs/foo", nil)
-	server.handleSpec(rec, req)
+	server.handler.HandleSpec(rec, req)
 	if rec.Code == http.StatusOK {
 		t.Errorf("expected error status, got %d", rec.Code)
 	}
@@ -695,7 +695,7 @@ func TestHandleFileLoadError(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs/foo.md", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 	if rec.Code == http.StatusOK {
 		t.Errorf("expected error status, got %d", rec.Code)
 	}
@@ -729,7 +729,7 @@ func TestHandleFileReturnsFolderListing(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("handleFile folder code = %d, want 200", rec.Code)
@@ -754,7 +754,7 @@ func TestHandleFileReturns404ForMissing(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs/missing.md", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rec.Code)
@@ -768,7 +768,7 @@ func TestHandleFileReturns400ForTraversal(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=../etc/passwd", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rec.Code)
@@ -782,7 +782,7 @@ func TestHandleFileReturns400ForAbsolutePath(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=/etc/passwd", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rec.Code)
@@ -796,7 +796,7 @@ func TestHandleFileReturns400ForEmptyPath(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rec.Code)
@@ -810,7 +810,7 @@ func TestHandleFileMethodNotAllowedExtra(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/files?path=docs/x.md", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", rec.Code)
@@ -825,7 +825,7 @@ func TestHandleFileEscapesProjectRoot(t *testing.T) {
 	rec := httptest.NewRecorder()
 	// Path that's "valid" syntactically but escapes the root via ../.
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=foo/../../etc/passwd", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 	// Should be rejected as invalid path.
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for path traversal, got %d", rec.Code)
@@ -854,7 +854,7 @@ func TestHandleFileReadDirError(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/files?path=docs", nil)
-	server.handleFile(rec, req)
+	server.handler.HandleFile(rec, req)
 	// ReadDir fails → 500.
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 for unreadable dir, got %d", rec.Code)

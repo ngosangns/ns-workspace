@@ -30,7 +30,7 @@ Knowledge base trong thư mục `docs/` mô tả trạng thái hiện tại củ
 - Đọc [Aspect inventory](./research/aspect-inventory.md) khi cần onboarding nhanh qua các boundary, source paths và docs gaps chính.
 - Đọc [Module agentsync](./modules/agentsync.md) khi sửa `init`, `update`, `status`, `doctor`, `registry`, `agents`, preset materialization hoặc adapter native targets.
 - Đọc [Preview web](./features/preview-web.md) và [Module preview](./modules/preview.md) khi làm việc với `go run . preview`, `go run . search` hoặc `go run . export`.
-- Đọc [Module kbmcp](./modules/kbmcp.md) khi làm việc với MCP server `go run . mcp`.
+- Đọc [Module kbmcp](./modules/kbmcp.md) khi làm việc với command `go run . mcp`.
 - Đọc [Module graph query](./modules/graphquery.md) khi làm việc với `go run . graph`, `go run . lsp` hoặc LSP installer/cache.
 - Khi cần triển khai thay đổi lớn, tạo plan mới trong `docs/specs/planning/` trước rồi link plan đó vào chỉ mục sau khi file tồn tại.
 

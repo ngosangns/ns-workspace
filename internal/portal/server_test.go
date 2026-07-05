@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
-
-	"github.com/ngosangns/ns-workspace/internal/agentsync"
 )
 
 func newTestServer(t *testing.T) *portalServer {
@@ -21,18 +18,11 @@ func newTestServer(t *testing.T) *portalServer {
 		"presets/mcp/servers.json": &fstest.MapFile{Data: []byte(`{"mcpServers":{}}`)},
 		"presets/registry/skills.json": &fstest.MapFile{Data: []byte(`{"skills":[]}`)},
 	}
-	store := &Store{
-		presets:    fsys,
-		config:     agentsync.UserConfig{},
-		overlayDir: filepath.Join(tmp, "portal"),
-		configPath: filepath.Join(tmp, "config.json"),
+	srv, err := newPortalServer(fsys, tmp)
+	if err != nil {
+		t.Fatalf("newPortalServer: %v", err)
 	}
-	return &portalServer{
-		presets:   fsys,
-		store:     store,
-		runner:    NewSyncRunner(fsys),
-		agentsDir: tmp,
-	}
+	return srv
 }
 
 func TestHandleStatus(t *testing.T) {

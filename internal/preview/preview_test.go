@@ -17,56 +17,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/ngosangns/ns-workspace/internal/graphquery"
 	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
-
-func previewUIText(t *testing.T) string {
-	t.Helper()
-	paths := []string{
-		"preview_ui_src/index.html",
-		"preview_ui_src/main.ts",
-		"preview_ui_src/App.vue",
-		"preview_ui_src/js/code-preview.ts",
-		"preview_ui_src/js/diagrams.ts",
-		"preview_ui_src/js/html-doc.ts",
-		"preview_ui_src/js/markdown.ts",
-		"preview_ui_src/js/metadata.ts",
-		"preview_ui_src/js/network-graph.ts",
-		"preview_ui_src/js/internal-links.ts",
-		"preview_ui_src/js/shared-types.ts",
-		"preview_ui_src/js/shared-utils.ts",
-		"preview_ui_src/types.d.ts",
-		"preview_ui_src/components/DocViewer.vue",
-		"preview_ui_src/components/GraphViewer.vue",
-		"preview_ui_src/components/Icon.vue",
-		"preview_ui_src/components/PreviewModal.vue",
-		"preview_ui_src/components/SearchPanel.vue",
-		"preview_ui_src/components/Sidebar.vue",
-		"preview_ui_src/components/TreeNode.vue",
-		"preview_ui_src/public/style.css",
-		"preview_ui/index.html",
-		"preview_ui/style.css",
-	}
-	var builder strings.Builder
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read preview UI source %s: %v", path, err)
-		}
-		builder.Write(data)
-		builder.WriteByte('\n')
-	}
-	return builder.String()
-}
 
 func TestPreviewHTTPHandlers(t *testing.T) {
 	root := t.TempDir()
@@ -218,55 +177,13 @@ Hello **docs**.
 		t.Fatalf("events endpoint did not use SSE content type: %s", got)
 	}
 
-	res, err = http.Get(ts.URL + "/spec/modules/example.md")
+	res, err = http.Get(ts.URL + "/")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("preview app fallback failed: %s", res.Status)
-	}
-	if got := res.Header.Get("Content-Type"); !strings.Contains(got, "text/html") {
-		t.Fatalf("preview app fallback should return HTML, got %s", got)
-	}
-
-	res, err = http.Get(ts.URL + "/search")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("search route fallback was not served: %s", res.Status)
-	}
-	if got := res.Header.Get("Content-Type"); !strings.Contains(got, "text/html") {
-		t.Fatalf("search route fallback should return HTML, got %s", got)
-	}
-
-	res, err = http.Get(ts.URL + "/favicon.svg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("preview static asset was not served: %s", res.Status)
-	}
-
-	// The published module must include the hashed Vite bundle referenced by index.html.
-	indexHTML, err := previewUIFS.ReadFile("preview_ui/index.html")
-	if err != nil {
-		t.Fatalf("read embedded preview index: %v", err)
-	}
-	assetPath := regexp.MustCompile(`src="(/assets/[^"]+\.js)"`).FindStringSubmatch(string(indexHTML))
-	if len(assetPath) != 2 {
-		t.Fatalf("preview index should reference a hashed JS bundle: %s", indexHTML)
-	}
-	res, err = http.Get(ts.URL + assetPath[1])
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("preview JS bundle was not served: %s", res.Status)
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("preview API server root should return 404, got %s", res.Status)
 	}
 }
 
@@ -601,7 +518,7 @@ func parseAuthToken(raw string) string {
 	initGitRepo(t, root, "docs/_index.md", "docs/auth.md", "docs/session.md", "auth.go")
 
 	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
-	server.codeGraph = &staticCodeGraphProvider{results: []previewSearchResult{{
+	server.handler.codeGraph = &staticCodeGraphProvider{results: []previewSearchResult{{
 		ID:        "code-lsp:parse_auth_token",
 		Title:     "parseAuthToken()",
 		Path:      "auth.go",
@@ -912,7 +829,7 @@ func hydrateStore() {}
 	initGitRepo(t, root, "docs/_index.md", "auth.go", "store.go")
 
 	server := newPreviewServer(previewOptions{projectRoot: root, docsDir: "docs", addr: "127.0.0.1:0"})
-	server.codeGraph = &staticCodeGraphProvider{results: []previewSearchResult{{
+	server.handler.codeGraph = &staticCodeGraphProvider{results: []previewSearchResult{{
 		ID:        "code-lsp:credential_vault",
 		Title:     "credentialVault()",
 		Path:      "store.go",
@@ -984,19 +901,15 @@ func TestLSPSourceFilesUseOnlyGitTrackedCode(t *testing.T) {
 	}
 }
 
-func TestLSPSourceFilesSkipsGeneratedPreviewUIButKeepsPreviewUISource(t *testing.T) {
+func TestLSPSourceFilesSkipsGeneratedPreviewUIArtifacts(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "docs/_index.md", "# Spec Index\n")
 	writeTestFile(t, root, "internal/preview/preview_ui/index.html", "<div id=\"app\"></div>\n")
 	writeTestFile(t, root, "internal/preview/preview_ui/style.css", ".generated { color: red; }\n")
-	writeTestFile(t, root, "internal/preview/preview_ui_src/index.html", "<div id=\"app\"></div>\n")
-	writeTestFile(t, root, "internal/preview/preview_ui_src/main.ts", "export function sourceNeedle() {}\n")
 	initGitRepo(t, root,
 		"docs/_index.md",
 		"internal/preview/preview_ui/index.html",
 		"internal/preview/preview_ui/style.css",
-		"internal/preview/preview_ui_src/index.html",
-		"internal/preview/preview_ui_src/main.ts",
 	)
 
 	_, files, warnings := lspSourceFiles(root, filepath.Join(root, "docs"))
@@ -1010,11 +923,6 @@ func TestLSPSourceFilesSkipsGeneratedPreviewUIButKeepsPreviewUISource(t *testing
 	for _, forbidden := range []string{"internal/preview/preview_ui/index.html", "internal/preview/preview_ui/style.css"} {
 		if slices.Contains(got, forbidden) {
 			t.Fatalf("generated preview UI artifact %s should not be indexed by LSP: %+v", forbidden, got)
-		}
-	}
-	for _, want := range []string{"internal/preview/preview_ui_src/index.html", "internal/preview/preview_ui_src/main.ts"} {
-		if !slices.Contains(got, want) {
-			t.Fatalf("preview UI source %s should remain in LSP source files: %+v", want, got)
 		}
 	}
 }
@@ -2128,13 +2036,12 @@ func TestPreviewChildArgsNormalizesExplicitProjectForSupervisor(t *testing.T) {
 	}
 }
 
-func TestPreviewSourceHotReloadTokenTracksBackendAndFrontend(t *testing.T) {
+func TestPreviewSourceTokenTracksBackend(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "go.mod", "module example.com/preview\n")
 	writeTestFile(t, root, "main.go", "package main\n")
 	writeTestFile(t, root, "internal/preview/preview.go", "package preview\n")
 	writeTestFile(t, root, "internal/preview/preview_ui/assets/index-old.js", "console.log('generated')\n")
-	writeTestFile(t, root, "internal/preview/preview_ui_src/App.vue", "<script setup>const title = 'one'</script>\n")
 	writeTestFile(t, root, "docs/guide.md", "# guide\n")
 
 	nested := filepath.Join(root, "internal", "preview")
@@ -2142,990 +2049,25 @@ func TestPreviewSourceHotReloadTokenTracksBackendAndFrontend(t *testing.T) {
 		t.Fatalf("previewModuleRoot(%q) = %q, %v; want %q, true", nested, got, ok, root)
 	}
 	initial := previewSourceToken(root)
-	time.Sleep(time.Millisecond)
-	writeTestFile(t, root, "internal/preview/preview_ui_src/App.vue", "<script setup>const title = 'two'</script>\n")
-	if next := previewSourceToken(root); next == initial {
-		t.Fatalf("frontend source change should update hot reload token")
+	if !strings.Contains(initial, "0:0") {
+		t.Fatalf("frontend token should be stable without a standalone preview frontend: %q", initial)
 	}
-	frontendToken := previewSourceToken(root)
 	time.Sleep(time.Millisecond)
 	writeTestFile(t, root, "internal/preview/preview_ui/assets/index-new.js", "console.log('rebuilt')\n")
-	if next := previewSourceToken(root); next != frontendToken {
-		t.Fatalf("generated frontend assets should not trigger source restart: %q != %q", next, frontendToken)
+	if next := previewSourceToken(root); next != initial {
+		t.Fatalf("generated frontend assets should not trigger source restart: %q != %q", next, initial)
 	}
 	codeToken := previewSourceToken(root)
 	time.Sleep(time.Millisecond)
 	writeTestFile(t, root, "internal/preview/preview.go", "package preview\nconst changed = true\n")
 	if next := previewSourceToken(root); next == codeToken {
-		t.Fatalf("backend source change should update hot reload token")
+		t.Fatalf("backend source change should update source token")
 	}
 	docToken := previewSourceToken(root)
 	time.Sleep(time.Millisecond)
 	writeTestFile(t, root, "docs/guide.md", "# changed\n")
 	if next := previewSourceToken(root); next != docToken {
-		t.Fatalf("docs changes should be handled by data hot reload, not source restart: %q != %q", next, docToken)
-	}
-}
-
-func TestPreviewUIUsesProjectSummaryResponse(t *testing.T) {
-	text := previewUIText(t)
-	if strings.Contains(text, "project.summary") {
-		t.Fatalf("preview UI should use /api/project summary response directly")
-	}
-}
-
-func TestPreviewUIHasTypeScriptToolchain(t *testing.T) {
-	for _, path := range []string{
-		"../../package.json",
-		"../../package-lock.json",
-		"../../biome.json",
-		"../../tsconfig.vue.json",
-		"../../eslint.config.mjs",
-		"../../.prettierrc.json",
-		"../../vite.config.ts",
-		"preview_ui_src/index.html",
-		"preview_ui_src/main.ts",
-		"preview_ui_src/App.vue",
-		"preview_ui_src/js/code-preview.ts",
-		"preview_ui_src/js/diagrams.ts",
-		"preview_ui_src/js/html-doc.ts",
-		"preview_ui_src/js/markdown.ts",
-		"preview_ui_src/js/metadata.ts",
-		"preview_ui_src/js/network-graph.ts",
-		"preview_ui_src/js/internal-links.ts",
-		"preview_ui_src/js/shared-types.ts",
-		"preview_ui_src/js/shared-utils.ts",
-		"preview_ui_src/types.d.ts",
-		"preview_ui/index.html",
-	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("preview TypeScript toolchain missing %s: %v", path, err)
-		}
-	}
-	pkg, err := os.ReadFile("../../package.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"build:preview", "check:preview", "lint:preview", "lint:preview:fix", "lint:preview:biome", "format:preview", "format:preview:check", "simple-git-hooks", "lint-staged", "vue-tsc", "vite", "vue", "typescript", "eslint", "prettier", "biome"} {
-		if !strings.Contains(string(pkg), want) {
-			t.Fatalf("preview package scripts/deps missing %s", want)
-		}
-	}
-	for _, legacy := range []string{"preview_ui_src/app.ts", "preview_ui_src/js/graph.ts"} {
-		if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("preview TypeScript toolchain should not keep legacy source %s", legacy)
-		}
-	}
-}
-
-func TestPreviewUIUsesDedicatedFrontendLibraries(t *testing.T) {
-	text := previewUIText(t)
-	for _, want := range []string{"cdn.tailwindcss.com", "@fontsource/geist-sans", "@fontsource/geist-mono", "lucide", "@toast-ui/editor", "toastui-editor-viewer", "DOMPurify", "highlight.js", "languages/go.min.js", "languages/typescript.min.js", "mermaid.min.js", "mermaid.render", "svg-pan-zoom", "sigma@3.0.3", "graphology@0.26.0", "graphology-layout-forceatlas2@0.10.1"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI missing %s integration", want)
-		}
-	}
-	if strings.Contains(text, "/api/render/mermaid") {
-		t.Fatalf("preview UI should render Mermaid client-side")
-	}
-	for _, forbidden := range []string{"data-ui-kit=\"treact\"", "Treact-style component primitives", "cytoscape"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview UI should not include %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewUIRendersDocsGraphWithSigma(t *testing.T) {
-	text := previewUIText(t)
-	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network-graph.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	graphViewer, err := os.ReadFile("preview_ui_src/components/GraphViewer.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"data-tab=\"graph\"", "/main.ts", "id=\"graphCanvas\"", "renderNetworkGraph", "Sigma", "forceAtlas2", "clickNode", "clickStage", "enterNode", "leaveNode", "forceLabel: true", "labelRenderedSizeThreshold: 0", "normalizedGraphData", "selectedNodeId", "graphRenderer", "graph-details", "openSpecPreview", "data-preview-spec", "selectGraphNode", "clearGraphSelection", ".is-node-hover canvas"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview docs graph UI missing %s", want)
-		}
-	}
-	if strings.Contains(string(graphViewer), "selectSpec(") || strings.Contains(string(graphViewer), "data-open-spec") {
-		t.Fatalf("preview docs graph should use popup previews instead of direct doc navigation")
-	}
-	if strings.Contains(string(graphViewer), "selectedNodeId.value = node.id;\n  const incoming") {
-		t.Fatalf("preview docs graph should not focus the first node while rendering details")
-	}
-	if strings.Contains(string(networkGraphJS), ": nodes[0]?.id") {
-		t.Fatalf("preview graph renderer should not default-focus the first node")
-	}
-	if strings.Contains(string(networkGraphJS), `label: dimmed ? "" : data.label`) || strings.Contains(string(networkGraphJS), "size: node === selectedId") {
-		t.Fatalf("focused preview graph should dim nodes without hiding labels or resizing nodes")
-	}
-	if !strings.Contains(string(networkGraphJS), "labelColor: dimmed ? colorWithOpacity(data.labelColor, 0.22) : data.labelColor") {
-		t.Fatalf("focused preview graph should dim unfocused node labels")
-	}
-	if strings.Contains(string(networkGraphJS), "softenColor") || !strings.Contains(string(networkGraphJS), "return color;") {
-		t.Fatalf("focused preview graph should dim by opacity only, without changing original colors")
-	}
-	for _, want := range []string{"grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem)", "border-left: 1px solid hsl(var(--b3))", "max-height: 68vh"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview docs graph sidebar layout missing %s", want)
-		}
-	}
-	for _, want := range []string{"renderNetworkGraph", "normalizedGraphData", "selectGraphNode", "clearGraphSelection", "edgeColorForTheme(props.theme)", "darkEdgeColor", "graphFullscreen", "toggleGraphFullscreen", `id="graphFullscreen"`, "is-fullscreen", "maximize", "minimize"} {
-		if !strings.Contains(string(graphViewer), want) {
-			t.Fatalf("Vue docs graph viewer missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{"x: 0,\n        y: 0", "await import(\"graphology\")", "await import(\"sigma\")", "data-preview-file", "openFilePreview"} {
-		if strings.Contains(string(graphViewer), forbidden) {
-			t.Fatalf("Vue docs graph viewer should use shared graph adapter instead of %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewTopbarUsesIconOnlyTabs(t *testing.T) {
-	text := previewUIText(t)
-	for _, want := range []string{
-		`aria-label="Preview sections"`,
-		`data-tab="graph"`,
-		`name="git-fork"`,
-		`data-tab="search"`,
-		`name="search"`,
-		`id="themeToggle"`,
-		`:data-theme-option="themePreference"`,
-		"themeToggleIcon",
-		"themeToggleLabel",
-		"toggleTheme",
-		`themePreference.value === "system" ? "dark" : themePreference.value === "dark" ? "light" : "system"`,
-		"themePreference",
-		"applyThemePreference",
-		`localStorage.removeItem("spec-preview-theme")`,
-		"projectRoot",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview topbar icon-only tabs missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{`data-tab="overview"`, `data-lucide="layout-dashboard"`, `data-tab="spec"`, "overviewTab", ">Overview</button>", ">Graph</button>", ">Search</button>", ">Doc</button>", "id=\"themeLabel\""} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview topbar should not render text label %s", forbidden)
-		}
-	}
-	app, err := os.ReadFile("preview_ui_src/App.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	themeToggleStart := strings.Index(string(app), `id="themeToggle"`)
-	if themeToggleStart == -1 {
-		t.Fatalf("preview topbar missing theme toggle")
-	}
-	themeToggleEnd := strings.Index(string(app)[themeToggleStart:], `</button>`)
-	if themeToggleEnd == -1 {
-		t.Fatalf("preview topbar theme toggle button is malformed")
-	}
-	themeToggleBlock := string(app)[themeToggleStart : themeToggleStart+themeToggleEnd]
-	if strings.Contains(themeToggleBlock, "tab-active") {
-		t.Fatalf("theme toggle should not render an active tab state")
-	}
-}
-
-func TestPreviewUIRendersFourPanelSearchPage(t *testing.T) {
-	text := previewUIText(t)
-	searchPanel, err := os.ReadFile("preview_ui_src/components/SearchPanel.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network-graph.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		`data-tab="search"`,
-		`id="searchTab"`,
-		`data-search-panel="docsSemantic"`,
-		`data-search-panel="docsGraph"`,
-		`data-search-panel="codeSemantic"`,
-		`data-search-panel="codeGraph"`,
-		`data-search-domain-tab="docs"`,
-		`data-search-domain-tab="code"`,
-		`data-search-domain-panel="docs"`,
-		`data-search-domain-panel="code"`,
-		"activeSearchDomain",
-		"docsResultCount",
-		"codeResultCount",
-		`aria-label="Keyword result operator"`,
-		`keywordOp`,
-		"fetchJSON(`/api/search?${params.toString()}",
-		"panelResults(\"docsSemantic\")",
-		"panelResults(\"codeGraph\")",
-		"renderSearchSummary",
-		"result.description || result.excerpt",
-		"result.specId",
-		"renderSearchGraphPanel",
-		"searchResultsToGraph",
-		"renderNetworkGraph",
-		"codeGraphNodeLabel",
-		"neighborPath",
-		"neighborLine",
-		"searchGraphRenderers",
-		"renderSearchGraphDetails(name: string, graph: NetworkGraphData, details: HTMLElement)",
-		"const node = graph.nodes.find((item) => item.id === selected) || graph.nodes[0];",
-		"clearSearchGraphSelection",
-		".search-graph-canvas",
-		"searchLoading",
-		"Searching docs, code, and graphs",
-		"fetch(path, { signal })",
-		"const controller = new AbortController()",
-		"searchController.value !== controller",
-		"finally",
-		`id="previewDialog"`,
-		"openSpecPreview",
-		"openFilePreview",
-		"/api/files?",
-		`id="previewRawToggle"`,
-		"previewSource",
-		"previewShowRaw",
-		"renderPreviewSource",
-		`data-preview-spec`,
-		`data-preview-file`,
-		"buildRouteQuery",
-		"replaceFocusedRouteURL",
-		"decorateCodePreviewLines",
-		"code-line-target",
-		".preview-modal",
-		".code-preview",
-		"line-height: 1.18",
-		`.search-grid`,
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview search UI missing %s", want)
-		}
-	}
-	if strings.Contains(text, "state.searchGraphSelections.set(name, selectedNode.id)") {
-		t.Fatalf("preview search graph should not default-focus the first rendered node")
-	}
-	for _, want := range []string{
-		"renderSearchGraphPanel",
-		"searchResultsToGraph",
-		"renderNetworkGraph",
-		"renderSearchGraphDetails",
-		"selectSearchGraphNode",
-		"clearSearchGraphSelection",
-		`data-search-graph-shell="docsGraph"`,
-		`data-search-graph-shell="codeGraph"`,
-		`data-search-domain-tab="docs"`,
-		`data-search-domain-tab="code"`,
-		`data-search-domain-panel="docs"`,
-		`data-search-domain-panel="code"`,
-		"activeSearchDomain",
-		"docsResultCount",
-		"codeResultCount",
-		`data-fullscreen-graph="docsGraph"`,
-		`data-fullscreen-graph="codeGraph"`,
-		"fullscreenSearchGraph",
-		"toggleSearchGraphFullscreen",
-		"is-fullscreen",
-		"maximize",
-		"minimize",
-		`ref="docsGraphCanvas"`,
-		`ref="codeGraphCanvas"`,
-		"codeGraphNodeLabel",
-		"neighborPath",
-		"neighborLine",
-		`result.path && panelName !== "codeGraph"`,
-		`rootCallerBorderColor: theme.value === "dark" ? "#ffffff" : "#000000"`,
-		"isRootCaller",
-		"markSourceCallerNodes",
-		"outgoing.has(node.id) && !incoming.has(node.id)",
-		"codeGraphMemberLabel",
-		"codeGraphNodeLabelText",
-		"neighbor.label || neighbor.id || neighborID",
-		"cleaned.lastIndexOf(separator)",
-		"return `${owner}\\n${member}`",
-		"data-preview-file",
-		"data-preview-line",
-	} {
-		if !strings.Contains(string(searchPanel), want) {
-			t.Fatalf("Vue preview search graph missing %s", want)
-		}
-	}
-	for _, stale := range []string{"data-code-graph-view", "data-code-graph-flow", "codeGraphViewMode", "code-flow-shell"} {
-		if strings.Contains(string(searchPanel), stale) {
-			t.Fatalf("Vue Code Graph should render a single directed graph, found stale flow UI marker %s", stale)
-		}
-	}
-	for _, want := range []string{"installRootCallerBorderOverlay", "network-graph-root-caller-border", "getNodeDisplayData", "framedGraphToViewport", "scaleSize", "context.strokeStyle = borderColor", "defaultDrawNodeLabel: drawNodeLabel", "multilineLabel(data.label)", ".split(/\\r?\\n/)"} {
-		if !strings.Contains(string(networkGraphJS), want) {
-			t.Fatalf("preview network graph missing expected rendering support %s", want)
-		}
-	}
-	docsSemanticStart := strings.Index(string(searchPanel), `data-search-panel="docsSemantic"`)
-	docsGraphStart := strings.Index(string(searchPanel), `data-search-panel="docsGraph"`)
-	if docsSemanticStart == -1 || docsGraphStart == -1 {
-		t.Fatalf("Vue preview search panel missing docs semantic or docs graph section")
-	}
-	docsSemanticBlock := string(searchPanel)[docsSemanticStart:docsGraphStart]
-	if !strings.Contains(docsSemanticBlock, "openSpecPreview") || !strings.Contains(docsSemanticBlock, "openFilePreview") {
-		t.Fatalf("Docs Semantic results should expose doc and repo Markdown/HTML file preview actions")
-	}
-	docsDomainStart := strings.Index(string(searchPanel), `data-search-domain-panel="docs"`)
-	codeDomainStart := strings.Index(string(searchPanel), `data-search-domain-panel="code"`)
-	if docsDomainStart == -1 || codeDomainStart == -1 || docsDomainStart > codeDomainStart {
-		t.Fatalf("Vue preview search panel should render docs and code as separate ordered tabs")
-	}
-	docsDomainBlock := string(searchPanel)[docsDomainStart:codeDomainStart]
-	if !strings.Contains(docsDomainBlock, `data-search-panel="docsSemantic"`) || !strings.Contains(docsDomainBlock, `data-search-panel="docsGraph"`) {
-		t.Fatalf("Docs search tab should contain semantic and graph doc panels")
-	}
-	if strings.Contains(docsDomainBlock, `data-search-panel="codeSemantic"`) || strings.Contains(docsDomainBlock, `data-search-panel="codeGraph"`) {
-		t.Fatalf("Docs search tab should not contain code panels")
-	}
-	codeDomainBlock := string(searchPanel)[codeDomainStart:]
-	if !strings.Contains(codeDomainBlock, `data-search-panel="codeSemantic"`) || !strings.Contains(codeDomainBlock, `data-search-panel="codeGraph"`) {
-		t.Fatalf("Code search tab should contain semantic and graph code panels")
-	}
-	graphDetailsStart := strings.Index(string(searchPanel), "function renderSearchGraphDetails")
-	graphDetailsEnd := strings.Index(string(searchPanel), "function codeGraphNodeLabel")
-	if graphDetailsStart == -1 || graphDetailsEnd == -1 {
-		t.Fatalf("Vue preview search panel missing graph details renderer")
-	}
-	graphDetailsBlock := string(searchPanel)[graphDetailsStart:graphDetailsEnd]
-	for _, want := range []string{"data-preview-file", "data-preview-line", "openFilePreview"} {
-		if !strings.Contains(graphDetailsBlock, want) {
-			t.Fatalf("Graph details should expose focused node file preview action %s", want)
-		}
-	}
-	for _, want := range []string{"grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem)", "max-height: 22rem", ".graph-shell.is-fullscreen", ".search-graph-shell.is-fullscreen"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview search graph sidebar layout missing %s", want)
-		}
-	}
-}
-
-func TestPreviewVuePreviewModalRendersStyledDocs(t *testing.T) {
-	previewModal, err := os.ReadFile("preview_ui_src/components/PreviewModal.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	codePreview, err := os.ReadFile("preview_ui_src/js/code-preview.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(previewModal) + "\n" + string(markdown) + "\n" + string(htmlDoc) + "\n" + string(codePreview)
-	for _, want := range []string{
-		"renderPreviewSource",
-		"renderPreviewContentCard",
-		"renderPreviewMetadata",
-		"preview-content-card",
-		"data-preview-content",
-		"preview-metadata",
-		"renderMarkdownPreview",
-		"loadToastMarkdownViewer",
-		"renderHTMLPreview",
-		"ensureHTMLMVPStylesheet",
-		"scopeMVPStylesheet",
-		`renderPreviewContentCard("", "html-doc")`,
-		"markdown-wysiwyg-host markdown-toast-viewer",
-		"DOMPurify.sanitize(raw || \"<p>No content.</p>\"",
-		"decorateInternalDocNavigation(root, spec",
-		"source.spec.description",
-		"source.line ? String(source.line) : \"\"",
-		"decorateCodePreviewLines(root)",
-		"scrollPreviewToLine(root, source.line)",
-		"data-line",
-		"code-line-target",
-		"scrollIntoView({ block: \"center\" })",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("Vue preview modal styled doc rendering missing %s", want)
-		}
-	}
-	if strings.Contains(text, `v-html="previewBody"`) || strings.Contains(text, "return props.source.raw") {
-		t.Fatalf("Vue preview modal should not inject raw doc content as rendered preview")
-	}
-	css, err := os.ReadFile("preview_ui_src/public/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{".preview-content-card", "background: hsl(var(--b1))", ".preview-modal-body", "background: hsl(var(--b2) / 0.56)"} {
-		if !strings.Contains(string(css), want) {
-			t.Fatalf("preview modal content card style missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUIHasFaviconAndRouteTitles(t *testing.T) {
-	html, err := os.ReadFile("preview_ui/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	app, err := os.ReadFile("preview_ui_src/App.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	previewModal, err := os.ReadFile("preview_ui_src/components/PreviewModal.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	icon, err := os.ReadFile("preview_ui/favicon.svg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(html) + "\n" + string(app) + "\n" + string(previewModal) + "\n" + string(icon)
-	for _, want := range []string{
-		`href="/favicon.svg"`,
-		`type="image/svg+xml"`,
-		`viewBox="0 0 64 64"`,
-		"updateDocumentTitle",
-		"pageTitleForTab",
-		"dedupeTitleParts",
-		`Search: ${query}`,
-		"Doc preview:",
-		"File preview:",
-		"project.value?.generatedTitle",
-		"document.title = dedupeTitleParts",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI title/favicon support missing %s", want)
-		}
-	}
-}
-
-func TestPreviewGraphLabelsUseDarkModeContrast(t *testing.T) {
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	networkGraphJS, err := os.ReadFile("preview_ui_src/js/network-graph.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	graphViewer, err := os.ReadFile("preview_ui_src/components/GraphViewer.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	searchPanel, err := os.ReadFile("preview_ui_src/components/SearchPanel.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(css) + "\n" + string(graphViewer) + "\n" + string(searchPanel)
-	for _, want := range []string{"labelColor", "#f8fafc", "#0f172a", "edgeColorForTheme", "searchEdgeColorForTheme", "#94a3b8", "#f87171", ".graph-canvas canvas", ".search-graph-canvas canvas"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview graph label dark mode contrast missing %s", want)
-		}
-	}
-	if strings.Contains(string(networkGraphJS), "highlighted: node === selectedId") {
-		t.Fatalf("focused preview graph node should not render Sigma highlighted label background")
-	}
-	if !strings.Contains(string(networkGraphJS), "defaultDrawNodeHover: drawNodeLabel") {
-		t.Fatalf("hovered preview graph node should not render Sigma label background")
-	}
-	if !strings.Contains(string(networkGraphJS), "const unfocusedColor = options.unfocusedEdgeColor || colorWithOpacity(data.color, 0.14)") ||
-		!strings.Contains(string(networkGraphJS), "color: selected && !related ? unfocusedColor : data.color") {
-		t.Fatalf("focused preview graph should dim unfocused edges without hiding them")
-	}
-	for name, source := range map[string]string{
-		"Vue docs graph": string(graphViewer),
-		"Vue search":     string(searchPanel),
-	} {
-		if !strings.Contains(source, `=== "dark" ? dark`) {
-			t.Fatalf("%s should use dark edge palette when dark theme is enabled", name)
-		}
-		if !strings.Contains(source, `unfocusedEdgeColor: `) || !strings.Contains(source, `=== "dark" ? "#0f172a" : undefined`) {
-			t.Fatalf("%s should use a solid dark unfocused edge color when dark theme is enabled", name)
-		}
-	}
-}
-
-func TestPreviewUIRendersMarkdownClientSide(t *testing.T) {
-	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	codePreview, err := os.ReadFile("preview_ui_src/js/code-preview.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadata, err := os.ReadFile("preview_ui_src/js/metadata.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(markdown) + "\n" + string(codePreview) + "\n" + string(metadata) + "\n" + string(css)
-	if strings.Contains(text, "fallbackHTML") || strings.Contains(text, "markdownRenderer.render(metadata.body)") {
-		t.Fatalf("preview UI should render Markdown from raw content on the client")
-	}
-	for _, want := range []string{"renderMarkdownPreview", "loadToastMarkdownViewer", "toastui-editor-viewer", "Loading Markdown preview...", "data-source-language", "markdown-wysiwyg-host", "markdown-toast-viewer", ".markdown-toast-viewer .toastui-editor-contents", ".metadata-table", "padding: 18px 25px", "renderableMarkdownMetadata", "markdownMetadataRows", "renderMetadataTable", "renderMetadataValue", "metadataArrayValues", "cleanMetadataScalar", "metadata-badges", "badge badge-ghost badge-sm"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI Markdown rendering missing %s", want)
-		}
-	}
-	for _, want := range []string{".markdown-wysiwyg-host .toastui-editor-contents", "TOAST UI ships fixed viewer colors", "color: hsl(var(--bc))", "blockquote p"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI Markdown theme contrast CSS missing %s", want)
-		}
-	}
-}
-
-func TestPreviewVueDocViewerRendersMetadataTables(t *testing.T) {
-	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadata, err := os.ReadFile("preview_ui_src/js/metadata.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(docViewer) + "\n" + string(markdown) + "\n" + string(metadata)
-	for _, want := range []string{
-		`import { renderMarkdownPreview } from "../js/markdown.js"`,
-		"renderableMarkdownMetadata",
-		"markdownBodyMetadata",
-		"renderMetadataTable",
-		"metadata-table",
-		"metadata-link-badges",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview Vue doc viewer metadata rendering missing %s", want)
-		}
-	}
-}
-
-func TestPreviewVueDocViewerRendersHTMLDocMetadata(t *testing.T) {
-	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(docViewer) + "\n" + string(htmlDoc)
-	for _, want := range []string{
-		`import { renderHTMLPreview } from "../js/html-doc.js"`,
-		"DOMPurify.sanitize(raw || \"<p>No content.</p>\", htmlDocSanitizeConfig)",
-		"doc-meta",
-		"doc-section",
-		"doc-metric",
-		"normalizeHTMLDocTags",
-		"meta.querySelectorAll(\"a[href]\")",
-		"meta.querySelectorAll(\"doc-relation[target]\")",
-		"key: \"link\"",
-		"key: `relation.${type}`",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview Vue doc viewer HTML metadata rendering missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUIRendersCompactHTMLDocsClientSide(t *testing.T) {
-	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(htmlDoc) + "\n" + string(css)
-	for _, want := range []string{"renderHTMLPreview", "htmlDocSanitizeConfig", "htmlMVPStylesheetURL", "mvp.css@1.17.3", "scopeMVPStylesheet", "data-html-mvp-css", "html-doc", "doc-meta", "doc-title", "doc-description", "doc-relation", "doc-callout", "doc-diagram", "doc-code", "doc-section", "doc-grid", "doc-card", "doc-steps", "doc-step", "doc-flow", "doc-flow-step", "doc-graph", "doc-metrics", "doc-metric", "normalizeHTMLDocTags", "htmlMetadataRows", "normalizeDocDiagramLanguage", "c4-model", "replaceDocContainer", "replaceDocMetric", "createDocDiagramSource", "doc-relation-${typeClass}", "doc-code-block", "doc-diagram-source", "doc-graph-source", ".html-doc", ".html-doc table", ".html-doc a", ".doc-title", ".doc-description", ".doc-callout-info", ".doc-callout-warning", ".doc-relation-depends", ".doc-code-block::before", ".doc-steps", ".doc-flow-step", ".doc-metrics", ".doc-metric-value", ".hero-panel", ".metric-grid", ".insight-card", ".risk-panel", ".evidence-card.success", ".timeline-list"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI HTML doc rendering missing %s", want)
-		}
-	}
-	if strings.Contains(text, "doc-link") {
-		t.Fatalf("preview UI HTML doc link contract should use plain <a href> links only")
-	}
-	for _, forbidden := range []string{"data-reactroot", "onclick", "onload", "onerror"} {
-		if !strings.Contains(text, forbidden) {
-			t.Fatalf("preview UI HTML sanitizer should explicitly reject %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewUIKeepsMarkdownDocumentsReadOnly(t *testing.T) {
-	html, err := os.ReadFile("preview_ui/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	markdown, err := os.ReadFile("preview_ui_src/js/markdown.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(html) + "\n" + string(docViewer) + "\n" + string(markdown) + "\n" + string(htmlDoc) + "\n" + string(css)
-	for _, want := range []string{
-		".markdown-wysiwyg-host",
-		".toast-markdown-loading",
-		"renderMarkdownPreview",
-		"renderHTMLPreview",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview read-only Markdown UI missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{
-		`id="markdownEditToolbar"`,
-		`id="markdownEditActions"`,
-		`id="markdownEditButton"`,
-		`id="markdownSaveButton"`,
-		`id="markdownCancelButton"`,
-		`id="rawMarkdownToggle"`,
-		`data-markdown-command=`,
-		"showRawMarkdown",
-		"updateRawMarkdownToggle",
-		"rawMarkdown:",
-		"editingMarkdown",
-		"markdownEditor",
-		"saveMarkdownDraft",
-		"applyMarkdownCommand",
-		"mountMarkdownPreviewEditor",
-		"destroyMarkdownPreviewEditor",
-		"loadToastMarkdownEditor",
-		"Loading Markdown editor...",
-		`initialEditType: "wysiwyg"`,
-		"hideModeSwitch: true",
-		`toolbarItems: [["table"]]`,
-		"clickToastTableToolbarItem",
-		"toastui-editor.css",
-		"PUT",
-		"/api/docs/${encodeURIComponent(state.currentSpec.id)}",
-		".markdown-edit-toolbar",
-		".markdown-edit-actions",
-		".markdown-edit-action-group",
-		".metadata-edit-panel",
-		"markdown-editing",
-		"Editing Markdown",
-		"markdownEditorStatus",
-		"replaceSelectedLines",
-		"wrapMarkdownSelection",
-		"replaceMarkdownSelection",
-		".markdown-editor-input",
-	} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview Markdown read-only UI should not keep editor helper %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewUIResolvesInternalLinksAndMentionsThroughRouter(t *testing.T) {
-	internalLinks, err := os.ReadFile("preview_ui_src/js/internal-links.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	htmlDoc, err := os.ReadFile("preview_ui_src/js/html-doc.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	docViewer, err := os.ReadFile("preview_ui_src/components/DocViewer.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(internalLinks) + "\n" + string(htmlDoc) + "\n" + string(docViewer)
-	for _, want := range []string{
-		"decorateInternalDocNavigation",
-		"decorateInternalDocLinks",
-		"decorateInternalDocMentions",
-		"resolveSpecNavigationTarget",
-		"internalSpecLink",
-		"@doc",
-		"@spec",
-		"internalDocMentionPattern",
-		`+\.(?:md|html?)`,
-		"doc-relation-${typeClass}",
-		"relation.href = target",
-		"selectSpec(target.specId, true",
-		`${pathNoExt}.html`,
-		`${basenameNoExt}.html`,
-		"candidates.add(`${key}.html`)",
-		"candidates.add(`${key}/_overview.html`)",
-		"NodeFilter.SHOW_TEXT",
-		`closest("a, pre, code, script, style")`,
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview internal link router support missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{"window.location.href", "location.assign", "location.replace"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview internal docs navigation should not use raw redirect: %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewMarkdownTablesWrapLongCellContent(t *testing.T) {
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(css)
-	for _, want := range []string{".markdown td code", ".markdown table th,\n.markdown table td", ".html-doc table th,\n.html-doc table td", ".metadata-table th,\n.metadata-table td", "text-align: left !important", "overflow-wrap: anywhere", "word-break: break-word", "overflow-x: auto"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview table CSS missing %s", want)
-		}
-	}
-}
-
-func TestPreviewSidebarIsFixedTreeWithIcons(t *testing.T) {
-	text := previewUIText(t)
-	for _, want := range []string{"lg:fixed", "buildSpecTree", "TreeNode", "folder", `name="file-text"`, "Icon.vue"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview sidebar missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUIConnectsHotReload(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/App.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(app)
-	for _, want := range []string{"window.addEventListener(\"popstate\"", "systemThemeQuery?.addEventListener", "loadGraph", "fetchJSON(\"/api/project\")", "fetchJSON(\"/api/docs\")"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI lifecycle wiring missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUIUpdatesURLForFocusedTabs(t *testing.T) {
-	app, err := os.ReadFile("preview_ui_src/App.vue")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(app)
-	for _, want := range []string{"routeFromLocation", "updateRouteURL", "window.history.pushState", "window.location.pathname", "popstate", "encodeURIComponent", "buildRouteQuery"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI route handling missing %s", want)
-		}
-	}
-	for _, want := range []string{"validSpecFolderPath", "selectSpecFolder", "selectedFolderListing", "selectedFolderPath", "routeFolderPath"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI folder route handling missing %s", want)
-		}
-	}
-	if strings.Contains(text, "fetchJSON(\"/api/graph\")])") {
-		t.Fatalf("preview UI should not fetch graph during initial project/docs load")
-	}
-	if strings.Contains(text, "hashchange") {
-		t.Fatalf("preview UI should use path routing without hash fragments")
-	}
-}
-
-func TestPreviewDiagramSanitizerKeepsMermaidLabels(t *testing.T) {
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(diagrams)
-	for _, want := range []string{"USE_PROFILES", "foreignObject", "\"div\"", "\"span\"", "\"style\""} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram sanitizer missing %s, Mermaid labels may be stripped", want)
-		}
-	}
-}
-
-func TestPreviewDiagramUsesThemeAwareEdgesAndLabels(t *testing.T) {
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(diagrams)
-	for _, want := range []string{"window.mermaid.initialize", `theme: theme === "dark" ? "dark" : "default"`, "securityLevel: \"strict\"", "renderDiagram(host, id, diagram, theme)"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview diagram dark theme edge/label support missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUISupportsDarkMode(t *testing.T) {
-	text := previewUIText(t)
-	for _, want := range []string{"spec-preview-theme", "prefers-color-scheme: dark", "id=\"themeToggle\"", "applyThemePreference", `theme === "dark" ? "dark" : "default"`, "renderCurrentSpec"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI dark mode missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUIUsesSafeScrollbars(t *testing.T) {
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(css)
-	for _, want := range []string{"scrollbar-gutter: stable", "scrollbar-width: thin", "::-webkit-scrollbar-thumb", "--scrollbar-thumb", "background-clip: padding-box"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview safe scrollbar CSS missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUIRendersMermaidWithSvgPanZoom(t *testing.T) {
-	html, err := os.ReadFile("preview_ui/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(html) + "\n" + string(diagrams) + "\n" + string(css)
-	for _, want := range []string{"decorateDiagram", "diagram-surface", "diagram-toolbar", "diagram-viewport", "panZoomInstances", "window.svgPanZoom"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview Mermaid svg-pan-zoom integration missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{"id=\"diagramLightbox\"", "openDiagramLightbox", "showModal()", "diagram-lightbox", "diagramViewports"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview Mermaid should not use old lightbox/custom viewport code: %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewUIRendersMermaidC4Fences(t *testing.T) {
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(diagrams)
-	for _, want := range []string{"sourceLanguage", "renderDiagramsIn", "diagramSourceFromCodeBlock", "mermaidC4TypeFromLanguage", "looksLikeMermaidC4", "C4(?:Context|Container|Component|Dynamic|Deployment)", "replace(/[-_\\s]/g, \"\")", "c4(?:context|container|component|dynamic|deployment)?", "C4Component"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI Mermaid C4 fence rendering missing %s", want)
-		}
-	}
-}
-
-func TestPreviewUIRendersLikeC4ModelThroughMermaidC4(t *testing.T) {
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(diagrams)
-	for _, want := range []string{"sourceLanguage", "language === \"likec4\"", "language === \"c4model\"", "looksLikeLikeC4Model", "likeC4ModelToMermaid", "appendLikeC4Root", "node.kind === \"softwareSystem\"", "C4Component", "Container_Boundary", "Component(", "Rel(", "relation[3] || \"uses\"", "LikeC4 model"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview UI LikeC4 model rendering missing %s", want)
-		}
-	}
-}
-
-func TestPreviewDiagramUsesSvgPanZoomAPI(t *testing.T) {
-	html, err := os.ReadFile("preview_ui/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(html) + "\n" + string(diagrams) + "\n" + string(css)
-	for _, want := range []string{"data-diagram-action=\"zoom-in\"", "data-diagram-action=\"zoom-out\"", "data-diagram-action=\"fit\"", "diagram-zoom-level", "Ctrl/Command-scroll to zoom", "mouseWheelZoomEnabled: false", "!event.ctrlKey && !event.metaKey", "event.preventDefault()", "instance.zoomAtPointBy", "zoomScaleSensitivity: 0.25", "instance.zoomIn()", "instance.zoomOut()", "instance.fit()", "instance.center()", "instance.resetZoom()", "instance.resetPan()"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview Mermaid svg-pan-zoom API missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{"beforeWheel", "zoomDiagramViewport", "fitDiagramViewport", "centerDiagramViewport", "pointerdown", "pointermove", "setPointerCapture", "view.stage.style.transform"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview Mermaid should delegate zoom/pan to svg-pan-zoom: %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewDiagramPanZoomLifecycleIsManaged(t *testing.T) {
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(diagrams)
-	for _, want := range []string{"destroyDiagramsIn", "panZoomInstances.get(id)?.destroy()", "panZoomInstances.set(id, instance)", "panZoomInstances.delete(id)"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview Mermaid svg-pan-zoom lifecycle missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{"dataset.baseWidth", "dataset.baseHeight", "renderWidth", "renderHeight"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview Mermaid should not keep custom SVG resize zoom code: %s", forbidden)
-		}
-	}
-}
-
-func TestPreviewDiagramSvgIsPreparedForLibraryViewport(t *testing.T) {
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(diagrams)
-	for _, want := range []string{"svg.style.maxWidth = \"none\"", "svg.classList.add(\"diagram-svg\")", "window.svgPanZoom", "fit: true", "center: true"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview Mermaid SVG library preparation missing %s", want)
-		}
-	}
-	if !strings.Contains(string(diagrams), `svg.style.maxWidth = "none"`) {
-		t.Fatalf("Vue preview diagram source should clear Mermaid inline max-width")
-	}
-	if strings.Contains(text, "svg.removeAttribute(\"width\")") || strings.Contains(text, "svg.removeAttribute(\"height\")") {
-		t.Fatalf("preview Mermaid should let svg-pan-zoom manage rendered SVG sizing")
-	}
-}
-
-func TestPreviewDiagramViewportUsesHiddenOverflowWithoutCustomBackground(t *testing.T) {
-	diagrams, err := os.ReadFile("preview_ui_src/js/diagrams.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := os.ReadFile("preview_ui/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(diagrams) + "\n" + string(css)
-	for _, want := range []string{"overflow: hidden", "touch-action: none"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview inline Mermaid viewport behavior missing %s", want)
-		}
-	}
-	for _, forbidden := range []string{"injectSvgBackground", "diagram-lightbox__svg-bg", "clone.style.background", "--diagram-canvas-bg", "--diagram-grid-line"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("preview Mermaid should not add background to diagram SVG: %s", forbidden)
-		}
-	}
-	if strings.Contains(text, "scrollbar-gutter: stable both-edges") {
-		t.Fatalf("preview Mermaid viewport should not reserve scrollbar gutter")
+		t.Fatalf("docs changes should be handled by data reload, not source token: %q != %q", next, docToken)
 	}
 }
 
@@ -3245,27 +2187,19 @@ func TestPickPreviewAddrP(t *testing.T) {
 }
 
 func TestIsPreviewSourceFileP(t *testing.T) {
-	ui := "/proj/internal/preview/preview_ui"
-	uiSrc := "/proj/internal/preview/preview_ui_src"
-	if kind, ok := previewSourceFileKind("main.go", "/proj/main.go", uiSrc); !ok || kind != previewSourceBackend {
+	if kind, ok := previewSourceFileKind("main.go", "/proj/main.go"); !ok || kind != previewSourceBackend {
 		t.Errorf("main.go should be backend")
 	}
-	if kind, ok := previewSourceFileKind("go.mod", "/proj/go.mod", uiSrc); !ok || kind != previewSourceBackend {
+	if kind, ok := previewSourceFileKind("go.mod", "/proj/go.mod"); !ok || kind != previewSourceBackend {
 		t.Errorf("go.mod should be backend")
 	}
-	for _, rel := range []string{"package.json", "package-lock.json", "biome.json", "tsconfig.preview.json", "tsconfig.vue.json", "vite.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore"} {
-		if kind, ok := previewSourceFileKind(rel, "/proj/"+rel, uiSrc); !ok || kind != previewSourceFrontend {
-			t.Errorf("%s should be frontend", rel)
+	for _, rel := range []string{"package.json", "package-lock.json", "biome.json", "tsconfig.portal.json", "vite.portal.config.ts", "eslint.config.mjs", ".prettierrc.json", ".prettierignore"} {
+		if kind, ok := previewSourceFileKind(rel, "/proj/"+rel); !ok || kind != previewSourceBackend {
+			t.Errorf("%s should be backend", rel)
 		}
 	}
-	if kind, ok := previewSourceFileKind("preview_ui_src/main.ts", "/proj/internal/preview/preview_ui_src/main.ts", uiSrc); !ok || kind != previewSourceFrontend {
-		t.Errorf("ui_src file should be frontend")
-	}
-	if !isPreviewSourceFile("main.go", "/proj/main.go", ui, uiSrc) {
+	if !isPreviewSourceFile("main.go", "/proj/main.go") {
 		t.Error("isPreviewSourceFile should be true for main.go")
-	}
-	if !isPreviewSourceFile("x", ui+"/x", ui, uiSrc) {
-		t.Error("isPreviewSourceFile should be true for files under ui/")
 	}
 }
 
@@ -3317,8 +2251,8 @@ func TestWalkPreviewSourceAndTokensP(t *testing.T) {
 	if seen["go.mod"] != previewSourceBackend {
 		t.Errorf("go.mod should be backend: %v", seen)
 	}
-	if seen["package.json"] != previewSourceFrontend {
-		t.Errorf("package.json should be frontend: %v", seen)
+	if seen["package.json"] != previewSourceBackend {
+		t.Errorf("package.json should be backend: %v", seen)
 	}
 	if _, ok := seen[".git/HEAD"]; ok {
 		t.Error(".git should be skipped")
@@ -3327,8 +2261,8 @@ func TestWalkPreviewSourceAndTokensP(t *testing.T) {
 	if tok.backend == "0:0" {
 		t.Errorf("expected backend tokens, got %q", tok.backend)
 	}
-	if tok.frontend == "0:0" {
-		t.Errorf("expected frontend tokens, got %q", tok.frontend)
+	if tok.frontend != "0:0" {
+		t.Errorf("expected no frontend tokens, got %q", tok.frontend)
 	}
 	if tok1 := previewSourceToken(dir); tok1 != tok.backend+"|"+tok.frontend {
 		t.Errorf("previewSourceToken inconsistent: %q", tok1)
@@ -3338,58 +2272,6 @@ func TestWalkPreviewSourceAndTokensP(t *testing.T) {
 func TestNewestModTokenEmptyP(t *testing.T) {
 	if got := newestModToken("/this/does/not/exist"); got == "" {
 		t.Error("expected non-empty token")
-	}
-}
-
-func TestNewestEmbeddedModTokenP(t *testing.T) {
-	if got := newestEmbeddedModToken(); got == "" {
-		t.Error("expected non-empty token")
-	}
-}
-
-func TestIsPreviewStaticAssetPathP(t *testing.T) {
-	cases := map[string]bool{
-		"favicon.svg":          true,
-		"style.css":            true,
-		"assets/foo.js":        true,
-		"nested/assets/foo.js": true,
-		"js/app.js":            true,
-		"index.html":           false,
-		"page.html":            false,
-	}
-	for p, want := range cases {
-		if got := isPreviewStaticAssetPath(p); got != want {
-			t.Errorf("isPreviewStaticAssetPath(%q) = %v, want %v", p, got, want)
-		}
-	}
-}
-
-func TestSpaFileServerP(t *testing.T) {
-	static := os.DirFS(t.TempDir())
-	handler := spaFileServer(static)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodHead, "/", nil)
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("HEAD /: %d", rec.Code)
-	}
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("GET /favicon.svg (missing): %d", rec.Code)
-	}
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/some/spa/route", nil)
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("GET /some/spa/route: %d", rec.Code)
-	}
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/", nil)
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("POST / should pass through: %d", rec.Code)
 	}
 }
 
@@ -3666,101 +2548,12 @@ func TestLocationsArrayInvalidJSON(t *testing.T) {
 }
 
 
-func TestRunHotReloadSupervisorDoneChannelReturnsError(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		return nil, makeChannelWithResult(errors.New("child failed")), nil
-	}
-	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
-	if err == nil || err.Error() != "child failed" {
-		t.Errorf("expected child failed, got %v", err)
-	}
-}
-
-func TestRunHotReloadSupervisorDoneChannelReturnsSuccess(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		return nil, makeChannelWithResult(nil), nil
-	}
-	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-}
-
-func TestRunHotReloadSupervisorStartError(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		return nil, nil, errors.New("start failed")
-	}
-	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
-	if err == nil || err.Error() != "start failed" {
-		t.Errorf("expected start failed, got %v", err)
-	}
-}
-
-func TestRunHotReloadSupervisorPreviewChildArgsError(t *testing.T) {
-	// previewChildArgs returns error if cwd is invalid
-	err := runHotReloadSupervisor(t.TempDir(), []string{}, "/nonexistent/path/that/does/not/exist/anywhere")
-	if err == nil {
-		t.Error("expected error from previewChildArgs with bad project root")
-	}
-}
-
 func makeChannelWithResult(err error) <-chan previewChildResult {
 	ch := make(chan previewChildResult, 1)
 	ch <- previewChildResult{err: err}
 	return ch
 }
 
-
-func TestRunHotReloadSupervisorTickerReload(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-
-	// Mock that returns a never-closing done channel and we will manually
-	// change a file to trigger token change.
-	startCount := 0
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		startCount++
-		return nil, makeChannelBlocking(), nil
-	}
-
-	// Create a module dir with a Go file that has tokens (backend)
-	moduleRoot := t.TempDir()
-	goFile := filepath.Join(moduleRoot, "main.go")
-	if err := os.WriteFile(goFile, []byte("package main"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Run in goroutine; will tick after 700ms and try to restart
-	done := make(chan error, 1)
-	go func() {
-		done <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
-	}()
-	// Touch the file after a brief delay to trigger token change
-	time.Sleep(800 * time.Millisecond)
-	if err := os.WriteFile(goFile, []byte("package main\n// changed"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// Wait a bit more for ticker to fire and pick up the change
-	time.Sleep(1500 * time.Millisecond)
-	// Force shutdown via done channel - just close our test by leaking
-	// (we'll cancel by sending to a signal, but we can't here).
-	// Instead just wait a bit and verify startCount >= 1.
-	if startCount < 1 {
-		t.Errorf("expected at least 1 start, got %d", startCount)
-	}
-	// Send to the blocking channel to terminate
-	// We can't reach the done channel directly since it's inside the function.
-	// Just exit the test - the goroutine will leak but that's OK for testing.
-}
 
 func makeChannelBlocking() chan previewChildResult {
 	return make(chan previewChildResult)
@@ -3830,8 +2623,8 @@ func TestHandleEventsStreamsChangesAndHeartbeats(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(docsDir, "a.md"), []byte("# a"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ps := &previewServer{opt: previewOptions{projectRoot: projectRoot, docsDir: "docs"}}
-	srv := httptest.NewServer(http.HandlerFunc(ps.handleEvents))
+	ps := &previewServer{opt: previewOptions{projectRoot: projectRoot, docsDir: "docs"}, handler: NewPreviewHandler(projectRoot, "docs", nil)}
+	srv := httptest.NewServer(http.HandlerFunc(ps.handler.HandleEvents))
 	defer srv.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -3864,10 +2657,11 @@ func TestHandleEventsStreamsChangesAndHeartbeats(t *testing.T) {
 }
 
 func TestHandleEventsRejectsNonGET(t *testing.T) {
-	ps := &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "docs"}}
+	tmp := t.TempDir()
+	ps := &previewServer{opt: previewOptions{projectRoot: tmp, docsDir: "docs"}, handler: NewPreviewHandler(tmp, "docs", nil)}
 	req := httptest.NewRequest(http.MethodPost, "/api/events", nil)
 	w := httptest.NewRecorder()
-	ps.handleEvents(w, req)
+	ps.handler.HandleEvents(w, req)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
 	}
@@ -4878,10 +3672,11 @@ func TestNormalizePreviewProjectRootPy(t *testing.T) {
 
 func TestHandleEventsStreamingUnsupportedP(t *testing.T) {
 	// Wrap response writer to NOT implement Flusher
-	ps := &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "docs"}}
+	tmp := t.TempDir()
+	ps := &previewServer{opt: previewOptions{projectRoot: tmp, docsDir: "docs"}, handler: NewPreviewHandler(tmp, "docs", nil)}
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	w := &nonFlusherWriter{ResponseWriter: httptest.NewRecorder()}
-	ps.handleEvents(w, req)
+	ps.handler.HandleEvents(w, req)
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
 	}
@@ -4902,8 +3697,8 @@ func TestHandleEventsChangeEventP(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Start with no files to ensure changeToken is stable initially
-	ps := &previewServer{opt: previewOptions{projectRoot: projectRoot, docsDir: "docs"}}
-	srv := httptest.NewServer(http.HandlerFunc(ps.handleEvents))
+	ps := &previewServer{opt: previewOptions{projectRoot: projectRoot, docsDir: "docs"}, handler: NewPreviewHandler(projectRoot, "docs", nil)}
+	srv := httptest.NewServer(http.HandlerFunc(ps.handler.HandleEvents))
 	defer srv.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -5167,10 +3962,11 @@ func TestPreviewEmbeddingConfigFromOllamaP(t *testing.T) {
 
 func TestHandleGraphP(t *testing.T) {
 	// Method not allowed.
-	ps := &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "docs"}}
+	tmp := t.TempDir()
+	ps := &previewServer{opt: previewOptions{projectRoot: tmp, docsDir: "docs"}, handler: NewPreviewHandler(tmp, "docs", nil)}
 	req := httptest.NewRequest(http.MethodPost, "/api/graph", nil)
 	w := httptest.NewRecorder()
-	ps.handleGraph(w, req)
+	ps.handler.HandleGraph(w, req)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
 	}
@@ -5184,10 +3980,10 @@ func TestHandleGraphP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(docsDir, "test.md"), []byte("# Hello\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ps = &previewServer{opt: previewOptions{projectRoot: root, docsDir: "docs"}}
+	ps = &previewServer{opt: previewOptions{projectRoot: root, docsDir: "docs"}, handler: NewPreviewHandler(root, "docs", nil)}
 	req = httptest.NewRequest(http.MethodGet, "/api/graph", nil)
 	w = httptest.NewRecorder()
-	ps.handleGraph(w, req)
+	ps.handler.HandleGraph(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -5196,10 +3992,11 @@ func TestHandleGraphP(t *testing.T) {
 	}
 
 	// Load error path: docs directory does not exist.
-	ps = &previewServer{opt: previewOptions{projectRoot: t.TempDir(), docsDir: "missing"}}
+	tmpMissing := t.TempDir()
+	ps = &previewServer{opt: previewOptions{projectRoot: tmpMissing, docsDir: "missing"}, handler: NewPreviewHandler(tmpMissing, "missing", nil)}
 	req = httptest.NewRequest(http.MethodGet, "/api/graph", nil)
 	w = httptest.NewRecorder()
-	ps.handleGraph(w, req)
+	ps.handler.HandleGraph(w, req)
 	if w.Code == http.StatusOK {
 		t.Errorf("expected error status, got 200")
 	}
@@ -5487,158 +4284,6 @@ func TestOpenURLAllBranchesP(t *testing.T) {
 		t.Errorf("default: got %s %v", gotName, gotArgs)
 	}
 }
-
-func TestRunHotReloadSupervisorFrontendChangedP(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-
-	// Track starts. Each start returns a buffered channel; we drain prior
-	// channels after the supervisor calls stopPreviewChild so it can advance
-	// to the next iteration. Sending a result of nil keeps the supervisor
-	// from exiting (it treats a result on done as a normal exit).
-	var mu sync.Mutex
-	startCount := 0
-	doneChans := []chan previewChildResult{}
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		mu.Lock()
-		startCount++
-		ch := make(chan previewChildResult, 1)
-		doneChans = append(doneChans, ch)
-		mu.Unlock()
-		return nil, ch, nil
-	}
-
-	moduleRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(moduleRoot, "main.go"), []byte("package main"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	uiDir := filepath.Join(moduleRoot, "internal", "preview", "preview_ui_src")
-	if err := os.MkdirAll(uiDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	uiFile := filepath.Join(uiDir, "index.html")
-	if err := os.WriteFile(uiFile, []byte("<html>"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	go func() {
-		_ = runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
-	}()
-	// Wait for ticker (700ms cycle), then change the frontend file's mtime.
-	time.Sleep(800 * time.Millisecond)
-	if err := os.WriteFile(uiFile, []byte("<html>changed"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	future := time.Now().Add(2 * time.Second)
-	if err := os.Chtimes(uiFile, future, future); err != nil {
-		t.Fatal(err)
-	}
-	// Wait for the next ticker to fire (at most ~700ms) so the supervisor
-	// reaches <-done inside the ticker.C branch. Then send to the initial
-	// doneChans[0] so it can advance past <-done and start a new child.
-	time.Sleep(1200 * time.Millisecond)
-	mu.Lock()
-	if len(doneChans) >= 1 {
-		select {
-		case doneChans[0] <- previewChildResult{err: nil}:
-		default:
-		}
-	}
-	mu.Unlock()
-	// Wait for the second start.
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-		mu.Lock()
-		current := startCount
-		mu.Unlock()
-		if current >= 2 {
-			break
-		}
-	}
-	mu.Lock()
-	got := startCount
-	// Close last channel to let the supervisor exit cleanly.
-	if len(doneChans) > 0 {
-		last := doneChans[len(doneChans)-1]
-		select {
-		case <-last:
-		default:
-			close(last)
-		}
-	}
-	mu.Unlock()
-	if got < 2 {
-		t.Errorf("expected at least 2 starts (initial + restart), got %d", got)
-	}
-}
-
-func TestRunHotReloadSupervisorRestartErrorP(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-
-	// First call succeeds, second fails. Use a channel to safely hand
-	// the first child's done channel from the stub goroutine to the
-	// main test goroutine; this avoids a data race on the variable.
-	var mu sync.Mutex
-	var callCount int
-	firstDoneCh := make(chan chan previewChildResult, 1)
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		mu.Lock()
-		callCount++
-		idx := callCount
-		mu.Unlock()
-		if idx == 1 {
-			firstDone := make(chan previewChildResult, 1)
-			firstDoneCh <- firstDone
-			return nil, firstDone, nil
-		}
-		return nil, nil, errors.New("restart failed")
-	}
-
-	moduleRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(moduleRoot, "main.go"), []byte("package main"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
-	}()
-	// Trigger ticker with a file change.
-	time.Sleep(800 * time.Millisecond)
-	future := time.Now().Add(2 * time.Second)
-	if err := os.Chtimes(filepath.Join(moduleRoot, "main.go"), future, future); err != nil {
-		t.Fatal(err)
-	}
-	// Wait for the next ticker to fire and supervisor to reach <-done.
-	time.Sleep(1200 * time.Millisecond)
-	// Receive the first child's done channel from the stub via a channel
-	// (synchronized handoff). This avoids reading the variable directly
-	// from a different goroutine.
-	var firstDone chan previewChildResult
-	select {
-	case firstDone = <-firstDoneCh:
-	case <-time.After(1 * time.Second):
-		t.Fatal("did not receive first child done channel")
-	}
-	if firstDone != nil {
-		select {
-		case firstDone <- previewChildResult{err: nil}:
-		default:
-		}
-	}
-
-	select {
-	case err := <-done:
-		if err == nil || err.Error() != "restart failed" {
-			t.Errorf("expected restart failed, got %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Error("test timed out waiting for restart error")
-	}
-}
-
 
 func TestNormalizePreviewProjectRootFallbackP(t *testing.T) {
 	// Path that will trigger ExpandPath but not filepath.Abs.
@@ -6125,195 +4770,6 @@ func TestRunGraphJSONP(t *testing.T) {
 		t.Errorf("expected JSON output, got %s", buf.String())
 	}
 }
-
-func TestRunHotReloadSupervisorInitialBuildErrorP(t *testing.T) {
-	orig := buildPreviewFrontendForTest
-	defer func() { buildPreviewFrontendForTest = orig }()
-	buildPreviewFrontendForTest = func(moduleRoot string) error {
-		return errors.New("initial build failed")
-	}
-	err := runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
-	if err == nil || err.Error() != "initial build failed" {
-		t.Errorf("expected initial build failed, got %v", err)
-	}
-}
-
-func TestRunHotReloadSupervisorSignalsInterruptP(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-
-	stopCalled := make(chan struct{}, 1)
-	var once sync.Once
-	done := make(chan previewChildResult, 1)
-	// Keep the child channel open until the test signals so the supervisor
-	// cannot exit through the result path. We only close it from the
-	// interrupt branch after stopPreviewChild is called.
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		return nil, done, nil
-	}
-	origStop := stopPreviewChildForTest
-	defer func() { stopPreviewChildForTest = origStop }()
-	stopPreviewChildForTest = func(cmd *exec.Cmd) {
-		once.Do(func() { close(stopCalled) })
-		// unblock the supervisor's <-done so it can return
-		select {
-		case done <- previewChildResult{err: nil}:
-		default:
-		}
-	}
-
-	result := make(chan error, 1)
-	go func() {
-		result <- runHotReloadSupervisor(t.TempDir(), []string{}, t.TempDir())
-	}()
-
-	// Wait briefly for the supervisor to enter its select loop.
-	time.Sleep(200 * time.Millisecond)
-	// Trigger signal: simulate SIGINT by stopping signal notification and
-	// sending on the channel directly is not possible without exporting the
-	// channel. Instead, we use the Stop signal the supervisor is listening
-	// to. The cleanest approach is to call signal.Reset and re-Notify and
-	// then send ourselves. Use a direct approach by sending to the process
-	// group via os.Interrupt is hard from within the same process.
-	// Instead, we'll just trigger a stop via test infrastructure. For test
-	// coverage we only need to enter the signal branch; we can simulate it
-	// by calling the supervisor's signal handler indirectly. The supervisor
-	// calls signal.Notify(signals, os.Interrupt); we can simulate the
-	// channel being closed by sending interrupt ourselves via the syscall.
-	proc, err := os.FindProcess(os.Getpid())
-	if err == nil {
-		_ = proc.Signal(os.Interrupt)
-	}
-	select {
-	case <-stopCalled:
-	case <-time.After(3 * time.Second):
-		t.Error("expected stopPreviewChild to be called after signal")
-	}
-	select {
-	case err := <-result:
-		if err != nil {
-			t.Errorf("expected nil error after interrupt, got %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Error("supervisor did not exit after interrupt")
-	}
-}
-
-func TestRunHotReloadSupervisorFrontendBuildFailContinueP(t *testing.T) {
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-	origBuild := buildPreviewFrontendForTest
-	defer func() { buildPreviewFrontendForTest = origBuild }()
-
-	// First build succeeds (so supervisor reaches the loop).
-	// Second build (frontend rebuild) fails; we expect the supervisor to
-	// continue the loop rather than exit.
-	var mu sync.Mutex
-	var buildCount int
-	buildPreviewFrontendForTest = func(moduleRoot string) error {
-		mu.Lock()
-		buildCount++
-		n := buildCount
-		mu.Unlock()
-		if n == 1 {
-			return nil
-		}
-		return errors.New("frontend rebuild failed")
-	}
-
-	// The child channel must remain blocked indefinitely so the supervisor
-	// loops via the ticker.
-	firstDone := make(chan previewChildResult, 1)
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		return nil, firstDone, nil
-	}
-
-	moduleRoot := t.TempDir()
-	// Create frontend source file so previewSourceTokens sees a token.
-	uiDir := filepath.Join(moduleRoot, "internal", "preview", "preview_ui_src")
-	if err := os.MkdirAll(uiDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	uiFile := filepath.Join(uiDir, "index.html")
-	if err := os.WriteFile(uiFile, []byte("<html>"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	result := make(chan error, 1)
-	go func() {
-		result <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
-	}()
-
-	// Wait for ticker (700ms), then update frontend mtime so supervisor
-	// detects frontendChanged and triggers build (which fails -> continue).
-	time.Sleep(800 * time.Millisecond)
-	future := time.Now().Add(2 * time.Second)
-	if err := os.Chtimes(uiFile, future, future); err != nil {
-		t.Fatal(err)
-	}
-
-	// Give time for the failed build to be exercised.
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		n := buildCount
-		mu.Unlock()
-		if n >= 2 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	mu.Lock()
-	got := buildCount
-	mu.Unlock()
-	if got < 2 {
-		t.Errorf("expected at least 2 builds (initial + frontend rebuild), got %d", got)
-	}
-	// Now let the supervisor exit.
-	firstDone <- previewChildResult{err: nil}
-	select {
-	case err := <-result:
-		if err != nil {
-			t.Errorf("expected nil error, got %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Error("supervisor did not exit")
-	}
-}
-
-func TestRunHotReloadSupervisorNoChangeContinueP(t *testing.T) {
-	// Verifies that when tokens don't change, the supervisor takes the
-	// 'continue' path inside the ticker branch.
-	orig := startPreviewChildForTest
-	defer func() { startPreviewChildForTest = orig }()
-	done := make(chan previewChildResult, 1)
-	startPreviewChildForTest = func(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
-		return nil, done, nil
-	}
-
-	moduleRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(moduleRoot, "main.go"), []byte("package main"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	result := make(chan error, 1)
-	go func() {
-		result <- runHotReloadSupervisor(moduleRoot, []string{}, moduleRoot)
-	}()
-	// Wait for at least two ticker cycles so the 'continue' path is hit
-	// without any file changes.
-	time.Sleep(1700 * time.Millisecond)
-	done <- previewChildResult{err: nil}
-	select {
-	case err := <-result:
-		if err != nil {
-			t.Errorf("expected nil error, got %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Error("supervisor did not exit")
-	}
-}
-
 
 func TestLSPServerStartInitializeFailsP(t *testing.T) {
 	// Use a command that starts but doesn't speak LSP. We use `true` which

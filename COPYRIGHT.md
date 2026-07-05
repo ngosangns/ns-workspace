@@ -14,7 +14,7 @@ Các dependency và package bên thứ ba giữ nguyên license của tác giả
 
 - `go.mod` và `go.sum` cho Go modules.
 - `package.json` và `package-lock.json` cho npm packages.
-- CDN imports trong `internal/preview/preview_ui_src/index.html` và các file frontend liên quan.
+- CDN imports trong `internal/portal/portal_ui_src/index.html` và các file frontend liên quan.
 
 Việc dùng dependency bên thứ ba trong repo này không chuyển quyền sở hữu hoặc license của các dependency đó sang chủ sở hữu repo.
 

@@ -12,7 +12,7 @@ compliance: current-state
 
 ## Tổng Quan
 
-Portal là giao diện web tích hợp trong `ns-workspace`, chạy local single-user, cho phép xem, chỉnh sửa và chạy sync các preset skills, MCP servers và registry skills.
+Portal là giao diện web tích hợp trong `ns-workspace`, chạy local single-user, cho phép xem, chỉnh sửa và chạy sync các preset skills, MCP servers và registry skills. Portal không còn bao gồm docs preview; để xem docs dùng lệnh `preview` (Quartz) riêng biệt.
 
 ## Chạy
 
@@ -60,14 +60,19 @@ Flags:
 - **Adapters**: danh sách adapter với tier và artifacts.
 - **Sync Panel**: nút chạy `status`, `doctor`, `init`, dry-run `update`, `update`, `registry` với log stream.
 
-## Build
+Docs preview đã được tách sang lệnh `preview` và không còn trong portal.
+
+## Serve Và Lint
 
 ```bash
-npm run build:portal   # build frontend
+task ns:portal         # serve portal server
+task ns:portal -- --addr 127.0.0.1:8080
 npm run check:portal   # type check
-npm run lint:portal    # lint
-npm run format:portal  # format
+npm run lint:portal    # lint (bao gồm format check)
+npm run lint:portal:fix
 ```
+
+Portal không cần build task trong Taskfile; UI static output được build bằng `npm run build:portal` khi cần cập nhật artifact embed.
 
 ## Ràng Buộc
 

@@ -6,6 +6,19 @@ const adapters = ref<Adapter[]>([]);
 const loading = ref(true);
 const error = ref("");
 
+function tierColor(tier: string): string {
+  switch (tier) {
+    case "stable":
+      return "positive";
+    case "manual":
+      return "warning";
+    case "experimental":
+      return "grey-7";
+    default:
+      return "grey-7";
+  }
+}
+
 async function load() {
   loading.value = true;
   error.value = "";
@@ -23,20 +36,23 @@ onMounted(load);
 
 <template>
   <div>
-    <h2 class="page-title">Adapters</h2>
-    <p v-if="loading" class="empty">Loading...</p>
-    <p v-else-if="error" class="empty" style="color: var(--danger)">{{ error }}</p>
-    <div v-else class="list">
-      <div v-for="adapter in adapters" :key="adapter.id" class="list-item">
-        <div>
-          <div class="title">{{ adapter.name }}</div>
-          <div class="meta">
-            <span :class="['badge', adapter.tier]">{{ adapter.tier }}</span>
-            <span v-if="adapter.artifacts">{{ adapter.artifacts.join(", ") }}</span>
-          </div>
-          <div v-if="adapter.notes" class="meta">{{ adapter.notes }}</div>
-        </div>
-      </div>
+    <h2 class="text-h5 q-mb-md">Adapters</h2>
+
+    <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
+    <div v-else-if="loading" class="flex flex-center q-pa-xl">
+      <q-spinner color="primary" size="3em" />
     </div>
+    <q-list v-else bordered separator class="bg-secondary rounded-borders">
+      <q-item v-for="adapter in adapters" :key="adapter.id" class="q-py-md">
+        <q-item-section>
+          <q-item-label class="text-weight-medium">{{ adapter.name }}</q-item-label>
+          <q-item-label caption>
+            <q-chip :color="tierColor(adapter.tier)" text-color="white" size="sm">{{ adapter.tier }}</q-chip>
+            <span v-if="adapter.artifacts" class="q-ml-sm text-grey-5">{{ adapter.artifacts.join(", ") }}</span>
+          </q-item-label>
+          <q-item-label v-if="adapter.notes" caption class="q-mt-xs">{{ adapter.notes }}</q-item-label>
+        </q-item-section>
+      </q-item>
+    </q-list>
   </div>
 </template>

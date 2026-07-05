@@ -1,34 +1,70 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { useRouter } from "./router";
+import { ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useQuasar } from "quasar";
 
-const { current: currentView } = useRouter();
-const route = ref(window.location.hash || "#");
+const $q = useQuasar();
+const route = useRoute();
+const router = useRouter();
+const drawerOpen = ref(true);
 
-window.addEventListener("hashchange", () => {
-  route.value = window.location.hash || "#";
-});
+interface NavItem {
+  label: string;
+  icon: string;
+  to: string;
+}
 
-const isActive = (prefix: string) => computed(() => route.value.startsWith(prefix)).value;
+const navItems: NavItem[] = [
+  { label: "Dashboard", icon: "sym_o_dashboard", to: "/" },
+  { label: "Skills", icon: "sym_o_psychology", to: "/skills" },
+  { label: "MCPs", icon: "sym_o_dns", to: "/mcps" },
+  { label: "Registry", icon: "sym_o_apps", to: "/registry" },
+  { label: "Adapters", icon: "sym_o_extension", to: "/adapters" },
+];
+
+function navigate(to: string) {
+  router.push(to);
+}
+
+function toggleDark() {
+  $q.dark.toggle();
+}
 </script>
 
 <template>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <h1>ns-workspace</h1>
-        <p>Skills & MCP Portal</p>
-      </div>
-      <nav class="nav">
-        <a href="#" :class="{ active: route === '#' }">Dashboard</a>
-        <a href="#skills" :class="{ active: isActive('#skills') }">Skills</a>
-        <a href="#mcps" :class="{ active: route === '#mcps' }">MCPs</a>
-        <a href="#registry" :class="{ active: route === '#registry' }">Registry</a>
-        <a href="#adapters" :class="{ active: route === '#adapters' }">Adapters</a>
-      </nav>
-    </aside>
-    <main class="main">
-      <component :is="currentView" />
-    </main>
-  </div>
+  <q-layout view="hHh Lpr lff" class="bg-dark text-grey-1">
+    <q-header elevated class="bg-secondary text-grey-1">
+      <q-toolbar>
+        <q-btn flat round dense icon="sym_o_menu" @click="drawerOpen = !drawerOpen" />
+        <q-toolbar-title>ns-workspace</q-toolbar-title>
+        <q-btn flat round dense :icon="$q.dark.isActive ? 'sym_o_light_mode' : 'sym_o_dark_mode'" @click="toggleDark" />
+      </q-toolbar>
+    </q-header>
+
+    <q-drawer v-model="drawerOpen" show-if-above bordered class="bg-secondary">
+      <q-list padding>
+        <q-item
+          v-for="item in navItems"
+          :key="item.to"
+          clickable
+          :active="route.path === item.to || route.path.startsWith(item.to + '/')"
+          active-class="bg-primary text-dark"
+          @click="navigate(item.to)"
+        >
+          <q-item-section avatar>
+            <q-icon :name="item.icon" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>{{ item.label }}</q-item-label>
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </q-drawer>
+
+    <q-page-container>
+      <q-page padding>
+        <router-view />
+      </q-page>
+    </q-page-container>
+  </q-layout>
 </template>

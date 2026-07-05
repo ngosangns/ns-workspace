@@ -158,7 +158,7 @@ func runGraphQuery(opt graphOptions, out io.Writer) error {
 		defer shutdownCancel()
 		_ = server.shutdown(shutdownCtx)
 	}()
-	return runGraphQueryWithProvider(ctx, opt, server.codeGraph, out)
+	return runGraphQueryWithProvider(ctx, opt, server.handler.codeGraph, out)
 }
 
 func runGraphQueryWithProvider(ctx context.Context, opt graphOptions, codeGraph previewCodeGraphProvider, out io.Writer) error {

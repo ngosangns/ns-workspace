@@ -11,7 +11,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "strict": false,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["internal/portal/portal_ui_src/*"]
+    }
   },
   "include": ["internal/portal/portal_ui_src/**/*.ts", "internal/portal/portal_ui_src/**/*.vue"]
 }
