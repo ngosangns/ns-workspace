@@ -26,9 +26,9 @@ type scriptSpec struct {
 
 // nsCLI là tiền tố command để gọi ns-workspace ở chế độ remote (tương đương
 // `go run github.com/ngosangns/ns-workspace@latest ...`). Khi user chạy Taskfile
-// trong checkout local, họ có thể override biến `NS_WORKSPACE` thành `go run .`
-// để dùng code local thay vì tải từ network.
-const nsCLI = "go run github.com/ngosangns/ns-workspace@latest"
+// trong checkout local, họ có thể override biến môi trường `NS_WORKSPACE` thành
+// `go run .` để dùng code local thay vì tải từ network.
+const nsCLI = "${NS_WORKSPACE:-go run github.com/ngosangns/ns-workspace@latest}"
 
 // defaultScripts là danh sách scripts/commands của ns-workspace sẽ được
 // materialize vào Taskfile.yml. Danh sách được giữ hard-coded để đảm bảo

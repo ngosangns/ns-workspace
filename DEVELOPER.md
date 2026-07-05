@@ -61,8 +61,8 @@ go test ./internal/kbmcp
 Serve và lint:
 
 ```bash
-# Serve
-npm install
+# Serve (trong checkout local, dùng NS_WORKSPACE để chạy code local thay vì download)
+export NS_WORKSPACE="go run ."
 task ns:portal
 task ns:preview
 
@@ -74,6 +74,8 @@ task lint:preview:fix
 task lint:doc
 task lint:doc:fix
 ```
+
+Task mặc định dùng `go run github.com/ngosangns/ns-workspace@latest` để không phụ thuộc vào vị trí checkout. Biến `NS_WORKSPACE` cho phép override toàn bộ command đó, hữu ích khi phát triển local.
 
 `npm install` chạy `prepare` để cài Git pre-commit hook bằng `simple-git-hooks`. Hook gọi `lint-staged`, chạy ESLint/Biome/Prettier fix trên file portal đã stage và để lint-staged cập nhật lại staged changes trước khi commit.
 
