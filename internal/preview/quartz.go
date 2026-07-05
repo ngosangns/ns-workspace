@@ -94,7 +94,7 @@ func prepareQuartzWorkspace(projectRoot, docsDir string) (string, func(), error)
 
 	docsAbs := docsRoot(projectRoot, docsDir)
 	contentDir := filepath.Join(workspace, "content")
-	if err := linkOrCopyDir(docsAbs, contentDir); err != nil {
+	if err := prepareContentDir(docsAbs, contentDir); err != nil {
 		return "", cleanup, fmt.Errorf("link docs into quartz workspace: %w", err)
 	}
 
@@ -106,7 +106,8 @@ func prepareQuartzWorkspace(projectRoot, docsDir string) (string, func(), error)
 // until the server process exits. wsPort is used for the WebSocket hot-reload
 // channel; passing an empty string leaves Quartz's default.
 func runQuartzServe(repoDir, workspaceDir, port, wsPort string, stdout, stderr io.Writer) error {
-	args := []string{"quartz", "build", "--serve", "--directory", workspaceDir, "--port", port}
+	contentDir := filepath.Join(workspaceDir, "content")
+	args := []string{"quartz", "build", "--serve", "--directory", contentDir, "--port", port}
 	if wsPort != "" {
 		args = append(args, "--wsPort", wsPort)
 	}
@@ -180,6 +181,58 @@ func copyFile(src, dst string) error {
 
 	_, err = io.Copy(out, in)
 	return err
+}
+
+// prepareContentDir populates the Quartz content directory by linking each
+// entry from the project docs folder. Keeping content a real directory lets us
+// add a generated index.md fallback without modifying the project's docs folder.
+func prepareContentDir(docsAbs, contentDir string) error {
+	if err := os.MkdirAll(contentDir, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(docsAbs)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(docsAbs, entry.Name())
+		dstPath := filepath.Join(contentDir, entry.Name())
+		if entry.IsDir() {
+			if err := linkOrCopyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := linkOrCopyFile(srcPath, dstPath); err != nil {
+			return err
+		}
+	}
+	return ensureContentIndex(contentDir)
+}
+
+// linkOrCopyFile tries to symlink src to dst; if symlinks are not supported it
+// falls back to a file copy.
+func linkOrCopyFile(src, dst string) error {
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink(src, dst); err == nil {
+			return nil
+		}
+	}
+	return copyFile(src, dst)
+}
+
+// ensureContentIndex makes sure Quartz has a page to serve at the site root.
+// If the project already provides index.md or _index.md, Quartz will use one of
+// those as the homepage and we leave it untouched. Otherwise we create a minimal
+// index.md in the workspace so the dev server does not return 404 for /.
+func ensureContentIndex(contentDir string) error {
+	for _, name := range []string{"index.md", "_index.md"} {
+		if _, err := os.Stat(filepath.Join(contentDir, name)); err == nil {
+			return nil
+		}
+	}
+	const fallback = "---\ntitle: Home\n---\n\n# Home\n\nWelcome to the docs preview.\n\n- [README](/README)\n"
+	return os.WriteFile(filepath.Join(contentDir, "index.md"), []byte(fallback), 0o644)
 }
 
 // resolveQuartzRepo returns the Quartz repository root to use. If dir is

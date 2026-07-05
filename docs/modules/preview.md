@@ -48,7 +48,7 @@ Preview và portal đã được tách riêng:
 1. Clone Quartz vào `~/.cache/ns-workspace/quartz/repo` (nếu chưa có) và `npm install`.
 2. Tạo workspace per-project trong `~/.cache/ns-workspace/quartz/workspaces/<hash>/`.
 3. Symlink/copy thư mục `docs/` vào `content/` của workspace.
-4. Chạy `npx quartz build --serve --directory <workspace> --port <port>` từ repo cache.
+4. Chạy `npx quartz build --serve --directory <workspace>/content --port <port>` từ repo cache.
 5. In URL và mở browser nếu `--open`.
 
 Khi Quartz chưa được clone, lần chạy đầu tiên cần mạng để tải repo và npm dependencies. Các lần sau dùng cache.
