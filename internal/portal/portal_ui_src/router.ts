@@ -4,6 +4,7 @@ import Skills from "./views/Skills.vue";
 import MCPs from "./views/MCPs.vue";
 import Registry from "./views/Registry.vue";
 import Adapters from "./views/Adapters.vue";
+import Claude from "./views/Claude.vue";
 
 const routes: RouteRecordRaw[] = [
   { path: "/", component: Dashboard },
@@ -11,6 +12,7 @@ const routes: RouteRecordRaw[] = [
   { path: "/mcps", component: MCPs },
   { path: "/registry", component: Registry },
   { path: "/adapters", component: Adapters },
+  { path: "/claude", component: Claude },
 ];
 
 export const router = createRouter({

@@ -47,6 +47,8 @@ func (s *portalServer) router() *http.ServeMux {
 	mux.HandleFunc("/api/skills/", s.handleSkill)
 	mux.HandleFunc("/api/mcps", s.handleMCPs)
 	mux.HandleFunc("/api/mcps/preset", s.handleMCPPreset)
+	mux.HandleFunc("/api/settings/claude", s.handleClaudeSettings)
+	mux.HandleFunc("/api/settings/claude/preset", s.handleClaudeSettingsPreset)
 	mux.HandleFunc("/api/registry", s.handleRegistry)
 	mux.HandleFunc("/api/adapters", s.handleAdapters)
 	mux.HandleFunc("/api/adapters/", s.handleAdapter)

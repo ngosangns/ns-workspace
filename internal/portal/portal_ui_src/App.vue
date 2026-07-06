@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   { label: "MCPs", icon: "sym_o_dns", to: "/mcps" },
   { label: "Registry", icon: "sym_o_apps", to: "/registry" },
   { label: "Adapters", icon: "sym_o_extension", to: "/adapters" },
+  { label: "Claude", icon: "sym_o_chat", to: "/claude" },
 ];
 
 function navigate(to: string) {

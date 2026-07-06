@@ -31,6 +31,23 @@ func (m *MCPManifest) Servers() map[string]any {
 	return m.MCPServers.MCPServers
 }
 
+// ClaudeEnv contains the environment variables Claude Code reads from
+// ~/.claude/settings.json for custom endpoints and models.
+type ClaudeEnv struct {
+	AnthropicBaseURL        string `json:"ANTHROPIC_BASE_URL,omitempty"`
+	AnthropicAuthToken      string `json:"ANTHROPIC_AUTH_TOKEN,omitempty"`
+	AnthropicModel          string `json:"ANTHROPIC_MODEL,omitempty"`
+	AnthropicSmallFastModel string `json:"ANTHROPIC_SMALL_FAST_MODEL,omitempty"`
+}
+
+// ClaudeSettings is the effective Claude Code settings with provenance metadata.
+type ClaudeSettings struct {
+	Permissions map[string]any `json:"permissions"`
+	Env         ClaudeEnv      `json:"env"`
+	Overridden  bool           `json:"overridden"`
+	Source      string         `json:"source"`
+}
+
 // RegistrySkills is the registry skills manifest exposed through the portal API.
 type RegistrySkills struct {
 	Skills []RegistrySkill `json:"skills"`

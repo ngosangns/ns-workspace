@@ -273,6 +273,53 @@ func sourceLabel(overridden bool) string {
 	return "embedded"
 }
 
+// ReadClaudeSettings returns the effective Claude Code settings with provenance metadata.
+func (s *Store) ReadClaudeSettings() (*ClaudeSettings, error) {
+	key := "presets/settings/claude.json"
+	data, err := s.readEffective(key)
+	if err != nil {
+		return nil, err
+	}
+	var settings ClaudeSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("invalid Claude settings JSON: %w", err)
+	}
+	settings.Overridden = s.isOverridden(key)
+	settings.Source = sourceLabel(settings.Overridden)
+	return &settings, nil
+}
+
+// ReadClaudeSettingsPreset returns the embedded Claude Code settings preset.
+func (s *Store) ReadClaudeSettingsPreset() (*ClaudeSettings, error) {
+	key := "presets/settings/claude.json"
+	data, err := s.readEmbedded(key)
+	if err != nil {
+		return nil, err
+	}
+	var settings ClaudeSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("invalid Claude preset JSON: %w", err)
+	}
+	settings.Source = "embedded"
+	settings.Overridden = false
+	return &settings, nil
+}
+
+// WriteClaudeSettings updates the Claude Code settings via overlay.
+func (s *Store) WriteClaudeSettings(settings *ClaudeSettings) error {
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return s.writeOverlay("presets/settings/claude.json", data)
+}
+
+// ResetClaudeSettings removes the user overlay for Claude Code settings.
+func (s *Store) ResetClaudeSettings() error {
+	return s.removeOverlay("presets/settings/claude.json")
+}
+
 // ReadRegistry returns the registry skills manifest.
 func (s *Store) ReadRegistry() (*RegistrySkills, error) {
 	key := "presets/registry/skills.json"

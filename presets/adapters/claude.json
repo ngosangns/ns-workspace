@@ -12,6 +12,10 @@
       "strategy": "replace",
       "from": "preset"
     },
+    "env": {
+      "strategy": "replace",
+      "from": "preset"
+    },
     "mcpServers": {
       "strategy": "merge-shallow",
       "from": "shared"
