@@ -65,7 +65,7 @@ func (r *SyncRunner) Start(command string, dryRun bool, agentsDir string) (strin
 		Command: command,
 		DryRun:  dryRun,
 	}
-	job.cond = sync.NewCond(&sync.Mutex{})
+	job.cond = sync.NewCond(&job.mu)
 	r.jobs[id] = job
 
 	go r.run(job, agentsDir)
@@ -182,7 +182,5 @@ func (job *syncJob) append(line string) {
 }
 
 func (job *syncJob) broadcast() {
-	job.cond.L.Lock()
 	job.cond.Broadcast()
-	job.cond.L.Unlock()
 }
