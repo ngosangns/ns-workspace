@@ -99,25 +99,53 @@ func TestReadWriteSkill(t *testing.T) {
 func TestReadWriteMCPs(t *testing.T) {
 	store, _, _ := newTestStore(t)
 
-	servers, err := store.ReadMCPs()
+	manifest, err := store.ReadMCPs()
 	if err != nil {
 		t.Fatalf("ReadMCPs error: %v", err)
 	}
-	if len(servers.MCPServers) != 1 {
-		t.Fatalf("expected 1 server, got %d", len(servers.MCPServers))
+	if len(manifest.Servers()) != 1 {
+		t.Fatalf("expected 1 server, got %d", len(manifest.Servers()))
+	}
+	if manifest.Overridden {
+		t.Fatal("expected MCP manifest not overridden initially")
 	}
 
-	servers.MCPServers["new"] = map[string]any{"type": "stdio", "command": "echo"}
-	if err := store.WriteMCPs(servers); err != nil {
+	preset, err := store.ReadMCPPreset()
+	if err != nil {
+		t.Fatalf("ReadMCPPreset error: %v", err)
+	}
+	if len(preset.MCPServers) != 1 {
+		t.Fatalf("expected 1 preset server, got %d", len(preset.MCPServers))
+	}
+
+	manifest.Servers()["new"] = map[string]any{"type": "stdio", "command": "echo"}
+	if err := store.WriteMCPs(&manifest.MCPServers); err != nil {
 		t.Fatalf("WriteMCPs error: %v", err)
 	}
 
-	servers, err = store.ReadMCPs()
+	manifest, err = store.ReadMCPs()
 	if err != nil {
 		t.Fatalf("ReadMCPs after write error: %v", err)
 	}
-	if len(servers.MCPServers) != 2 {
-		t.Fatalf("expected 2 servers after write, got %d", len(servers.MCPServers))
+	if len(manifest.Servers()) != 2 {
+		t.Fatalf("expected 2 servers after write, got %d", len(manifest.Servers()))
+	}
+	if !manifest.Overridden {
+		t.Fatal("expected MCP manifest overridden after write")
+	}
+
+	if err := store.ResetMCPs(); err != nil {
+		t.Fatalf("ResetMCPs error: %v", err)
+	}
+	manifest, err = store.ReadMCPs()
+	if err != nil {
+		t.Fatalf("ReadMCPs after reset error: %v", err)
+	}
+	if len(manifest.Servers()) != 1 {
+		t.Fatalf("expected 1 server after reset, got %d", len(manifest.Servers()))
+	}
+	if manifest.Overridden {
+		t.Fatal("expected MCP manifest not overridden after reset")
 	}
 }
 

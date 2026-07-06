@@ -19,6 +19,18 @@ type MCPServers struct {
 	MCPServers map[string]any `json:"mcpServers"`
 }
 
+// MCPManifest combines the effective MCP servers with provenance metadata.
+type MCPManifest struct {
+	MCPServers `json:",inline"`
+	Overridden bool   `json:"overridden"`
+	Source     string `json:"source"`
+}
+
+// Servers returns the effective MCP server map.
+func (m *MCPManifest) Servers() map[string]any {
+	return m.MCPServers.MCPServers
+}
+
 // RegistrySkills is the registry skills manifest exposed through the portal API.
 type RegistrySkills struct {
 	Skills []RegistrySkill `json:"skills"`

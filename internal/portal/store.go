@@ -219,8 +219,8 @@ func (s *Store) ResetSkill(id string) error {
 	return s.removeOverlay(skillPath(id))
 }
 
-// ReadMCPs returns the shared MCP servers manifest.
-func (s *Store) ReadMCPs() (*MCPServers, error) {
+// ReadMCPs returns the shared MCP servers manifest with provenance metadata.
+func (s *Store) ReadMCPs() (*MCPManifest, error) {
 	key := "presets/mcp/servers.json"
 	data, err := s.readEffective(key)
 	if err != nil {
@@ -229,6 +229,24 @@ func (s *Store) ReadMCPs() (*MCPServers, error) {
 	var servers MCPServers
 	if err := json.Unmarshal(data, &servers); err != nil {
 		return nil, fmt.Errorf("invalid MCP servers JSON: %w", err)
+	}
+	return &MCPManifest{
+		MCPServers: servers,
+		Overridden: s.isOverridden(key),
+		Source:     sourceLabel(s.isOverridden(key)),
+	}, nil
+}
+
+// ReadMCPPreset returns the embedded MCP servers preset.
+func (s *Store) ReadMCPPreset() (*MCPServers, error) {
+	key := "presets/mcp/servers.json"
+	data, err := s.readEmbedded(key)
+	if err != nil {
+		return nil, err
+	}
+	var servers MCPServers
+	if err := json.Unmarshal(data, &servers); err != nil {
+		return nil, fmt.Errorf("invalid MCP preset JSON: %w", err)
 	}
 	return &servers, nil
 }
@@ -241,6 +259,18 @@ func (s *Store) WriteMCPs(servers *MCPServers) error {
 	}
 	data = append(data, '\n')
 	return s.writeOverlay("presets/mcp/servers.json", data)
+}
+
+// ResetMCPs removes the user overlay for the MCP servers manifest.
+func (s *Store) ResetMCPs() error {
+	return s.removeOverlay("presets/mcp/servers.json")
+}
+
+func sourceLabel(overridden bool) string {
+	if overridden {
+		return "overlay"
+	}
+	return "embedded"
 }
 
 // ReadRegistry returns the registry skills manifest.

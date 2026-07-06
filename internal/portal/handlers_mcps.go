@@ -4,17 +4,18 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 )
 
 func (s *portalServer) handleMCPs(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		servers, err := s.store.ReadMCPs()
+		manifest, err := s.store.ReadMCPs()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, servers)
+		writeJSON(w, manifest)
 	case http.MethodPut:
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -30,8 +31,42 @@ func (s *portalServer) handleMCPs(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, servers)
+		manifest, err := s.store.ReadMCPs()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, manifest)
+	case http.MethodDelete:
+		if err := s.store.ResetMCPs(); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		manifest, err := s.store.ReadMCPs()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, manifest)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, errMethodNotAllowed)
 	}
+}
+
+func (s *portalServer) handleMCPPreset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, errMethodNotAllowed)
+		return
+	}
+
+	servers, err := s.store.ReadMCPPreset()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, servers)
+}
+
+func isMCPPath(path string) bool {
+	return path == "/api/mcps" || strings.HasPrefix(path, "/api/mcps/")
 }

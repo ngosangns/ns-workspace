@@ -104,12 +104,46 @@ func TestHandleMCPs(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("get mcps: expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
-	var servers MCPServers
-	if err := json.Unmarshal(rr.Body.Bytes(), &servers); err != nil {
+	var manifest MCPManifest
+	if err := json.Unmarshal(rr.Body.Bytes(), &manifest); err != nil {
 		t.Fatalf("unmarshal mcps: %v", err)
 	}
-	if servers.MCPServers["ctx"] == nil {
+	if manifest.Servers()["ctx"] == nil {
 		t.Fatal("expected ctx server")
+	}
+	if !manifest.Overridden {
+		t.Fatal("expected manifest overridden after put")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/mcps/preset", nil)
+	rr = httptest.NewRecorder()
+	srv.router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get mcps preset: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var preset MCPServers
+	if err := json.Unmarshal(rr.Body.Bytes(), &preset); err != nil {
+		t.Fatalf("unmarshal mcps preset: %v", err)
+	}
+	if preset.MCPServers["ctx"] != nil {
+		t.Fatal("preset should not contain override server")
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/mcps", nil)
+	rr = httptest.NewRecorder()
+	srv.router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("delete mcps: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	manifest = MCPManifest{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &manifest); err != nil {
+		t.Fatalf("unmarshal mcps after reset: %v", err)
+	}
+	if manifest.Overridden {
+		t.Fatal("expected manifest not overridden after reset")
+	}
+	if manifest.Servers()["ctx"] != nil {
+		t.Fatal("reset should remove override server")
 	}
 }
 

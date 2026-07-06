@@ -16,6 +16,11 @@ export interface MCPServers {
   mcpServers: Record<string, any>;
 }
 
+export interface MCPManifest extends MCPServers {
+  source: "embedded" | "overlay";
+  overridden: boolean;
+}
+
 export interface RegistrySkill {
   name: string;
   source: string;
@@ -93,12 +98,14 @@ export const api = {
     }),
   resetSkill: (id: string) => fetchJSON<void>(`/skills/${id}`, { method: "DELETE" }),
 
-  getMCPs: () => fetchJSON<MCPServers>("/mcps"),
+  getMCPs: () => fetchJSON<MCPManifest>("/mcps"),
+  getMCPPreset: () => fetchJSON<MCPServers>("/mcps/preset"),
   updateMCPs: (servers: MCPServers) =>
-    fetchJSON<MCPServers>("/mcps", {
+    fetchJSON<MCPManifest>("/mcps", {
       method: "PUT",
       body: JSON.stringify(servers),
     }),
+  resetMCPs: () => fetchJSON<MCPManifest>("/mcps", { method: "DELETE" }),
 
   getRegistry: () => fetchJSON<RegistrySkills>("/registry"),
   updateRegistry: (registry: RegistrySkills) =>
