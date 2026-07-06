@@ -47,7 +47,6 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".codex", "config.toml"))
 	mustExist(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
 	mustExist(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
-	mustExist(t, filepath.Join(home, ".agents", "generated", "cursor", "README.md"))
 
 	qwen := readFile(t, filepath.Join(home, ".qwen", "settings.json"))
 	if !strings.Contains(qwen, "context7") || !strings.Contains(qwen, "figma") {
@@ -426,7 +425,6 @@ func TestStableToolSelectionSkipsManualAdapters(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
-	mustNotExist(t, filepath.Join(home, ".agents", "generated", "cursor", "README.md"))
 }
 
 func TestDryRunDoesNotWrite(t *testing.T) {

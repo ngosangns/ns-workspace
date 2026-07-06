@@ -3260,11 +3260,6 @@ func TestApplyCreatesManualAdapterOutputs(t *testing.T) {
 	}, false); err != nil {
 		t.Fatalf("Apply all: %v", err)
 	}
-	for _, manual := range []string{"cursor", "github-copilot", "jetbrains", "antigravity", "trae", "roo"} {
-		if _, err := os.Stat(filepath.Join(home, ".agents", "generated", manual, "README.md")); err != nil {
-			t.Fatalf("missing manual README for %s: %v", manual, err)
-		}
-	}
 }
 
 // --- Apply with Update true to exercise full update paths ---

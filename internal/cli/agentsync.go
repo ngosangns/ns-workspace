@@ -23,7 +23,7 @@ func RunAgentSync(cmd string, args []string, presets fs.FS) error {
 		return err
 	}
 	opt := agentsync.Options{Command: cmd, AgentsDir: homeDefault}
-	tools := flagSet.String("tools", "all", "comma-separated tools: all,stable,manual,experimental,claude,opencode,grok,kimi,kiro,kiro-cli,qwen,gemini,codex,cline,windsurf,aider,minimax,minimax-cli,mmx,cursor,github-copilot,jetbrains,antigravity,trae,roo")
+	tools := flagSet.String("tools", "all", "comma-separated tools: all,stable,manual,experimental,claude,opencode,grok,kimi,kiro,kiro-cli,qwen,gemini,codex,cline,windsurf,aider,minimax,minimax-cli,mmx")
 	flagSet.StringVar(&opt.AgentsDir, "agents-home", homeDefault, "shared agents home")
 	configDefault, err := agentsync.DefaultUserConfigPath()
 	if err != nil {

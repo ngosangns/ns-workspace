@@ -71,8 +71,6 @@ Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `
 
 Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline, Qoder CLI, Windsurf và Aider. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
 
-Manual adapters hiện gồm Cursor, GitHub Copilot và JetBrains AI. Experimental/manual guarded adapters hiện gồm Antigravity, Trae và Roo. Nhóm này chỉ tạo helper trong `~/.agents/generated/<agent>/` vì native path hoặc support contract chưa đủ ổn định.
-
 Plugin adapter hiện có:
 
 - OpenCode dùng `opencodePlugin.ExtraOperations` nhận MCP presets dưới key `mcp` và đổi server type `http` thành `remote`; config values lấy từ `presets/opencode/opencode.json` và merge vào native config qua `MergeJSON` thay vì qua `ApplyAdapterSettings`.

@@ -91,7 +91,7 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 --config ~/.config/ns-workspace/config.json
 --tools all
 --tools stable
---tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,minimax,cursor,trae
+--tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,minimax
 --tools kiro-cli
 --tools minimax-cli
 --tools mmx
@@ -177,8 +177,6 @@ Stable adapters ghi vào các user-level path đã biết:
 | Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                                                                                     |
 | Aider         | Managed conventions block trong `~/.aider.conf.yml`                                                                                                                                |
 | MiniMax CLI   | `~/.mmx/config.json` (default model presets); alias `minimax-cli` / `mmx` qua `--tools`                                                                                            |
-
-Manual hoặc experimental adapters tạo guidance trong `~/.agents/generated/<agent>/` thay vì ghi trực tiếp vào native path chưa chắc chắn. Nhóm này hiện gồm Cursor, GitHub Copilot, JetBrains AI, Antigravity, Trae và Roo.
 
 ## Preview, Search, Graph Và Harness
 

@@ -40,9 +40,6 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".codex", "config.toml"))
 	mustExist(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
 	mustExist(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
-	mustExist(t, filepath.Join(home, ".agents", "generated", "cursor", "README.md"))
-	mustExist(t, filepath.Join(home, ".agents", "generated", "antigravity", "README.md"))
-	mustExist(t, filepath.Join(home, ".agents", "generated", "trae", "README.md"))
 
 	data, err := os.ReadFile(filepath.Join(home, ".qwen", "settings.json"))
 	if err != nil {

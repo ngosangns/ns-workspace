@@ -214,36 +214,6 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 		},
 	})
 
-	// Manual / experimental adapters share the same ManualPlan path.
-	manualNotes := map[string]string{
-		"cursor":         "Cursor user rules are stored through Cursor settings; generated helper only.",
-		"github-copilot": "Copilot instructions are repo/editor scoped; generated helper only.",
-		"jetbrains":      "JetBrains AI MCP setup is product/version specific.",
-		"antigravity":    "No stable official user-level filesystem path confirmed yet.",
-		"trae":           "No stable official user-level filesystem path confirmed yet.",
-		"roo":            "Roo Code support is guarded because the project status is unstable.",
-	}
-	for _, entry := range []struct {
-		id      string
-		tier    SupportTier
-		exe     []string
-		docs    []string
-		note    string
-	}{
-		{"cursor", TierManual, []string{"cursor-agent"}, []string{"https://docs.cursor.com/en/context", "https://docs.cursor.com/cli/mcp"}, manualNotes["cursor"]},
-		{"github-copilot", TierManual, nil, []string{"https://code.visualstudio.com/docs/copilot/customization/custom-instructions"}, manualNotes["github-copilot"]},
-		{"jetbrains", TierManual, nil, []string{"https://www.jetbrains.com/help/ai-assistant/mcp.html"}, manualNotes["jetbrains"]},
-		{"antigravity", TierExperimental, nil, nil, manualNotes["antigravity"]},
-		{"trae", TierExperimental, []string{"trae"}, nil, manualNotes["trae"]},
-		{"roo", TierExperimental, nil, nil, manualNotes["roo"]},
-	} {
-		r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
-			Spec: AdapterSpec{
-				ID: entry.id, Tier: entry.tier, Executables: entry.exe, Docs: entry.docs, Notes: entry.note, Manual: true,
-			},
-		}})
-	}
-
 	return r
 }
 
