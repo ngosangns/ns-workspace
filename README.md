@@ -168,11 +168,11 @@ Stable adapters ghi vào các user-level path đã biết:
 | Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands                                                         |
 | OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                                                                        |
 | Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build                                                                  |
-| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/skills`, `~/.kimi/mcp.json`                                                                                                                          |
+| Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/mcp.json`; skills không mirror vì Kimi đọc thẳng `~/.agents/skills` (generic, độc lập với `KIMI_CODE_HOME`)                                          |
 | Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`, `~/.kiro/agents/ns-full.json` (full-permissions custom agent); `--tools kiro-cli` là alias của `kiro` |
 | Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                                                                                      |
-| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/skills`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root)                                                |
-| Codex CLI     | `~/.codex/AGENTS.md`, `~/.codex/skills`, managed MCP block trong `~/.codex/config.toml`                                                                                            |
+| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root); skills không mirror vì Gemini CLI đọc alias `.agents/skills` thẳng từ `~/.agents/skills` |
+| Codex CLI     | `~/.codex/AGENTS.md`, managed MCP block trong `~/.codex/config.toml`; Codex không có `~/.codex/skills` — chỉ đọc `.agents/skills` (repo) và `~/.agents/skills` (user) nên không cần mirror |
 | Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                   |
 | Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                                                                                     |
 | Aider         | Managed conventions block trong `~/.aider.conf.yml`                                                                                                                                |

@@ -74,11 +74,11 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 			ID: "kimi", Tier: TierStable, Executables: []string{"kimi"},
 			Targets: AdapterTargets{
 				Instruction: filepath.Join(home, ".kimi", "AGENTS.md"),
-				Skills:      filepath.Join(home, ".kimi", "skills"),
 				MCPPath:     filepath.Join(home, ".kimi", "mcp.json"),
 				MCPKeyPath:  []string{"mcpServers"},
 			},
-			Docs: []string{"https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/data-locations.html"},
+			Docs:  []string{"https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/data-locations.html"},
+			Notes: "Kimi Code CLI reads generic cross-tool Skills directly from ~/.agents/skills/ regardless of KIMI_CODE_HOME, so this adapter does not mirror skills into a Kimi-specific folder.",
 		},
 		Plugin: NoopPlugin{},
 	}})
@@ -121,13 +121,13 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 			ID: "gemini", Tier: TierStable, Executables: []string{"gemini"},
 			Targets: AdapterTargets{
 				Instruction:  filepath.Join(home, ".gemini", "GEMINI.md"),
-				Skills:       filepath.Join(home, ".gemini", "skills"),
 				HooksPath:    filepath.Join(home, ".gemini", "settings.json"),
 				HooksKeyPath: []string{"hooks"},
 				MCPPath:      filepath.Join(home, ".gemini", "settings.json"),
 				MCPKeyPath:   []string{"mcpServers"},
 			},
-			Docs: []string{"https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"},
+			Docs:  []string{"https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md", "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/skills.md"},
+			Notes: "Gemini CLI resolves a `.agents/skills/` alias (user and workspace tiers) that takes precedence over `.gemini/skills/`, so it reads the shared ~/.agents/skills/ directly and this adapter does not mirror skills into ~/.gemini/skills.",
 		},
 		Plugin: GeminiPlugin{},
 	}})
@@ -137,9 +137,9 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 			ID: "codex", Tier: TierStable, Executables: []string{"codex"},
 			Targets: AdapterTargets{
 				Instruction: filepath.Join(home, ".codex", "AGENTS.md"),
-				Skills:      filepath.Join(home, ".codex", "skills"),
 			},
-			Docs: []string{"https://github.com/openai/codex/blob/main/docs/config.md", "https://github.com/openai/codex/blob/main/docs/agents_md.md"},
+			Docs:  []string{"https://github.com/openai/codex/blob/main/docs/config.md", "https://github.com/openai/codex/blob/main/docs/agents_md.md"},
+			Notes: "Codex CLI has no ~/.codex/skills path at all — it only discovers Agent Skills from .agents/skills (repo, walking up to the repo root) and $HOME/.agents/skills (user), so this adapter does not mirror skills anywhere; the shared ~/.agents/skills directory is picked up natively.",
 		},
 		Plugin: CodexPlugin{},
 	}})
