@@ -1539,46 +1539,6 @@ func TestLinkOrCopyDryRunLink(t *testing.T) {
 	}
 }
 
-func TestBackupPathSkipsMissing(t *testing.T) {
-	ctx, _ := newTestContext(t)
-	missing := filepath.Join(t.TempDir(), "does-not-exist")
-	if err := backupPath(ctx, missing); err != nil {
-		t.Fatalf("backupPath on missing should not error: %v", err)
-	}
-}
-
-func TestBackupPathCreatesBackup(t *testing.T) {
-	ctx, home := newTestContext(t)
-	src := filepath.Join(home, "src.txt")
-	if err := os.WriteFile(src, []byte("data"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := backupPath(ctx, src); err != nil {
-		t.Fatalf("backupPath: %v", err)
-	}
-	if _, err := os.Stat(src); !os.IsNotExist(err) {
-		t.Fatalf("src should have been renamed: %v", err)
-	}
-}
-
-func TestBackupPathUnique(t *testing.T) {
-	ctx, home := newTestContext(t)
-	src := filepath.Join(home, "src.txt")
-	if err := os.WriteFile(src, []byte("a"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := backupPath(ctx, src); err != nil {
-		t.Fatal(err)
-	}
-	// Restore
-	if err := os.WriteFile(src, []byte("b"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := backupPath(ctx, src); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestPrintPathStatus(t *testing.T) {
 	ctx, home := newTestContext(t)
 	var buf bytes.Buffer
@@ -2844,7 +2804,7 @@ func TestRemoveStaleEntriesPermissionError(t *testing.T) {
 	}
 }
 
-func TestBackupAndRemoveDryRun(t *testing.T) {
+func TestRemovePathDryRun(t *testing.T) {
 	ctx, home := newTestContextWithOpts(t, func(o *Options) { o.DryRun = true })
 	target := filepath.Join(home, "br")
 	if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
@@ -2852,31 +2812,15 @@ func TestBackupAndRemoveDryRun(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	ctx.Report = &reportingBuffer{buf: &buf}
-	if err := backupAndRemove(ctx, target); err != nil {
-		t.Fatalf("backupAndRemove: %v", err)
+	if err := removePath(ctx, target); err != nil {
+		t.Fatalf("removePath: %v", err)
 	}
 	if !strings.Contains(buf.String(), "remove:") {
 		t.Fatalf("dryrun should print remove:, got: %s", buf.String())
 	}
-}
-
-func TestBackupPathDryRun(t *testing.T) {
-	ctx, home := newTestContextWithOpts(t, func(o *Options) { o.DryRun = true })
-	src := filepath.Join(home, "src.txt")
-	if err := os.WriteFile(src, []byte("data"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var buf bytes.Buffer
-	ctx.Report = &reportingBuffer{buf: &buf}
-	if err := backupPath(ctx, src); err != nil {
-		t.Fatalf("backupPath dryrun: %v", err)
-	}
-	if !strings.Contains(buf.String(), "backup:") {
-		t.Fatalf("dryrun should print backup:, got: %s", buf.String())
-	}
-	// File should still exist (dryrun does not actually rename)
-	if _, err := os.Stat(src); err != nil {
-		t.Fatalf("src should still exist in dryrun: %v", err)
+	// File should still exist (dryrun does not actually remove)
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("target should still exist in dryrun: %v", err)
 	}
 }
 
@@ -4006,15 +3950,15 @@ func TestLinkOrCopySameLinkSymlink(t *testing.T) {
 	_ = home
 }
 
-func TestBackupAndRemove(t *testing.T) {
+func TestRemovePath(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, "x.md")
 	if err := os.WriteFile(target, []byte("y"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := backupAndRemove(ctx, target); err != nil {
-		t.Fatalf("backupAndRemove: %v", err)
+	if err := removePath(ctx, target); err != nil {
+		t.Fatalf("removePath: %v", err)
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("target should be removed")
@@ -4131,9 +4075,10 @@ func TestRemoveStaleEntries(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "sub", "d.md")); !os.IsNotExist(err) {
 		t.Fatalf("sub/d.md should be removed")
 	}
-	// sub should remain because backups of d.md were left in it
-	if _, err := os.Stat(filepath.Join(dir, "sub")); err != nil {
-		t.Fatalf("sub should still exist (has backups): %v", err)
+	// sub becomes empty once d.md is removed (no backups are left behind
+	// anymore), so it gets removed too.
+	if _, err := os.Stat(filepath.Join(dir, "sub")); !os.IsNotExist(err) {
+		t.Fatalf("sub should have been removed once empty: %v", err)
 	}
 }
 
@@ -4152,16 +4097,17 @@ func TestRemoveStaleRecursive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sub, "x.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Call removeStaleEntries from top - everything should be removed (with backups left).
+	// Call removeStaleEntries from top - everything should be removed.
 	if err := removeStaleEntries(ctx, dir, nil); err != nil {
 		t.Fatalf("removeStaleEntries: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(sub, "x.md")); !os.IsNotExist(err) {
 		t.Fatalf("x.md should be removed")
 	}
-	// subsub remains because the .bak file is left behind in it.
-	if _, err := os.Stat(sub); err != nil {
-		t.Fatalf("subsub should still exist (has backup): %v", err)
+	// subsub (and its now-empty parents) should be removed since no
+	// backups are left behind anymore.
+	if _, err := os.Stat(sub); !os.IsNotExist(err) {
+		t.Fatalf("subsub should have been removed once empty: %v", err)
 	}
 }
 
@@ -4762,9 +4708,9 @@ func TestLinkOrCopyReplaceDifferent(t *testing.T) {
 
 func TestLinkOrCopySymlinkError(t *testing.T) {
 	// A dangling symlink is a perfectly valid filesystem entry on
-	// POSIX systems, so backupAndRemove + os.Symlink both succeed. We
+	// POSIX systems, so removePath + os.Symlink both succeed. We
 	// verify the path is taken (linkOrCopy reports "ok:" / "link:" /
-	// "backup:" rather than erroring) so coverage hits the
+	// "remove:" rather than erroring) so coverage hits the
 	// sameLink=false branch.
 	ctx, _ := newTestContext(t)
 	dir := t.TempDir()
@@ -4786,21 +4732,6 @@ func TestWriteFileManagedErrorOnUnwritableDir(t *testing.T) {
 	dst := "/proc/0/agentsync-unwritable/file.md"
 	if err := writeFileManaged(ctx, dst, []byte("x"), true); err == nil {
 		t.Fatalf("expected error for unwritable path")
-	}
-}
-
-func TestBackupAndRemoveDryRunFull(t *testing.T) {
-	ctx, _ := newTestContextWithOpts(t, func(o *Options) { o.DryRun = true })
-	dir := t.TempDir()
-	dst := filepath.Join(dir, "file")
-	if err := os.WriteFile(dst, []byte("data"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := backupAndRemove(ctx, dst); err != nil {
-		t.Fatalf("backupAndRemove dryrun: %v", err)
-	}
-	if _, err := os.Stat(dst); err != nil {
-		t.Fatalf("dryrun should keep file: %v", err)
 	}
 }
 
@@ -5699,13 +5630,6 @@ func TestCopyAnyDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dst, "sub", "b.txt")); err != nil {
 		t.Fatalf("missing nested file: %v", err)
-	}
-}
-
-func TestBackupPathMissingNoOp(t *testing.T) {
-	ctx, _ := newTestContext(t)
-	if err := backupPath(ctx, filepath.Join(t.TempDir(), "nonexistent")); err != nil {
-		t.Fatalf("backupPath on missing path: %v", err)
 	}
 }
 
@@ -6879,15 +6803,15 @@ func TestEnsureDirAlreadyExists(t *testing.T) {
 	}
 }
 
-func TestBackupAndRemoveDir(t *testing.T) {
+func TestRemovePathDir(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, "subdir")
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := backupAndRemove(ctx, target); err != nil {
-		t.Fatalf("backupAndRemove: %v", err)
+	if err := removePath(ctx, target); err != nil {
+		t.Fatalf("removePath: %v", err)
 	}
 	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected target removed, got err=%v", err)
@@ -7851,7 +7775,7 @@ func TestRemoveStaleBackupFail(t *testing.T) {
 	if err := os.WriteFile(stale, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Make the directory read-only so backup fails
+	// Make the directory read-only so os.Remove of the stale file fails
 	if err := os.Chmod(dst, 0o555); err != nil {
 		t.Fatal(err)
 	}
@@ -7862,13 +7786,13 @@ func TestRemoveStaleBackupFail(t *testing.T) {
 	}
 }
 
-func TestWriteFileManagedBackupFail(t *testing.T) {
+func TestWriteFileManagedWriteFail(t *testing.T) {
 	ctx, home := newTestContext(t)
 	dst := filepath.Join(home, "x.md")
 	if err := os.WriteFile(dst, []byte("OLD"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Make dst a read-only directory so backupPath rename fails
+	// Make the parent directory read-only so the overwrite via os.WriteFile fails
 	if err := os.Chmod(home, 0o555); err != nil {
 		t.Fatal(err)
 	}
@@ -7926,25 +7850,6 @@ func TestCopyDirReadError(t *testing.T) {
 	}
 }
 
-
-func TestBackupPathNonExistent(t *testing.T) {
-	ctx, _ := newTestContext(t)
-	if err := backupPath(ctx, filepath.Join(t.TempDir(), "missing")); err != nil {
-		t.Fatalf("backupPath on missing: %v", err)
-	}
-}
-
-
-func TestUniqueBackupPathCollision(t *testing.T) {
-	base := filepath.Join(t.TempDir(), "file.bak")
-	if err := os.WriteFile(base, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	got := uniqueBackupPath(base)
-	if got == base {
-		t.Fatalf("uniqueBackupPath should add suffix on collision")
-	}
-}
 
 func TestReadMCPManifestBadJSONOnDisk(t *testing.T) {
 	ctx, home := newTestContext(t)
@@ -9366,8 +9271,8 @@ func TestLinkOrCopyEnsureDirError(t *testing.T) {
 	}
 }
 
-// agentsync.go:219-221 - LinkSkillDirs backupAndRemove error
-func TestLinkSkillDirsBackupError(t *testing.T) {
+// agentsync.go:219-221 - LinkSkillDirs removePath error
+func TestLinkSkillDirsRemoveError(t *testing.T) {
 	ctx, home := newTestContext(t)
 	srcRoot := filepath.Join(home, "src")
 	dstRoot := filepath.Join(home, "dst")
@@ -9377,7 +9282,7 @@ func TestLinkSkillDirsBackupError(t *testing.T) {
 	if err := os.MkdirAll(dstRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Make dst unremovable to trigger backupAndRemove error
+	// Make dst unremovable to trigger removePath error
 	if err := os.Chmod(dstRoot, 0o555); err != nil {
 		t.Skipf("chmod: %v", err)
 	}
@@ -9566,8 +9471,8 @@ func TestReadUserConfigFileInvalidJSON(t *testing.T) {
 	}
 }
 
-// engine.go:58-60 - linkOrCopy backupAndRemove error
-func TestLinkOrCopyBackupError(t *testing.T) {
+// engine.go:58-60 - linkOrCopy removePath error
+func TestLinkOrCopyRemoveError(t *testing.T) {
 	ctx, home := newTestContext(t)
 	src := filepath.Join(home, "src.txt")
 	dst := filepath.Join(home, "dst.txt")
@@ -9577,13 +9482,13 @@ func TestLinkOrCopyBackupError(t *testing.T) {
 	if err := os.WriteFile(dst, []byte("y"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Make dst unreadable so backupAndRemove errors
+	// Make dst unreadable so removePath errors
 	if err := os.Chmod(dst, 0o000); err != nil {
 		t.Skipf("chmod: %v", err)
 	}
 	defer os.Chmod(dst, 0o644)
 	if err := linkOrCopy(ctx, src, dst, true); err == nil {
-		t.Logf("backupAndRemove may succeed on some systems")
+		t.Logf("removePath may succeed on some systems")
 	}
 }
 
@@ -9672,20 +9577,6 @@ func TestCopyDirReadFileError(t *testing.T) {
 	}
 	defer os.Chmod(src, 0o755)
 	_ = copyDir(ctx, src, dst)
-}
-
-// engine.go:124-126 - backupAndRemove backupPath error
-func TestBackupAndRemoveBackupError(t *testing.T) {
-	ctx, home := newTestContext(t)
-	src := filepath.Join(home, "src")
-	if err := os.MkdirAll(src, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(src, 0o000); err != nil {
-		t.Skipf("chmod: %v", err)
-	}
-	defer os.Chmod(src, 0o755)
-	_ = backupAndRemove(ctx, src)
 }
 
 // mcp.go:147 - mcpCommandScript ok=false case. The map lookup is
@@ -10189,8 +10080,8 @@ func TestRemoveStaleRecursiveErrorPropagation(t *testing.T) {
 	}
 }
 
-// agentsync.go:219-221 - LinkSkillDirs backupAndRemove error
-func TestLinkSkillDirsBackupError2(t *testing.T) {
+// agentsync.go:219-221 - LinkSkillDirs removePath error
+func TestLinkSkillDirsRemoveError2(t *testing.T) {
 	ctx, home := newTestContext(t)
 	srcRoot := filepath.Join(home, "src")
 	dstRoot := filepath.Join(home, "dst")
@@ -10351,8 +10242,8 @@ func TestReadUserConfigFileInvalidJSON2(t *testing.T) {
 	}
 }
 
-// engine.go:58-60 - linkOrCopy backupAndRemove error
-func TestLinkOrCopyBackupError2(t *testing.T) {
+// engine.go:58-60 - linkOrCopy removePath error
+func TestLinkOrCopyRemoveError2(t *testing.T) {
 	ctx, home := newTestContext(t)
 	src := filepath.Join(home, "src.txt")
 	dst := filepath.Join(home, "dst.txt")
@@ -10367,7 +10258,7 @@ func TestLinkOrCopyBackupError2(t *testing.T) {
 	}
 	defer os.Chmod(home, 0o755)
 	if err := linkOrCopy(ctx, src, dst, true); err == nil {
-		t.Logf("backupAndRemove may succeed")
+		t.Logf("removePath may succeed")
 	}
 }
 
@@ -10410,20 +10301,6 @@ func TestCopyDirReadFileError2(t *testing.T) {
 	}
 	defer os.Chmod(file, 0o644)
 	_ = copyDir(ctx, src, dst)
-}
-
-// engine.go:124-126 - backupAndRemove backupPath error
-func TestBackupAndRemoveBackupError2(t *testing.T) {
-	ctx, home := newTestContext(t)
-	src := filepath.Join(home, "src")
-	if err := os.MkdirAll(src, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// backupPath when ctx.DryRun=true returns nil immediately
-	ctx.DryRun = true
-	if err := backupAndRemove(ctx, src); err != nil {
-		t.Fatalf("backupAndRemove: %v", err)
-	}
 }
 
 // mcp.go:141-142 - mcpCommandScript ok=false (server not in map)
@@ -10627,7 +10504,7 @@ func TestInstallPresetTreeWriteFileErrorCycle(t *testing.T) {
 	}
 }
 
-// agentsync.go:122-124 - InstallPresetTree removeStaleEntries error (when backing up stale fails)
+// agentsync.go:122-124 - InstallPresetTree removeStaleEntries error (when removing stale fails)
 func TestInstallPresetTreeRemoveStaleErrorCycle(t *testing.T) {
 	ctx, home := newTestContext(t)
 	dstRoot := filepath.Join(home, "skills")
@@ -10639,7 +10516,7 @@ func TestInstallPresetTreeRemoveStaleErrorCycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	op := InstallPresetTree{SrcRoot: "presets/skills", DstRoot: dstRoot, Replace: true}
-	// replace=true triggers removeStaleEntries. Make home un-writable so backupPath errors.
+	// replace=true triggers removeStaleEntries. Make home un-writable so os.Remove of the stale file errors.
 	if err := os.Chmod(home, 0o555); err != nil {
 		t.Skipf("chmod: %v", err)
 	}
@@ -10686,8 +10563,8 @@ func TestRemoveStaleRecursiveSubDirError(t *testing.T) {
 	}
 }
 
-// agentsync.go:219-221 - LinkSkillDirs backupAndRemove error
-func TestLinkSkillDirsBackupErrorCycle(t *testing.T) {
+// agentsync.go:219-221 - LinkSkillDirs removePath error
+func TestLinkSkillDirsRemoveErrorCycle(t *testing.T) {
 	ctx, home := newTestContext(t)
 	srcRoot := filepath.Join(home, "src")
 	dstRoot := filepath.Join(home, "dst")
@@ -10708,11 +10585,11 @@ func TestLinkSkillDirsBackupErrorCycle(t *testing.T) {
 	}
 }
 
-// agentsync.go:219-221 - LinkSkillDirs backupAndRemove error
-// To fail backupAndRemove(DstRoot), we need os.Rename to fail. Renaming
+// agentsync.go:219-221 - LinkSkillDirs removePath error
+// To fail removePath(DstRoot), we need os.RemoveAll to fail. Removing
 // a directory requires write permission on its parent (home). Make home
-// read-only so the rename fails with permission denied.
-func TestLinkSkillDirsBackupErrorNew(t *testing.T) {
+// read-only so the removal fails with permission denied.
+func TestLinkSkillDirsRemoveErrorNew(t *testing.T) {
 	ctx, home := newTestContext(t)
 	srcRoot := filepath.Join(home, "src")
 	dstRoot := filepath.Join(home, "dst")
@@ -10997,7 +10874,7 @@ func TestInstallPresetTreeUserConfigRemoveStaleError(t *testing.T) {
 	if err := os.MkdirAll(dstRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Make dst read-only to trigger error in removeStaleEntries (via backupAndRemove)
+	// Make dst read-only to trigger error in removeStaleEntries (via os.Remove)
 	if err := os.Chmod(dstRoot, 0o555); err != nil {
 		t.Skipf("chmod: %v", err)
 	}
@@ -11057,7 +10934,7 @@ func TestLinkSkillDirsLinkOrCopyErrorDryRun3(t *testing.T) {
 
 // agentsync.go:248-250 - LinkSkillDirs per-entry linkOrCopy error (non-DryRun, valid src)
 // Pre-create dst/entry as a regular file (so sameLink=false and replace=true triggers
-// backupAndRemove), then make dst dir read-only so backupAndRemove fails.
+// removePath), then make dst dir read-only so removePath fails.
 func TestLinkSkillDirsPerEntryLinkOrCopyError(t *testing.T) {
 	ctx, home := newTestContext(t)
 	srcRoot := filepath.Join(home, "src")
@@ -11075,7 +10952,7 @@ func TestLinkSkillDirsPerEntryLinkOrCopyError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dstRoot, "f.txt"), []byte("existing"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Make dst dir read-only so backupAndRemove (rename) fails inside it
+	// Make dst dir read-only so removePath (os.RemoveAll) fails inside it
 	if err := os.Chmod(dstRoot, 0o555); err != nil {
 		t.Skipf("chmod: %v", err)
 	}

@@ -418,8 +418,8 @@ func TestMiniMaxAdapterDoesNotPolluteSharedSettings(t *testing.T) {
 	// The plugin's MergeJSON then read the symlink's content ({"hooks": {}}),
 	// merged the minimax preset on top, and wrote the merged blob to a new
 	// regular file at ~/.mmx/config.json. The shared settings were safe
-	// because the symlink got renamed to a .bak-* during the write, but
-	// ~/.mmx/config.json ended up carrying the shared "hooks" key — a
+	// because the symlink got removed and replaced in place during the
+	// write, but ~/.mmx/config.json ended up carrying the shared "hooks" key — a
 	// mmx-cli would then send a malformed config to the mmx daemon.
 	home := t.TempDir()
 	t.Setenv("HOME", home)

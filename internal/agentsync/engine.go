@@ -3,19 +3,18 @@ package agentsync
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
-	"time"
 )
 
-// writeFileManaged writes data to path, honoring dry-run, replace
-// semantics, and backup-before-overwrite. Reports the chosen action on
-// ctx.Report so users can see what would happen.
+// writeFileManaged writes data to path, honoring dry-run and replace
+// semantics. Existing content is overwritten in place when replace is
+// true. Reports the chosen action on ctx.Report so users can see what
+// would happen.
 func writeFileManaged(ctx Context, path string, data []byte, replace bool) error {
 	if existing, err := os.ReadFile(path); err == nil {
 		if string(existing) == string(data) {
@@ -25,9 +24,6 @@ func writeFileManaged(ctx Context, path string, data []byte, replace bool) error
 		if !replace {
 			ctx.Report.Line("skip existing: %s", path)
 			return nil
-		}
-		if err := backupPath(ctx, path); err != nil {
-			return err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -44,7 +40,7 @@ func writeFileManaged(ctx Context, path string, data []byte, replace bool) error
 
 // linkOrCopy creates dst pointing at src (symlink by default, or a
 // recursive copy when ctx.CopyMode is true or on Windows). It honors
-// replace (back up + remove the existing dst first) and dry-run.
+// replace (remove the existing dst first) and dry-run.
 func linkOrCopy(ctx Context, src, dst string, replace bool) error {
 	if _, err := os.Lstat(dst); err == nil {
 		if sameLink(dst, src) {
@@ -55,7 +51,7 @@ func linkOrCopy(ctx Context, src, dst string, replace bool) error {
 			ctx.Report.Line("skip existing: %s", dst)
 			return nil
 		}
-		if err := backupAndRemove(ctx, dst); err != nil {
+		if err := removePath(ctx, dst); err != nil {
 			return err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -123,50 +119,17 @@ func copyDir(ctx Context, src, dst string) error {
 // coverage.
 var copyDirRel = filepath.Rel
 
-// backupAndRemove renames path aside as a timestamped backup, then
-// removes the original (directory or file). Used by linkOrCopy when
-// replacing an existing dst.
-func backupAndRemove(ctx Context, path string) error {
-	if err := backupPath(ctx, path); err != nil {
-		return err
+// removePath removes path (directory or file) in place, honoring
+// dry-run. Used by linkOrCopy when replacing an existing dst.
+func removePath(ctx Context, path string) error {
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
 	}
 	ctx.Report.Line("remove: %s", path)
 	if ctx.DryRun {
 		return nil
 	}
 	return os.RemoveAll(path)
-}
-
-// backupPath renames path aside with a timestamped suffix. If the
-// suffix already exists (collision from a previous backup), an
-// incrementing counter is appended until a free name is found.
-func backupPath(ctx Context, path string) error {
-	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	backup := fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405"))
-	if !ctx.DryRun {
-		backup = uniqueBackupPath(backup)
-	}
-	ctx.Report.Line("backup: %s -> %s", path, backup)
-	if ctx.DryRun {
-		return nil
-	}
-	return os.Rename(path, backup)
-}
-
-// uniqueBackupPath returns path with a numeric suffix appended when
-// the bare path already exists. Used to avoid clobbering prior backups.
-func uniqueBackupPath(path string) string {
-	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return path
-	}
-	for i := 2; ; i++ {
-		candidate := fmt.Sprintf("%s-%d", path, i)
-		if _, err := os.Lstat(candidate); errors.Is(err, os.ErrNotExist) {
-			return candidate
-		}
-	}
 }
 
 // ensureDir creates path (and parents) with mode 0o755. The call is

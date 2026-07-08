@@ -77,7 +77,7 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	}
 }
 
-func TestUpdateBacksUpAndOverridesSharedAgents(t *testing.T) {
+func TestUpdateOverridesSharedAgentsInPlace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
@@ -101,12 +101,13 @@ func TestUpdateBacksUpAndOverridesSharedAgents(t *testing.T) {
 	if strings.Contains(string(data), "local edit") {
 		t.Fatalf("update did not override managed AGENTS.md")
 	}
+	// Overwrites happen in place now - no backup file should be created.
 	matches, err := filepath.Glob(filepath.Join(home, ".agents", "AGENTS.md.bak-*"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 1 {
-		t.Fatalf("expected one AGENTS.md backup, got %d", len(matches))
+	if len(matches) != 0 {
+		t.Fatalf("expected no AGENTS.md backup files, got %d: %v", len(matches), matches)
 	}
 }
 

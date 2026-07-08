@@ -175,9 +175,6 @@ func removeStaleRecursive(ctx Context, root, relPrefix string, entries []os.DirE
 		if !managed[rel] {
 			ctx.Report.Line("remove stale: %s", fullPath)
 			if !ctx.DryRun {
-				if err := backupPath(ctx, fullPath); err != nil {
-					return err
-				}
 				if err := os.Remove(fullPath); err != nil {
 					ctx.Report.Line("warning: remove stale failed: %v", err)
 				}
@@ -216,7 +213,7 @@ type LinkSkillDirs struct {
 
 func (op LinkSkillDirs) Apply(ctx Context) error {
 	if op.Replace {
-		if err := backupAndRemove(ctx, op.DstRoot); err != nil {
+		if err := removePath(ctx, op.DstRoot); err != nil {
 			return err
 		}
 	}
@@ -227,7 +224,7 @@ func (op LinkSkillDirs) Apply(ctx Context) error {
 	// provider target, regardless of init vs update mode. In update mode the
 	// whole DstRoot is wiped above, so the per-entry replace is a no-op there;
 	// in init mode it guarantees a stale provider-target skill with the same
-	// name is backed up and replaced by the preset version instead of skipped.
+	// name is replaced by the preset version instead of skipped.
 	entries, err := os.ReadDir(op.SrcRoot)
 	if err != nil {
 		if !ctx.DryRun {
