@@ -81,11 +81,6 @@
       "skill": "stitch-design-taste"
     },
     {
-      "name": "minimax-cli",
-      "source": "MiniMax-AI/cli",
-      "skill": "mmx-cli"
-    },
-    {
       "name": "shadcn-ui",
       "source": "shadcn/ui",
       "skill": "shadcn"

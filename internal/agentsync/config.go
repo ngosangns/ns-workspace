@@ -19,7 +19,7 @@ import (
 //	{
 //	  "presets/agents/AGENTS.md": "/home/me/.config/ns-workspace/AGENTS.md",
 //	  "presets/opencode/opencode.json": "/home/me/.config/ns-workspace/opencode.json",
-//	  "presets/skills/minimax-cli/SKILL.md": "/home/me/.config/ns-workspace/minimax-cli.md"
+//	  "presets/skills/custom-skill/SKILL.md": "/home/me/.config/ns-workspace/custom-skill.md"
 //	}
 //
 // Keys MUST start with "presets/" and use forward slashes. Values MUST be

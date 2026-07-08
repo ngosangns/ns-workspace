@@ -98,73 +98,6 @@ func (CodexPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 	return manifest, nil
 }
 
-// AiderPlugin implements Aider's conventions managed block. Aider has
-// no native MCP target so the plugin only reports the aider.conf.yml
-// path under ExtraStatusPaths.
-type AiderPlugin struct{}
-
-// ExtendCapabilities adds ArtifactRules and ArtifactCommands so
-// `agents` reflects that Aider only emits managed blocks.
-func (AiderPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
-	caps.Artifacts = append(caps.Artifacts, ArtifactRules, ArtifactCommands)
-	return caps
-}
-
-// ExtraOperations is a no-op — AiderAdapter.Plan emits the
-// conventions block.
-func (AiderPlugin) ExtraOperations(_ Context, _ AdapterSpec, _ bool) ([]Operation, error) {
-	return nil, nil
-}
-
-// ExtraStatusPaths returns the Aider config path.
-func (AiderPlugin) ExtraStatusPaths(ctx Context, _ AdapterSpec) []string {
-	return []string{filepath.Join(ctx.Home, ".aider.conf.yml")}
-}
-
-// TransformMCPServers returns the manifest unchanged. Aider has no
-// MCP target.
-func (AiderPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	return manifest, nil
-}
-
-// MiniMaxPlugin implements mmx-cli's default model + region presets.
-// mmx-cli reads a single JSON config file at ~/.mmx/config.json; no
-// skills/agents/MCP fan-out.
-type MiniMaxPlugin struct {
-	ConfigPath string
-}
-
-// GetConfigPath returns the mmx config path the adapter writes to.
-// Renamed from ConfigPath so it does not collide with the field name
-// on MiniMaxAdapter.ConfigPath.
-func (p MiniMaxPlugin) GetConfigPath() string { return p.ConfigPath }
-
-// ExtendCapabilities adds ArtifactSettings.
-func (MiniMaxPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
-	caps.Artifacts = append(caps.Artifacts, ArtifactSettings)
-	return caps
-}
-
-// ExtraOperations is a no-op — MiniMaxAdapter.Plan emits the
-// MergeJSON itself.
-func (MiniMaxPlugin) ExtraOperations(_ Context, _ AdapterSpec, _ bool) ([]Operation, error) {
-	return nil, nil
-}
-
-// ExtraStatusPaths returns the mmx config path.
-func (p MiniMaxPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string {
-	if p.ConfigPath == "" {
-		return nil
-	}
-	return []string{p.ConfigPath}
-}
-
-// TransformMCPServers returns the manifest unchanged. mmx-cli does
-// not consume the shared MCP servers file.
-func (MiniMaxPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	return manifest, nil
-}
-
 // QwenPlugin / GeminiPlugin / ClinePlugin are minimal per-provider
 // overrides whose only job is to rewrite MCP servers into the
 // vendor-specific shape. They use TransformMCPServers to drop or
@@ -260,40 +193,6 @@ func (ClinePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 	return MCPManifest{MCPServers: transformed}, nil
 }
 
-// QoderPlugin powers the Qoder CLI adapter. Qoder CLI stores MCP
-// servers and the auto-approve permission mode in ~/.qoder/settings.json
-// using a Claude-like schema, so the MCP servers keep the shared
-// {type:"http",url} shape and only the per-provider settings profile
-// (general.defaultPermissionMode=auto) is layered on top.
-type QoderPlugin struct{}
-
-// ExtendCapabilities adds ArtifactMCP for the shared mcpServers path
-// under ~/.qoder/settings.json.
-func (QoderPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
-	caps.Artifacts = append(caps.Artifacts, ArtifactMCP)
-	return caps
-}
-
-// ExtraOperations returns no extras; the template method handles the
-// file fan-out and the settings profile.
-func (QoderPlugin) ExtraOperations(_ Context, _ AdapterSpec, _ bool) ([]Operation, error) {
-	return nil, nil
-}
-
-// ExtraStatusPaths returns no extras.
-func (QoderPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return nil }
-
-// TransformMCPServers keeps the shared shape. Qoder CLI accepts the
-// canonical {type:"http",url} entry for HTTP servers and
-// command/args for stdio servers, matching the shared preset.
-func (QoderPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	transformed, err := transformMCPServersForAdapterImpl("qoder", manifest)
-	if err != nil {
-		return MCPManifest{}, fmt.Errorf("qoder transform: %w", err)
-	}
-	return MCPManifest{MCPServers: transformed}, nil
-}
-
 // ZCodePlugin powers the ZCode adapter. ZCode (the desktop app by
 // MiniMax) discovers skills from ~/.zcode/skills/ in addition to the
 // shared ~/.agents/skills/ directory. There is no first-party
@@ -339,12 +238,9 @@ var (
 	_ AdapterPlugin = ClaudePlugin{}
 	_ AdapterPlugin = OpenCodePlugin{}
 	_ AdapterPlugin = CodexPlugin{}
-	_ AdapterPlugin = AiderPlugin{}
-	_ AdapterPlugin = MiniMaxPlugin{}
 	_ AdapterPlugin = QwenPlugin{}
 	_ AdapterPlugin = GeminiPlugin{}
 	_ AdapterPlugin = ClinePlugin{}
-	_ AdapterPlugin = QoderPlugin{}
 	_ AdapterPlugin = ZCodePlugin{}
 	_ AdapterPlugin = NoopPlugin{}
 )

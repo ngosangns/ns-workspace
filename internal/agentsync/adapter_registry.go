@@ -64,8 +64,8 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 		Spec: AdapterSpec{
 			ID: "grok", Tier: TierStable, Executables: []string{"grok"},
 			Targets: AdapterTargets{Skills: filepath.Join(home, ".grok", "skills")},
-			Docs:  []string{"https://docs.x.ai/build/overview", "https://docs.x.ai/build/features/skills-plugins-marketplaces"},
-			Notes: "Grok Build reads AGENTS.md from projects and also discovers ~/.agents/skills; this adapter mirrors shared skills into ~/.grok/skills for native slash-command discovery.",
+			Docs:    []string{"https://docs.x.ai/build/overview", "https://docs.x.ai/build/features/skills-plugins-marketplaces"},
+			Notes:   "Grok Build reads AGENTS.md from projects and also discovers ~/.agents/skills; this adapter mirrors shared skills into ~/.grok/skills for native slash-command discovery.",
 		},
 	}})
 
@@ -94,7 +94,7 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 				AgentConfigSrc: "presets/settings/kiro.json",
 				AgentConfigDst: filepath.Join(kiro, "agents", "ns-full.json"),
 			},
-			Docs: []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/", "https://kiro.dev/docs/cli/skills/", "https://kiro.dev/docs/cli/custom-agents/creating/"},
+			Docs:  []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/", "https://kiro.dev/docs/cli/skills/", "https://kiro.dev/docs/cli/custom-agents/creating/"},
 			Notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; skills sync to Kiro global skills; MCP presets sync to the shared Kiro settings path. A full-permissions custom agent (tools:* + permissions allow capability:all) is written to ~/.kiro/agents/ns-full.json so `kiro --agent ns-full` runs without per-tool approval prompts.",
 		},
 		Plugin: NoopPlugin{},
@@ -158,22 +158,6 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 		Plugin: ClinePlugin{},
 	}})
 
-	r.add(&ProfileAdapter{BaseAdapter: BaseAdapter{
-		Spec: AdapterSpec{
-			ID: "qoder", Aliases: []string{"qodercli", "qoder-cli"}, Tier: TierStable, Executables: []string{"qodercli", "qoder"},
-			Targets: AdapterTargets{
-				Instruction: filepath.Join(home, ".qoder", "AGENTS.md"),
-				Skills:      filepath.Join(home, ".qoder", "skills"),
-				Subagents:   filepath.Join(home, ".qoder", "agents"),
-				MCPPath:     filepath.Join(home, ".qoder", "settings.json"),
-				MCPKeyPath:  []string{"mcpServers"},
-			},
-			Docs: []string{"https://docs.qoder.com/en/cli/Skills", "https://docs.qoder.com/en/cli/subagent", "https://docs.qoder.com/en/cli/mcp-servers", "https://docs.qoder.com/en/cli/permissions"},
-			Notes: "Qoder CLI (qodercli) reads global AGENTS.md, skills, and subagents from ~/.qoder, and stores MCP servers + auto-approve permission mode (general.defaultPermissionMode=auto) in ~/.qoder/settings.json. MCP servers keep the Claude-style {type:http,url} shape.",
-		},
-		Plugin: QoderPlugin{},
-	}})
-
 	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
 		Spec: AdapterSpec{
 			ID: "zcode", Aliases: []string{"zcode-cli"}, Tier: TierStable, Executables: []string{"zcode"},
@@ -181,38 +165,11 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 				Instruction: filepath.Join(home, ".zcode", "AGENTS.md"),
 				Skills:      filepath.Join(home, ".zcode", "skills"),
 			},
-			Docs: []string{""},
+			Docs:  []string{""},
 			Notes: "ZCode (desktop app by MiniMax) discovers skills from ~/.zcode/skills/ in addition to the shared ~/.agents/skills/ directory; the adapter mirrors shared skills into ~/.zcode/skills/ so ZCode picks them up even when ~/.agents/skills/ is not on the discovery path. The shared ~/.agents/AGENTS.md is file-linked into ~/.zcode/AGENTS.md so project-local discovery also picks it up. There is no first-party user-level MCP config in this ZCode release (MCP servers live per-plugin under ~/.zcode/cli/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json), so the adapter does not write an MCP file yet — the ZCodePlugin skeleton is wired for that future target.",
 		},
 		Plugin: ZCodePlugin{},
 	}})
-
-	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
-		Spec: AdapterSpec{
-			ID: "windsurf", Tier: TierStable,
-			Targets: AdapterTargets{Instruction: filepath.Join(home, ".codeium", "windsurf", "memories", "global_rules.md")},
-			Docs:    []string{"https://docs.windsurf.com/windsurf/cascade/memories"},
-		},
-	}})
-
-	r.add(&AiderAdapter{BaseAdapter: BaseAdapter{
-		Spec: AdapterSpec{
-			ID: "aider", Tier: TierStable, Executables: []string{"aider"},
-			Docs: []string{"https://aider.chat/docs/config/aider_conf.html", "https://aider.chat/docs/usage/conventions.html"},
-		},
-		Plugin: AiderPlugin{},
-	}})
-
-	r.add(&MiniMaxAdapter{
-		BaseAdapter: BaseAdapter{
-			Spec: AdapterSpec{
-				ID: "minimax", Aliases: []string{"minimax-cli", "mmx"}, Tier: TierStable, Executables: []string{"mmx"},
-				Docs: []string{"https://platform.minimax.io/docs/token-plan/minimax-cli", "https://github.com/MiniMax-AI/cli"},
-				Notes: "MiniMax CLI (mmx) is a multimodal content-generation CLI (text/image/video/speech/music). Adapter writes default model and region presets to ~/.mmx/config.json via MergeJSON. The shared skills/ and agents/ fan-out does not apply because mmx-cli does not expose a user-level skills or subagents directory; use the bundled `presets/skills/minimax-cli/SKILL.md` from a coding agent to teach it the mmx surface.",
-			},
-			Plugin: MiniMaxPlugin{ConfigPath: filepath.Join(home, ".mmx", "config.json")},
-		},
-	})
 
 	return r
 }

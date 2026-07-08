@@ -104,7 +104,7 @@ func replaceJSONAt(obj map[string]any, keyPath []string, values map[string]any) 
 // blank line separator (or returned alone when current is empty).
 //
 // This is the idiomatic format used by AppendManagedBlock to write
-// `codex mcp` and `aider conventions` blocks without clobbering user
+// `codex mcp` managed blocks without clobbering user
 // content outside the markers.
 func replaceManagedBlock(current, begin, end, block string) string {
 	start := strings.Index(current, begin)

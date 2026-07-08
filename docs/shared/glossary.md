@@ -27,7 +27,7 @@ Preset là source config được lưu trong `presets/` và Go embed vào binary
 
 Managed artifact là file, directory, JSON key hoặc managed text block do `ns-workspace` tạo và có thể rewrite khi chạy `update`.
 
-Managed block là đoạn text có label trong file native, ví dụ block MCP trong `~/.codex/config.toml` hoặc conventions trong `~/.aider.conf.yml`.
+Managed block là đoạn text có label trong file native, ví dụ block MCP trong `~/.codex/config.toml`.
 
 Support tier là mức ổn định của adapter: `stable` ghi native path thật, `manual` tạo helper guidance, còn `experimental` được guard vì path hoặc contract chưa đủ chắc.
 

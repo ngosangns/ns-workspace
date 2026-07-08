@@ -275,40 +275,6 @@ func TestCodexPlugin(t *testing.T) {
 	}
 }
 
-func TestAiderPlugin(t *testing.T) {
-	ctx, _ := newTestContext(t)
-	p := AiderPlugin{}
-	caps := p.ExtendCapabilities(AdapterSpec{}, AgentCapabilities{Tier: TierStable})
-	if !containsKind(caps.Artifacts, ArtifactRules) {
-		t.Fatalf("Aider caps missing Rules: %v", caps.Artifacts)
-	}
-	if !containsKind(caps.Artifacts, ArtifactCommands) {
-		t.Fatalf("Aider caps missing Commands: %v", caps.Artifacts)
-	}
-	paths := p.ExtraStatusPaths(ctx, AdapterSpec{})
-	if !containsString(paths, filepath.Join(ctx.Home, ".aider.conf.yml")) {
-		t.Fatalf("Aider paths = %v", paths)
-	}
-}
-
-func TestMiniMaxPlugin(t *testing.T) {
-	ctx, _ := newTestContext(t)
-	p := MiniMaxPlugin{ConfigPath: filepath.Join(ctx.Home, ".mmx", "config.json")}
-	caps := p.ExtendCapabilities(AdapterSpec{}, AgentCapabilities{Tier: TierStable})
-	if !containsKind(caps.Artifacts, ArtifactSettings) {
-		t.Fatalf("MiniMax caps missing Settings: %v", caps.Artifacts)
-	}
-	if p.GetConfigPath() != filepath.Join(ctx.Home, ".mmx", "config.json") {
-		t.Fatalf("GetConfigPath = %q", p.GetConfigPath())
-	}
-	if p.ExtraStatusPaths(ctx, AdapterSpec{}) == nil {
-		t.Fatalf("ExtraStatusPaths nil for configured plugin")
-	}
-	if (MiniMaxPlugin{}).ExtraStatusPaths(ctx, AdapterSpec{}) != nil {
-		t.Fatalf("ExtraStatusPaths should be nil when ConfigPath empty")
-	}
-}
-
 func TestQwenPlugin(t *testing.T) {
 	_, _ = newTestContext(t)
 	p := QwenPlugin{}
@@ -382,25 +348,6 @@ func TestClinePlugin(t *testing.T) {
 	}
 }
 
-func TestQoderPlugin(t *testing.T) {
-	_, _ = newTestContext(t)
-	p := QoderPlugin{}
-	caps := p.ExtendCapabilities(AdapterSpec{}, AgentCapabilities{Tier: TierStable})
-	if !containsKind(caps.Artifacts, ArtifactMCP) {
-		t.Fatalf("Qoder caps missing MCP: %v", caps.Artifacts)
-	}
-	out, err := p.TransformMCPServers(MCPManifest{MCPServers: map[string]any{
-		"http": map[string]any{"type": "http", "url": "https://x"},
-	}})
-	if err != nil {
-		t.Fatalf("TransformMCPServers: %v", err)
-	}
-	http, _ := out.MCPServers["http"].(map[string]any)
-	if http["type"] != "http" {
-		t.Fatalf("Qoder should keep type=http: %v", http)
-	}
-}
-
 func TestZCodePlugin(t *testing.T) {
 	_, _ = newTestContext(t)
 	p := ZCodePlugin{}
@@ -464,7 +411,6 @@ func TestPluginTransformMCPServersError(t *testing.T) {
 		{"Qwen", func(m MCPManifest) (MCPManifest, error) { return QwenPlugin{}.TransformMCPServers(m) }, "qwen transform: forced plugin transform failure"},
 		{"Gemini", func(m MCPManifest) (MCPManifest, error) { return GeminiPlugin{}.TransformMCPServers(m) }, "gemini transform: forced plugin transform failure"},
 		{"Cline", func(m MCPManifest) (MCPManifest, error) { return ClinePlugin{}.TransformMCPServers(m) }, "cline transform: forced plugin transform failure"},
-		{"Qoder", func(m MCPManifest) (MCPManifest, error) { return QoderPlugin{}.TransformMCPServers(m) }, "qoder transform: forced plugin transform failure"},
 		{"ZCode", func(m MCPManifest) (MCPManifest, error) { return ZCodePlugin{}.TransformMCPServers(m) }, "zcode transform: forced plugin transform failure"},
 	}
 	manifest := MCPManifest{MCPServers: map[string]any{
@@ -492,7 +438,7 @@ func TestAdapterRegistryLookupAndIds(t *testing.T) {
 		t.Fatalf("Lookup claude returned nil")
 	}
 	// Lookup by alias
-	if r.Lookup("minimax-cli") == nil {
+	if r.Lookup("zcode-cli") == nil {
 		t.Fatalf("Lookup by alias returned nil")
 	}
 	if r.Lookup("not-an-adapter") != nil {
@@ -514,7 +460,7 @@ func TestAdapterRegistryLookupAndIds(t *testing.T) {
 	if !sort.StringsAreSorted(ids) {
 		t.Fatalf("Ids should be sorted: %v", ids)
 	}
-	if !containsString(ids, "claude") || !containsString(ids, "mmx") {
+	if !containsString(ids, "claude") || !containsString(ids, "zcode") {
 		t.Fatalf("Ids missing expected entries: %v", ids)
 	}
 }
@@ -591,7 +537,7 @@ func TestApplyAdapterSettingsRaw(t *testing.T) {
 		Replace:     true,
 	}
 	overlayCtx, _ := newTestContextWithOverlay(t, map[string]string{
-		profileKey:     rawPath,
+		profileKey:              rawPath,
 		"presets/test-raw.json": rawPreset,
 	})
 	var buf bytes.Buffer
@@ -2002,8 +1948,8 @@ func TestCompact(t *testing.T) {
 }
 
 func TestParseTools(t *testing.T) {
-	got := ParseTools("claude,opencode, Claude ,MINIMAX")
-	want := map[string]bool{"claude": true, "opencode": true, "minimax": true}
+	got := ParseTools("claude,opencode, Claude ,ZCODE")
+	want := map[string]bool{"claude": true, "opencode": true, "zcode": true}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseTools = %v, want %v", got, want)
 	}
@@ -2052,7 +1998,7 @@ func TestReadSettingsManifestInvalidJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx2, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(dir, ".agents"),
+		AgentsDir:  filepath.Join(dir, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2092,86 +2038,6 @@ func TestResolveHomeRelative(t *testing.T) {
 }
 
 // --- adapter_concrete.go ---
-
-func TestMiniMaxAdapterPlanEmpty(t *testing.T) {
-	// Create a temporary preset fs with an empty mmx config to hit len(parsed)==0 branch
-	emptyPresetDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(emptyPresetDir, "presets", "minimax"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(emptyPresetDir, "presets", "minimax", "config.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
-	t.Setenv("NS_WORKSPACE_CONFIG", "")
-	mgr := Manager{Presets: os.DirFS(emptyPresetDir)}
-	// Empty config means parsed is empty, so Plan returns (nil, nil).
-	home2 := t.TempDir()
-	t.Setenv("HOME", home2)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home2, ".config"))
-	m := &MiniMaxAdapter{BaseAdapter: BaseAdapter{
-		Spec:   AdapterSpec{ID: "minimax", Tier: TierStable, Aliases: []string{"mmx"}},
-		Plugin: MiniMaxPlugin{ConfigPath: filepath.Join(home2, ".mmx", "config.json")},
-	}}
-	ctx, err := mgr.context(Options{
-		AgentsDir: filepath.Join(home2, ".agents"),
-		ToolFilter: ParseTools("all"),
-	})
-	if err != nil {
-		t.Fatalf("context: %v", err)
-	}
-	ops, err := m.Plan(ctx, false)
-	if err != nil {
-		t.Fatalf("Plan: %v", err)
-	}
-	if len(ops) != 0 {
-		t.Fatalf("Plan with empty config should return no ops, got %d", len(ops))
-	}
-}
-
-func TestMiniMaxAdapterPlanInvalidPreset(t *testing.T) {
-	// Build a Context manually pointing to a bogus preset
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
-	t.Setenv("NS_WORKSPACE_CONFIG", "")
-	m := &MiniMaxAdapter{BaseAdapter: BaseAdapter{
-		Spec:   AdapterSpec{ID: "minimax", Tier: TierStable, Aliases: []string{"mmx"}},
-		Plugin: MiniMaxPlugin{ConfigPath: filepath.Join(home, ".mmx", "config.json")},
-	}}
-	ctx, err := Manager{Presets: os.DirFS("nonexistent")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
-		ToolFilter: ParseTools("all"),
-	})
-	if err != nil {
-		t.Fatalf("context: %v", err)
-	}
-	if _, err := m.Plan(ctx, false); err == nil {
-		t.Fatalf("expected error for missing preset")
-	}
-}
-
-func TestMiniMaxConfigPathNilPlugin(t *testing.T) {
-	m := &MiniMaxAdapter{}
-	if got := m.ConfigPath(); got != "" {
-		t.Fatalf("ConfigPath with nil plugin = %q", got)
-	}
-}
-
-func TestMiniMaxConfigPathPluginWithoutGetConfigPath(t *testing.T) {
-	m := &MiniMaxAdapter{BaseAdapter: BaseAdapter{
-		Plugin: NoopPlugin{},
-	}}
-	if got := m.ConfigPath(); got != "" {
-		t.Fatalf("ConfigPath with plugin lacking GetConfigPath = %q", got)
-	}
-}
 
 func TestStripMCPOps(t *testing.T) {
 	ops := []Operation{
@@ -2305,29 +2171,6 @@ func TestCodexAdapterPlanEmptyManifest(t *testing.T) {
 	got, _ := os.ReadFile(codexConfig)
 	if strings.Contains(string(got), "[mcp_servers.") {
 		t.Fatalf("empty MCP servers should not produce mcp_servers block: %s", got)
-	}
-}
-
-func TestAiderAdapterPlan(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
-	t.Setenv("NS_WORKSPACE_CONFIG", "")
-	mgr := Manager{Presets: os.DirFS("../..")}
-	if err := mgr.Apply(Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoRegistry: true,
-		ToolFilter: ParseTools("aider"),
-	}, false); err != nil {
-		t.Fatalf("Apply aider: %v", err)
-	}
-	aiderConfig := filepath.Join(home, ".aider.conf.yml")
-	got, _ := os.ReadFile(aiderConfig)
-	if !strings.Contains(string(got), "# >>> ns-workspace conventions >>>") {
-		t.Fatalf("aider config missing managed block: %s", got)
 	}
 }
 
@@ -2489,12 +2332,12 @@ func TestSelectedTier(t *testing.T) {
 
 func TestNativePathsAndExpandHome(t *testing.T) {
 	paths := nativePaths(AdapterSpec{Targets: AdapterTargets{
-		Instruction:  ".claude/CLAUDE.md",
-		Skills:       ".claude/skills",
-		Subagents:    ".claude/agents",
-		Settings:     ".claude/settings.json",
-		HooksPath:    ".claude/hooks.json",
-		MCPPath:      ".claude/mcp.json",
+		Instruction:    ".claude/CLAUDE.md",
+		Skills:         ".claude/skills",
+		Subagents:      ".claude/agents",
+		Settings:       ".claude/settings.json",
+		HooksPath:      ".claude/hooks.json",
+		MCPPath:        ".claude/mcp.json",
 		AgentConfigDst: ".claude/agent.json",
 	}}, "/home/user")
 	want := []string{
@@ -2633,7 +2476,7 @@ func TestSyncPlanApplyError(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2661,8 +2504,8 @@ func TestInstallRegistrySkillsDryRun(t *testing.T) {
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	// Set up a context where DryRun is true
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
-		DryRun:    true,
+		AgentsDir:  filepath.Join(home, ".agents"),
+		DryRun:     true,
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2716,7 +2559,7 @@ func TestReadMCPManifestInvalidJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2741,7 +2584,7 @@ func TestReadRegistryManifestInvalidJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2832,7 +2675,7 @@ func TestReadMCPManifestUpdateMode(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2856,7 +2699,7 @@ func TestReadSettingsManifestUpdateMode(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2880,7 +2723,7 @@ func TestReadRegistryManifestUpdateMode(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -2921,7 +2764,7 @@ func TestReadPresetFileFromUserPresent(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ConfigPath: cfgPath,
 		ToolFilter: ParseTools("all"),
 	})
@@ -2975,7 +2818,7 @@ func TestReadPresetFileUserOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ConfigPath: cfgPath,
 		ToolFilter: ParseTools("all"),
 	})
@@ -3068,7 +2911,7 @@ func TestInstallRegistrySkillsNpxSuccess(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -3099,7 +2942,7 @@ func TestInstallRegistrySkillsNpxFailure(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -3138,7 +2981,7 @@ func TestInstallRegistrySkillsNpxFailureWithSecretInError(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -3173,7 +3016,7 @@ func TestInstallRegistrySkillsWithEnv(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 	t.Setenv("NS_WORKSPACE_CONFIG", "")
 	ctx, err := Manager{Presets: os.DirFS("../..")}.context(Options{
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		ToolFilter: ParseTools("all"),
 	})
 	if err != nil {
@@ -3198,7 +3041,7 @@ func TestApplyCreatesManualAdapterOutputs(t *testing.T) {
 	mgr := Manager{Presets: os.DirFS("../..")}
 	if err := mgr.Apply(Options{
 		Command:    "init",
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
 		ToolFilter: ParseTools("all"),
 	}, false); err != nil {
@@ -3218,9 +3061,9 @@ func TestApplyUpdateExercisesAllPaths(t *testing.T) {
 	mgr := Manager{Presets: os.DirFS("../..")}
 	opt := Options{
 		Command:    "init",
-		AgentsDir: filepath.Join(home, ".agents"),
+		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("claude,opencode,qwen,gemini,cline,codex,kiro,aider,minimax"),
+		ToolFilter: ParseTools("claude,opencode,qwen,gemini,cline,codex,kiro"),
 	}
 	// First apply
 	if err := mgr.Apply(opt, false); err != nil {
@@ -3357,12 +3200,10 @@ func TestAllPlugins(t *testing.T) {
 		{"ClaudePlugin", ClaudePlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"OpenCodePlugin", OpenCodePlugin{ConfigPath: "/x"}, nil},
 		{"CodexPlugin", CodexPlugin{}, []ArtifactKind{ArtifactMCP}},
-		{"AiderPlugin", AiderPlugin{}, []ArtifactKind{ArtifactRules, ArtifactCommands}},
-		{"MiniMaxPlugin", MiniMaxPlugin{ConfigPath: "/x"}, []ArtifactKind{ArtifactSettings}},
 		{"QwenPlugin", QwenPlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"GeminiPlugin", GeminiPlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"ClinePlugin", ClinePlugin{}, []ArtifactKind{ArtifactMCP}},
-		{"QoderPlugin", QoderPlugin{}, []ArtifactKind{ArtifactMCP}},
+		{"ZCodePlugin", ZCodePlugin{}, []ArtifactKind{ArtifactSkills, ArtifactInstructions}},
 	}
 	for _, tc := range plugins {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3394,7 +3235,7 @@ func TestAllPlugins(t *testing.T) {
 	manifest := MCPManifest{MCPServers: map[string]any{
 		"x": map[string]any{"type": "http", "url": "https://x"},
 	}}
-	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, AiderPlugin{}, MiniMaxPlugin{}, QwenPlugin{}, GeminiPlugin{}, ClinePlugin{}, QoderPlugin{}} {
+	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, GeminiPlugin{}, ClinePlugin{}, ZCodePlugin{}} {
 		if _, err := p.TransformMCPServers(manifest); err != nil {
 			t.Fatalf("TransformMCPServers: %v", err)
 		}
@@ -3402,10 +3243,6 @@ func TestAllPlugins(t *testing.T) {
 	// OpenCodePlugin with empty ConfigPath
 	if paths := (OpenCodePlugin{}).ExtraStatusPaths(Context{}, AdapterSpec{}); paths != nil {
 		t.Fatalf("OpenCodePlugin empty ConfigPath should return nil, got %v", paths)
-	}
-	// MiniMaxPlugin with empty ConfigPath
-	if paths := (MiniMaxPlugin{}).ExtraStatusPaths(Context{}, AdapterSpec{}); paths != nil {
-		t.Fatalf("MiniMaxPlugin empty ConfigPath should return nil, got %v", paths)
 	}
 }
 
@@ -4166,57 +4003,6 @@ func TestManagerContextDefaultToolFilter(t *testing.T) {
 	}
 }
 
-// --- adapter_concrete.go extras ---
-
-func TestMiniMaxPlanNonEmpty(t *testing.T) {
-	// Set up a non-empty mmx config
-	presetDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(presetDir, "presets", "minimax"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(presetDir, "presets", "minimax", "config.json"), []byte(`{"model":"x","region":"us"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	mgr := Manager{Presets: os.DirFS(presetDir)}
-	m := &MiniMaxAdapter{BaseAdapter: BaseAdapter{
-		Spec:   AdapterSpec{ID: "minimax", Tier: TierStable, Aliases: []string{"mmx"}},
-		Plugin: MiniMaxPlugin{ConfigPath: filepath.Join(home, ".mmx", "config.json")},
-	}}
-	ctx, err := mgr.context(Options{
-		AgentsDir:  filepath.Join(home, ".agents"),
-		ToolFilter: ParseTools("all"),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ops, err := m.Plan(ctx, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ops) == 0 {
-		t.Fatalf("expected ops")
-	}
-}
-
-func TestAiderAdapterPlanNoMCP(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	mgr := Manager{Presets: os.DirFS("../..")}
-	if err := mgr.Apply(Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoMCP:      true,
-		NoRegistry: true,
-		ToolFilter: ParseTools("aider"),
-	}, false); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-}
-
 // --- coverage for Kiro / other plugin paths ---
 
 func TestKiroAdapterPlanNoMCP(t *testing.T) {
@@ -4230,52 +4016,6 @@ func TestKiroAdapterPlanNoMCP(t *testing.T) {
 		NoMCP:      true,
 		NoRegistry: true,
 		ToolFilter: ParseTools("kiro"),
-	}, false); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-}
-
-func TestQoderAdapterPlan(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	mgr := Manager{Presets: os.DirFS("../..")}
-	if err := mgr.Apply(Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoRegistry: true,
-		ToolFilter: ParseTools("qoder"),
-	}, false); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-}
-
-func TestQoderAdapterPlanNoMCP(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	mgr := Manager{Presets: os.DirFS("../..")}
-	if err := mgr.Apply(Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoMCP:      true,
-		NoRegistry: true,
-		ToolFilter: ParseTools("qoder"),
-	}, false); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-}
-
-func TestClineAdapterPlan(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	mgr := Manager{Presets: os.DirFS("../..")}
-	if err := mgr.Apply(Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoRegistry: true,
-		ToolFilter: ParseTools("cline"),
 	}, false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -4376,9 +4116,9 @@ func TestApplyAdapterSettingsWithUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, _ := newTestContextWithOverlay(t, map[string]string{
-		"presets/test-default.json": defaultPath,
+		"presets/test-default.json":  defaultPath,
 		"presets/test-provider.json": providerPath,
-		"presets/test-profile.json": profilePath,
+		"presets/test-profile.json":  profilePath,
 	})
 	home2 := t.TempDir()
 	t.Setenv("HOME", home2)
@@ -4390,9 +4130,9 @@ func TestApplyAdapterSettingsWithUpdate(t *testing.T) {
 	})
 	// Need to use the overlay context
 	overlayCtx, _ := newTestContextWithOverlay(t, map[string]string{
-		"presets/test-default.json": defaultPath,
+		"presets/test-default.json":  defaultPath,
 		"presets/test-provider.json": providerPath,
-		"presets/test-profile.json": profilePath,
+		"presets/test-profile.json":  profilePath,
 	})
 	op := ApplyAdapterSettings{
 		ProfilePath: "presets/test-profile.json",
@@ -4666,7 +4406,7 @@ func TestMain(m *testing.M) {
 
 func TestReplaceJSONAtNonEmptyPath(t *testing.T) {
 	obj := map[string]any{
-		"a": map[string]any{"b": "old"},
+		"a":    map[string]any{"b": "old"},
 		"keep": "me",
 	}
 	replaceJSONAt(obj, []string{"a", "b"}, map[string]any{"new": "val"})
@@ -4784,7 +4524,6 @@ func TestAppendManagedBlockReadError(t *testing.T) {
 	}
 }
 
-
 func TestInstallPresetTreeApplyAll(t *testing.T) {
 	ctx, _ := newTestContextWithOpts(t, func(o *Options) {})
 	dst := filepath.Join(t.TempDir(), "skills")
@@ -4805,7 +4544,7 @@ func TestReadMCPManifestUpdatePath(t *testing.T) {
 		UserConfig: ctx.UserConfig, Report: ctx.Report,
 		manifestCache: ctx.manifestCache, seenDirs: ctx.seenDirs,
 		Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome,
-}
+	}
 	m, err := readMCPManifest(ctx2)
 	if err != nil {
 		t.Fatalf("readMCPManifest update: %v", err)
@@ -4821,7 +4560,7 @@ func TestReadSettingsManifestUpdatePath(t *testing.T) {
 		UserConfig: ctx.UserConfig, Report: ctx.Report,
 		manifestCache: ctx.manifestCache, seenDirs: ctx.seenDirs,
 		Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome,
-}
+	}
 	m, err := readSettingsManifest(ctx2)
 	if err != nil {
 		t.Fatalf("readSettingsManifest update: %v", err)
@@ -4835,7 +4574,7 @@ func TestReadRegistryManifestUpdatePath(t *testing.T) {
 		UserConfig: ctx.UserConfig, Report: ctx.Report,
 		manifestCache: ctx.manifestCache, seenDirs: ctx.seenDirs,
 		Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome,
-}
+	}
 	m, err := readRegistryManifest(ctx2)
 	if err != nil {
 		t.Fatalf("readRegistryManifest update: %v", err)
@@ -5287,31 +5026,6 @@ func TestReadSettingsManifestUpdate(t *testing.T) {
 	}
 }
 
-
-func TestPlanErrorFromPresetRead(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
-	t.Setenv("NS_WORKSPACE_CONFIG", "")
-	mgr := Manager{Presets: os.DirFS("../..")}
-	ctx, err := mgr.context(Options{AgentsDir: filepath.Join(home, ".agents"), ToolFilter: ParseTools("minimax")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Force readPresetFile hook to fail
-	orig := readPresetFileHook
-	readPresetFileHook = func(_ Context, _ string) ([]byte, error) {
-		return nil, fmt.Errorf("preset fail")
-	}
-	defer func() { readPresetFileHook = orig }()
-	m := &MiniMaxAdapter{}
-	if _, err := m.Plan(ctx, false); err == nil {
-		t.Fatalf("expected error from preset read")
-	}
-}
-
 func TestReadPresetFileEmpty(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	data, err := readPresetFile(ctx, "presets/manifest.json")
@@ -5322,7 +5036,6 @@ func TestReadPresetFileEmpty(t *testing.T) {
 		t.Fatalf("expected non-empty preset")
 	}
 }
-
 
 func TestResolveAdapterSettingsTargetEmpty(t *testing.T) {
 	if _, err := resolveHomeRelative("/home", ""); err == nil {
@@ -5372,7 +5085,7 @@ func TestAdapterPluginsTransformError(t *testing.T) {
 		{"QwenPlugin", QwenPlugin{}},
 		{"GeminiPlugin", GeminiPlugin{}},
 		{"ClinePlugin", ClinePlugin{}},
-		{"QoderPlugin", QoderPlugin{}},
+		{"ZCodePlugin", ZCodePlugin{}},
 	}
 	for _, p := range plugins {
 		t.Run(p.name, func(t *testing.T) {
@@ -5427,7 +5140,6 @@ func TestArtifactListSorted(t *testing.T) {
 	}
 }
 
-
 func TestReadMCPManifestInvalidUpdateJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -5453,7 +5165,6 @@ func TestReadMCPManifestInvalidUpdateJSON(t *testing.T) {
 		t.Fatalf("expected error for invalid JSON")
 	}
 }
-
 
 func TestAdapterSettingsHomeDirError(t *testing.T) {
 	orig := adapterSettingsHomeDirFn
@@ -5511,10 +5222,10 @@ func TestApplyAdapterPlanErr(t *testing.T) {
 	// Force a phase add that produces an op which fails (e.g. nonexistent dir)
 	plan.Add(PhaseCore, "test", ArtifactSettings, WriteFile{Dst: "/nonexistent/path/x", Data: []byte("x"), Replace: true})
 	if err := plan.Apply(Context{
-		Options:        Options{AgentsDir: home, ToolFilter: ParseTools("all")},
-		Report:         &bufferReporter{},
-		manifestCache:  map[string]any{},
-		seenDirs:       map[string]bool{},
+		Options:       Options{AgentsDir: home, ToolFilter: ParseTools("all")},
+		Report:        &bufferReporter{},
+		manifestCache: map[string]any{},
+		seenDirs:      map[string]bool{},
 	}); err == nil {
 		t.Fatalf("expected error from plan.Apply")
 	}
@@ -5848,7 +5559,7 @@ func TestTransformMCPServersForAdapterAll(t *testing.T) {
 	manifest := MCPManifest{MCPServers: map[string]any{
 		"a": map[string]any{"command": "npx"},
 	}}
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "qoder"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline"} {
 		got, err := transformMCPServersForAdapter(id, manifest)
 		if err != nil {
 			t.Fatalf("transformMCPServersForAdapter(%s): %v", id, err)
@@ -6385,26 +6096,6 @@ func TestQwenPluginExtraOperations(t *testing.T) {
 	}
 }
 
-func TestAiderPluginExtraOperations(t *testing.T) {
-	ctx, _ := newTestContext(t)
-	spec := AdapterSpec{ID: "aider"}
-	ops, err := AiderPlugin{}.ExtraOperations(ctx, spec, false)
-	if err != nil {
-		t.Fatalf("ExtraOperations: %v", err)
-	}
-	if len(ops) != 0 {
-		t.Fatalf("expected 0 extra ops, got %d", len(ops))
-	}
-}
-
-func TestAiderPluginExtendCapabilities(t *testing.T) {
-	spec := AdapterSpec{ID: "aider", Tier: TierStable}
-	caps := AiderPlugin{}.ExtendCapabilities(spec, AgentCapabilities{Tier: TierStable})
-	if caps.Tier != TierStable {
-		t.Fatalf("expected stable tier")
-	}
-}
-
 func TestOpenCodePluginExtendCapabilities(t *testing.T) {
 	spec := AdapterSpec{ID: "opencode", Tier: TierStable}
 	caps := OpenCodePlugin{}.ExtendCapabilities(spec, AgentCapabilities{Tier: TierStable})
@@ -6732,10 +6423,10 @@ func TestApplyOperationsNilOps(t *testing.T) {
 	plan := SyncPlan{}
 	plan.Add(PhaseCore, "x", ArtifactSettings, WriteFile{Dst: filepath.Join(t.TempDir(), "x"), Data: []byte("x")})
 	if err := plan.Apply(Context{
-		Options:        Options{AgentsDir: t.TempDir(), ToolFilter: ParseTools("all")},
-		Report:         &bufferReporter{},
-		manifestCache:  map[string]any{},
-		seenDirs:       map[string]bool{},
+		Options:       Options{AgentsDir: t.TempDir(), ToolFilter: ParseTools("all")},
+		Report:        &bufferReporter{},
+		manifestCache: map[string]any{},
+		seenDirs:      map[string]bool{},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -7668,7 +7359,6 @@ func TestJsonHelpers(t *testing.T) {
 	}
 }
 
-
 // =================================================================
 // Coverage gap tests - targeted at lines not yet covered
 // =================================================================
@@ -7802,7 +7492,6 @@ func TestWriteFileManagedWriteFail(t *testing.T) {
 	}
 }
 
-
 func TestLinkOrCopyReadError(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	// Dst is a regular file, source is missing -> linkOrCopy should error
@@ -7849,7 +7538,6 @@ func TestCopyDirReadError(t *testing.T) {
 		t.Logf("copyDir err = %v (may be tolerated)", err)
 	}
 }
-
 
 func TestReadMCPManifestBadJSONOnDisk(t *testing.T) {
 	ctx, home := newTestContext(t)
@@ -8089,7 +7777,6 @@ func TestInstallRegistrySkillsNpxMissing(t *testing.T) {
 	}
 }
 
-
 func TestInstallRegistrySkillsManifestError(t *testing.T) {
 	overlay := t.TempDir()
 	badPath := filepath.Join(overlay, "mf.json")
@@ -8217,41 +7904,6 @@ func TestOpenCodeAdapterPlanErrorPaths(t *testing.T) {
 	}
 }
 
-func TestMiniMaxAdapterPlanDecodeError(t *testing.T) {
-	overlay := t.TempDir()
-	badPath := filepath.Join(overlay, "bad.json")
-	if err := os.WriteFile(badPath, []byte("not json"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	ctx, _ := newTestContextWithOverlay(t, map[string]string{
-		"presets/minimax/config.json": badPath,
-	})
-	b := &MiniMaxAdapter{BaseAdapter: BaseAdapter{
-		Spec:   AdapterSpec{ID: "mmx", Tier: TierStable},
-		Plugin: MiniMaxPlugin{},
-	}}
-	if _, err := b.Plan(ctx, false); err == nil {
-		t.Fatalf("expected error from bad JSON")
-	}
-}
-
-func TestMiniMaxAdapterPlanReadError(t *testing.T) {
-	origHook := readPresetFileHook
-	readPresetFileHook = func(_ Context, _ string) ([]byte, error) {
-		return nil, fmt.Errorf("forced read error")
-	}
-	t.Cleanup(func() { readPresetFileHook = origHook })
-	ctx, _ := newTestContext(t)
-	b := &MiniMaxAdapter{BaseAdapter: BaseAdapter{
-		Spec:   AdapterSpec{ID: "mmx", Tier: TierStable},
-		Plugin: MiniMaxPlugin{},
-	}}
-	if _, err := b.Plan(ctx, false); err == nil {
-		t.Fatalf("expected error when read fails")
-	}
-}
-
-
 func TestMergeJSONInvalidJSON(t *testing.T) {
 	ctx, home := newTestContext(t)
 	dst := filepath.Join(home, "x.json")
@@ -8321,8 +7973,6 @@ func TestLinkSkillDirsEnsureDir(t *testing.T) {
 	}
 }
 
-
-
 func TestApplyAdapterSettingsEmptyHome(t *testing.T) {
 	overlay := t.TempDir()
 	profilePath := filepath.Join(overlay, "p.json")
@@ -8359,8 +8009,8 @@ func TestApplyAdapterSettingsBuildJSONMarshalError(t *testing.T) {
 	// json.Unmarshal actually accepts "func(){}" partially. Use a different approach:
 	// Inject unserializable value via context
 	ctx, _ := newTestContextWithOverlay(t, map[string]string{
-		"presets/x.json":   profilePath,
-		"presets/d.json":   defaultsPath,
+		"presets/x.json": profilePath,
+		"presets/d.json": defaultsPath,
 	})
 	op := ApplyAdapterSettings{
 		ProfilePath: "presets/x.json",
@@ -8442,7 +8092,6 @@ func TestApplyAdapterSettingsRawEmptyContent(t *testing.T) {
 	}
 }
 
-
 func TestBuildAdapterSettingsUnknownStrategy(t *testing.T) {
 	overlay := t.TempDir()
 	profilePath := filepath.Join(overlay, "p.json")
@@ -8518,7 +8167,6 @@ func TestBuildAdapterSettingsEmptyMergeField(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 }
-
 
 func TestBuildPlanWithNoRegistry(t *testing.T) {
 	_, home := newTestContextWithOpts(t, func(o *Options) {
@@ -8704,7 +8352,6 @@ func TestManagerInstallRegistrySkillsError(t *testing.T) {
 	}
 }
 
-
 func TestClaudeAdapterPlanBadMCP(t *testing.T) {
 	ctx, home := newTestContext(t)
 	mcpDir := filepath.Join(home, ".agents", "mcp")
@@ -8735,23 +8382,6 @@ func TestCodexAdapterPlanBadMCP(t *testing.T) {
 	}
 }
 
-
-func TestAiderAdapterPlanBadMCP(t *testing.T) {
-	// Aider has no MCP, so we just call Plan
-	ctx, home := newTestContext(t)
-	mcpDir := filepath.Join(home, ".agents", "mcp")
-	if err := os.MkdirAll(mcpDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(mcpDir, "servers.json"), []byte("not json"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	b := &AiderAdapter{BaseAdapter: BaseAdapter{Spec: AdapterSpec{ID: "aider", Tier: TierStable}}}
-	if _, err := b.Plan(ctx, false); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestAdapterDoctorExecutablesUnique(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	r := NewAdapterRegistry(RegistryOptions{Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome, KiroHome: "/kiro"})
@@ -8762,7 +8392,7 @@ func TestAdapterDoctorExecutablesUnique(t *testing.T) {
 
 func TestAdapterRegistryIncludesAllPlugins(t *testing.T) {
 	r := NewAdapterRegistry(RegistryOptions{Home: t.TempDir(), XDGConfigHome: t.TempDir(), KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline", "qoder", "aider", "mmx", "kimi", "kiro", "grok", "windsurf"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline", "zcode", "kimi", "kiro", "grok"} {
 		if r.Lookup(id) == nil {
 			t.Fatalf("missing adapter: %s", id)
 		}
@@ -8780,7 +8410,7 @@ func TestAdapterRegistryCount(t *testing.T) {
 func TestAdapterStatusPathsExtra(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	r := NewAdapterRegistry(RegistryOptions{Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome, KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline", "qoder", "aider", "mmx"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline", "zcode"} {
 		if a := r.Lookup(id); a != nil {
 			_ = a.StatusPaths(ctx)
 		}
@@ -8790,7 +8420,7 @@ func TestAdapterStatusPathsExtra(t *testing.T) {
 func TestAdapterTransformMCPServersError(t *testing.T) {
 	// Force the plugin TransformMCPServers error path via custom plugin
 	type errPlugin struct{ NoopPlugin }
-	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, GeminiPlugin{}, ClinePlugin{}, QoderPlugin{}} {
+	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, GeminiPlugin{}, ClinePlugin{}, ZCodePlugin{}} {
 		_, _ = p.TransformMCPServers(MCPManifest{MCPServers: map[string]any{"x": map[string]any{"type": "stdio"}}})
 	}
 }
@@ -8841,20 +8471,6 @@ func TestAdapterTransformMCPServersCline(t *testing.T) {
 	}
 }
 
-func TestAdapterTransformMCPServersQoder(t *testing.T) {
-	plugin := QoderPlugin{}
-	out, err := plugin.TransformMCPServers(MCPManifest{MCPServers: map[string]any{
-		"http": map[string]any{"type": "http", "url": "https://x"},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	servers := out.MCPServers
-	if servers["http"].(map[string]any)["url"] != "https://x" {
-		t.Fatalf("qoder http should keep url: %v", servers["http"])
-	}
-}
-
 func TestLinkOrCopySameLinkNoOp(t *testing.T) {
 	ctx, home := newTestContext(t)
 	src := filepath.Join(home, "src.txt")
@@ -8870,7 +8486,6 @@ func TestLinkOrCopySameLinkNoOp(t *testing.T) {
 		t.Fatalf("linkOrCopy: %v", err)
 	}
 }
-
 
 func TestWriteFileManagedSkipExisting(t *testing.T) {
 	ctx, home := newTestContext(t)
@@ -8922,7 +8537,6 @@ func TestWriteFileManagedReadOtherError(t *testing.T) {
 	}
 }
 
-
 // --- Coverage gap fillers ---
 
 // adapter_base.go:218 - MergeJSON for hooks without profile (no AdapterSettings profile)
@@ -8943,10 +8557,10 @@ func TestBaseAdapterProfileAndMcpOpsHooksNoProfile(t *testing.T) {
 	}
 	// Use an adapter spec with HooksPath/KeyPath but no AdapterSettings profile
 	b := &BaseAdapter{Spec: AdapterSpec{
-		ID:  "fakehooks",
+		ID:   "fakehooks",
 		Tier: TierStable,
 		Targets: AdapterTargets{
-			HooksPath:   "/tmp/hooks.json",
+			HooksPath:    "/tmp/hooks.json",
 			HooksKeyPath: []string{"hooks"},
 		},
 	}}
@@ -9000,23 +8614,13 @@ func TestCodexAdapterPlanBasePlanError(t *testing.T) {
 	}
 }
 
-// adapter_concrete.go:148-150 - AiderAdapter.Plan BaseAdapter.Plan error
-func TestAiderAdapterPlanBasePlanError(t *testing.T) {
-	ctx, _ := newTestContext(t)
-	ctx.Presets = os.DirFS("nonexistent-xyz-3")
-	m := &AiderAdapter{BaseAdapter: BaseAdapter{Spec: AdapterSpec{ID: "aider", Tier: TierStable}}}
-	if _, err := m.Plan(ctx, false); err == nil {
-		t.Fatalf("expected error from BaseAdapter.Plan")
-	}
-}
-
 // adapter_plugins.go:198-200, 226-228, 257-259, 291-293 - plugin TransformMCPServers error wrapping
 func TestPluginTransformMCPServersErrorWrapping(t *testing.T) {
 	for name, p := range map[string]AdapterPlugin{
 		"qwen":   QwenPlugin{},
 		"gemini": GeminiPlugin{},
 		"cline":  ClinePlugin{},
-		"qoder":  QoderPlugin{},
+		"zcode":  ZCodePlugin{},
 	} {
 		_, err := p.TransformMCPServers(MCPManifest{MCPServers: map[string]any{
 			"x": map[string]any{"type": "http", "url": "https://x"},

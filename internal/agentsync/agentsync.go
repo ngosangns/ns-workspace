@@ -12,28 +12,6 @@ import (
 	"strings"
 )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 type Operation interface {
 	Apply(ctx Context) error
 	Describe(ctx Context)
@@ -161,13 +139,13 @@ func removeStaleRecursive(ctx Context, root, relPrefix string, entries []os.DirE
 						break
 					}
 				}
-			if !hasManagedChild {
-				ctx.Report.Line("remove empty dir: %s", fullPath)
-				if !ctx.DryRun {
-					if err := os.Remove(fullPath); err != nil {
-						ctx.Report.Line("warning: remove empty dir failed: %v", err)
+				if !hasManagedChild {
+					ctx.Report.Line("remove empty dir: %s", fullPath)
+					if !ctx.DryRun {
+						if err := os.Remove(fullPath); err != nil {
+							ctx.Report.Line("warning: remove empty dir failed: %v", err)
+						}
 					}
-				}
 				}
 			}
 			continue
@@ -326,77 +304,15 @@ func (op ManualStep) Apply(ctx Context) error {
 func (op ManualStep) Describe(ctx Context) { ctx.Report.Line("manual: %s", op.Dst) }
 func (op ManualStep) Path() string         { return op.Dst }
 
-
-
-
-
-
-
-
-
-
-
-
-
 // adapterSettingsProfile trả về profile path cho adapter nếu có trong manifest.
-
 
 // adapterSettingsHomeDir trả về user home directory để áp dụng settings
 // profile. Target path trong profile là relative to home (vd
 // ), nên khi apply cần resolve từ user home.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 type claudePlugin struct{}
 
-
-
 type codexPlugin struct{}
-
-
-
-
-
-
-
-type aiderPlugin struct{}
-
-
-
-
-
-
-
-// minimaxPlugin writes default model + region presets into
-// ~/.mmx/config.json. mmx-cli does not have a user-level skills / agents /
-// MCP directory concept, so the adapter only manages the JSON config file
-// via MergeJSON. The same default values are documented in the bundled
-// `presets/skills/minimax-cli/SKILL.md` for AI agents that invoke mmx.
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 func (m Manager) Apply(opt Options, update bool) error {
 	ctx, err := m.context(opt)
@@ -598,35 +514,11 @@ func (m Manager) adapters(ctx Context) []Adapter {
 	return managerAdaptersFn(ctx)
 }
 
-
-
-
 // readOpenCodeConfigValues returns the full opencode preset as a generic
 // map so user-defined keys (timeout, provider, etc.) flow through to the
 // native config alongside the canonical `mcp` and `permission` keys.
 // `mcp` is intentionally stripped here because the opencode plugin layers
 // the shared MCP manifest on top after this call.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 func manualReadme(a AdapterSpec) string {
 	var b strings.Builder
@@ -647,43 +539,3 @@ func manualReadme(a AdapterSpec) string {
 	}
 	return b.String()
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

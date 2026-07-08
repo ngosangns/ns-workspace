@@ -1,6 +1,6 @@
 # ns-workspace
 
-`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Gemini, Codex, Cline, Windsurf, Aider và các adapter khác.
+`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Gemini, Codex, Cline và các adapter khác.
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent nhận cùng workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
@@ -91,10 +91,8 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 --config ~/.config/ns-workspace/config.json
 --tools all
 --tools stable
---tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline,windsurf,aider,minimax
+--tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline
 --tools kiro-cli
---tools minimax-cli
---tools mmx
 --dry-run
 --force
 --copy
@@ -138,20 +136,6 @@ Ví dụ preset mặc định opencode với full authorization + tăng timeout:
 
 Sau `ns-workspace init`/`update`, `~/.config/opencode/opencode.json` sẽ có cả `permission` lẫn `timeout`. Tắt overlay bằng `--config ""`.
 
-Preset MiniMax CLI (`presets/skills/minimax-cli/SKILL.md`) mặc định đã có sẵn, cấp full authorization cho mọi subcommand và đề xuất timeout dài hơn cho video/music generation. Có thể override qua user config hoặc qua `npx skills add MiniMax-AI/cli -y -g` để lấy bản chính thức mới nhất.
-
-## MiniMax CLI Adapter
-
-MiniMax CLI (`mmx`) được hỗ trợ như một stable adapter, chọn bằng `--tools minimax` (alias: `minimax-cli`, `mmx`). mmx-cli là multimodal CLI (text/image/video/speech/music) nên adapter chỉ quản lý config — không có skills/agents/MCP user-level directory để fan-out:
-
-- Preset: `presets/minimax/config.json` (default model + region).
-- Native target: `~/.mmx/config.json`, ghi qua `MergeJSON` với `Replace: true` trên `update` để cleanup stale managed keys, mirror cùng pattern với `opencode`.
-- Default models: `MiniMax-M3` (text), `speech-2.8-hd` (speech), `MiniMax-Hailuo-2.3` (video), `music-2.6` (music).
-- Default timeouts: `timeout: 1800` (per-call, 30 phút) + `sessionTimeout: 1800` (long-running session như video generation sync).
-- Bật: `task ns:init -- --tools minimax` (sau khi `npm install -g mmx-cli && mmx auth login`).
-- Override defaults qua user config: thêm `"presets/minimax/config.json": "/path/to/your.json"` vào `~/.config/ns-workspace/config.json`.
-- Official SKILL tự động cài qua registry: `npx skills add MiniMax-AI/cli -y -g` chạy trong phase registry install khi không dùng `--no-registry`. User có thể chạy lại bất cứ lúc nào qua `sh ~/.agents/registry/install.sh`.
-
 ## Dữ Liệu Được Quản Lý
 
 - Shared instructions: `~/.agents/AGENTS.md`
@@ -174,9 +158,6 @@ Stable adapters ghi vào các user-level path đã biết:
 | Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root); skills không mirror vì Gemini CLI đọc alias `.agents/skills` thẳng từ `~/.agents/skills` |
 | Codex CLI     | `~/.codex/AGENTS.md`, managed MCP block trong `~/.codex/config.toml`; Codex không có `~/.codex/skills` — chỉ đọc `.agents/skills` (repo) và `~/.agents/skills` (user) nên không cần mirror |
 | Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                   |
-| Windsurf      | `~/.codeium/windsurf/memories/global_rules.md`                                                                                                                                     |
-| Aider         | Managed conventions block trong `~/.aider.conf.yml`                                                                                                                                |
-| MiniMax CLI   | `~/.mmx/config.json` (default model presets); alias `minimax-cli` / `mmx` qua `--tools`                                                                                            |
 
 ## Preview, Search, Graph Và Harness
 

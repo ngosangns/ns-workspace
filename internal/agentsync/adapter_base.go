@@ -15,13 +15,11 @@ import (
 //
 //   - ExtendCapabilities(spec, caps): mutate caps after the template
 //     method has computed the artifact list from AdapterSpec. Plugins
-//     add extras like ArtifactMCP for OpenCode/Codex, or ArtifactRules
-//     for Aider.
+//     add extras like ArtifactMCP for OpenCode/Codex.
 //   - ExtraOperations(ctx, spec, update): return extra Operation values
 //     the template method appends after writing settings. Used by
 //     Claude (generated mcp.commands.sh), OpenCode (merged config),
-//     Codex (TOML managed block), Aider (conventions block), MiniMax
-//     (config.json merge).
+//     Codex (TOML managed block).
 //   - ExtraStatusPaths(ctx, spec): return extra paths to include in
 //     `status` output beyond the native paths the template method
 //     already adds.
@@ -234,7 +232,7 @@ func (b *BaseAdapter) profileAndMcpOps(ctx Context, replace bool) ([]Operation, 
 		}
 		ops = append(ops, MergeJSON{
 			Dst:     b.Spec.Targets.MCPPath,
-			KeyPath:  b.Spec.Targets.MCPKeyPath,
+			KeyPath: b.Spec.Targets.MCPKeyPath,
 			Values:  transformed,
 			Replace: replace,
 		})

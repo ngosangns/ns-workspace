@@ -519,63 +519,6 @@ func TestRegistryCommandArgsStayAlignedWithScriptCommand(t *testing.T) {
 	}
 }
 
-func TestRegistryManifestIncludesMiniMaxCLI(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
-
-	manager := Manager{Presets: os.DirFS("../..")}
-	ctx, err := manager.context(Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoRegistry: true,
-		ToolFilter: ParseTools("stable"),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manifest, err := readRegistryManifest(ctx)
-	if err != nil {
-		t.Fatalf("readRegistryManifest: %v", err)
-	}
-
-	var found bool
-	for _, s := range manifest.Skills {
-		if s.Name == "minimax-cli" {
-			found = true
-			if s.Source != "MiniMax-AI/cli" {
-				t.Fatalf("minimax-cli source = %q, want MiniMax-AI/cli", s.Source)
-			}
-			if s.Skill != "mmx-cli" {
-				t.Fatalf("minimax-cli skill = %q, want mmx-cli", s.Skill)
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("minimax-cli not in registry manifest: %+v", manifest.Skills)
-	}
-
-	// writeRegistryHelpers materializes the install.sh — read it back and
-	// confirm the new entry made it through the same code path that runs in
-	// real `init` (with `--no-registry` set so npx never actually fires).
-	if err := writeRegistryHelpers(ctx, true); err != nil {
-		t.Fatalf("writeRegistryHelpers: %v", err)
-	}
-	script := readFile(t, filepath.Join(ctx.Options.AgentsDir, "registry", "install.sh"))
-	for _, part := range []string{
-		"npx --yes skills add MiniMax-AI/cli",
-		"--skill mmx-cli",
-		"--global",
-		"--agent universal",
-	} {
-		if !strings.Contains(script, part) {
-			t.Fatalf("install script missing %q. Got:\n%s", part, script)
-		}
-	}
-}
-
 func mustExist(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Lstat(path); err != nil {
@@ -1253,81 +1196,6 @@ func TestPresetSkillsOverrideProviderTargetSkills(t *testing.T) {
 	}
 }
 
-// TestQoderAdapterMaterializesNativeLayout asserts the Qoder CLI adapter
-// writes the shared instruction, skills, and subagents into ~/.qoder, and
-// lands a settings.json with the full-bypass permission mode plus the
-// shared MCP servers in the Claude-style {type:"http",url} shape.
-func TestQoderAdapterMaterializesNativeLayout(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
-
-	manager := Manager{Presets: os.DirFS("../..")}
-	opt := Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoRegistry: true,
-		ToolFilter: ParseTools("qoder"),
-	}
-	if err := manager.Apply(opt, false); err != nil {
-		t.Fatalf("init failed: %v", err)
-	}
-
-	mustExist(t, filepath.Join(home, ".qoder", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".qoder", "skills", "execution", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".qoder", "agents", "opencode-intern.md"))
-	mustExist(t, filepath.Join(home, ".qoder", "settings.json"))
-	// Selecting only qoder must not touch sibling providers.
-	mustNotExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
-
-	settings := readJSONFile(t, filepath.Join(home, ".qoder", "settings.json"))
-	general, _ := settings["general"].(map[string]any)
-	if general == nil {
-		t.Fatalf("qoder settings missing general: %v", settings)
-	}
-	if mode, _ := general["defaultPermissionMode"].(string); mode != "auto" {
-		t.Fatalf("qoder general.defaultPermissionMode = %q, want \"auto\": %v", mode, settings)
-	}
-
-	mcpServers, _ := settings["mcpServers"].(map[string]any)
-	if len(mcpServers) == 0 {
-		t.Fatalf("qoder settings missing mcpServers: %v", settings)
-	}
-	for name, raw := range mcpServers {
-		server, _ := raw.(map[string]any)
-		// HTTP servers keep the Claude-style type/url shape.
-		if typ, ok := server["type"].(string); ok && typ == "http" {
-			if _, ok := server["url"].(string); !ok {
-				t.Fatalf("qoder mcpServers.%s http server missing url: %v", name, server)
-			}
-		}
-	}
-}
-
-// TestQoderAliasResolvesAdapter confirms the qodercli / qoder-cli aliases
-// select the same adapter as the canonical id.
-func TestQoderAliasResolvesAdapter(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("AGENTS_HOME", "")
-	t.Setenv("KIRO_HOME", "")
-
-	manager := Manager{Presets: os.DirFS("../..")}
-	opt := Options{
-		Command:    "init",
-		AgentsDir:  filepath.Join(home, ".agents"),
-		NoRegistry: true,
-		ToolFilter: ParseTools("qodercli"),
-	}
-	if err := manager.Apply(opt, false); err != nil {
-		t.Fatalf("init via qodercli alias failed: %v", err)
-	}
-	mustExist(t, filepath.Join(home, ".qoder", "skills", "execution", "SKILL.md"))
-}
-
 // TestZCodeAdapterMaterializesNativeLayout verifies that selecting
 // the zcode adapter materializes the shared AGENTS.md into
 // ~/.zcode/AGENTS.md and mirrors shared skills into
@@ -1361,7 +1229,7 @@ func TestZCodeAdapterMaterializesNativeLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".zcode", "skills", "_shared", "CONVENTIONS.md"))
 	// Selecting only zcode must not touch sibling providers.
 	mustNotExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
-	mustNotExist(t, filepath.Join(home, ".qoder", "AGENTS.md"))
+	mustNotExist(t, filepath.Join(home, ".kiro", "AGENTS.md"))
 }
 
 // TestZCodeAliasResolvesAdapter confirms the zcode-cli alias selects

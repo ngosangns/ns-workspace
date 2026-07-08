@@ -14,7 +14,7 @@ import (
 	"github.com/ngosangns/ns-workspace/internal/setup"
 )
 
-//go:embed presets/agents presets/mcp presets/minimax presets/opencode presets/registry presets/settings presets/adapters presets/manifest.json presets/skills/* presets/subagents
+//go:embed presets/agents presets/mcp presets/opencode presets/registry presets/settings presets/adapters presets/manifest.json presets/skills/* presets/subagents
 var presetFS embed.FS
 
 // osExit is overridable from tests so they can intercept the exit path.

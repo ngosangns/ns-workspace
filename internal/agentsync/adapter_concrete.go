@@ -5,8 +5,8 @@ import (
 )
 
 // SimpleAdapter covers providers that just file-link the shared
-// content into a native directory (grok, kimi, kiro, windsurf, manual
-// / experimental). It uses BaseAdapter's template method without a
+// content into a native directory (grok, kimi, kiro, manual /
+// experimental). It uses BaseAdapter's template method without a
 // plugin override.
 type SimpleAdapter struct {
 	BaseAdapter
@@ -23,20 +23,6 @@ type ProfileAdapter struct {
 // CodexAdapter writes the legacy MCP TOML managed block in addition to
 // the shared file fan-out.
 type CodexAdapter struct {
-	BaseAdapter
-}
-
-// AiderAdapter appends the conventions managed block to
-// ~/.aider.conf.yml.
-type AiderAdapter struct {
-	BaseAdapter
-}
-
-// MiniMaxAdapter merges presets/minimax/config.json into
-// ~/.mmx/config.json. mmx-cli does not have a user-level skills /
-// agents / MCP directory so the BaseAdapter's file fan-out is
-// suppressed.
-type MiniMaxAdapter struct {
 	BaseAdapter
 }
 
@@ -81,7 +67,7 @@ func (o *OpenCodeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	if len(configValues) > 0 {
 		ops = append(ops, MergeJSON{
 			Dst:     o.ConfigPath,
-			KeyPath:  []string{},
+			KeyPath: []string{},
 			Values:  configValues,
 			Replace: replace && !ctx.NoMCP,
 		})
@@ -141,57 +127,6 @@ func (c *CodexAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	return ops, nil
 }
 
-// Plan overrides BaseAdapter.Plan for Aider: append the conventions
-// managed block.
-func (a *AiderAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
-	ops, err := a.BaseAdapter.Plan(ctx, update)
-	if err != nil {
-		return nil, err
-	}
-	ops = append(ops, AppendManagedBlock{
-		Dst: filepath.Join(ctx.Home, ".aider.conf.yml"), Label: "conventions",
-		Content: "read: " + filepath.ToSlash(filepath.Join(ctx.Options.AgentsDir, "AGENTS.md")),
-		Replace: true,
-	})
-	_ = update
-	return ops, nil
-}
-
-// Plan overrides BaseAdapter.Plan for MiniMax: skip file fan-out,
-// merge presets/minimax/config.json into ~/.mmx/config.json.
-func (m *MiniMaxAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
-	replace := update || ctx.Force
-	values, err := readPresetFileHook(ctx, "presets/minimax/config.json")
-	if err != nil {
-		return nil, err
-	}
-	parsed := map[string]any{}
-	if err := decodeJSONBytes(values, &parsed); err != nil {
-		return nil, err
-	}
-	if len(parsed) == 0 {
-		return nil, nil
-	}
-	return []Operation{MergeJSON{
-		Dst:     m.ConfigPath(),
-		KeyPath: []string{},
-		Values:  parsed,
-		Replace: replace,
-	}}, nil
-}
-
-// ConfigPath returns the target config path the MiniMax adapter
-// writes to. mmx-cli reads JSON from this file.
-func (m *MiniMaxAdapter) ConfigPath() string {
-	if m.Plugin == nil {
-		return ""
-	}
-	if mp, ok := m.Plugin.(interface{ GetConfigPath() string }); ok {
-		return mp.GetConfigPath()
-	}
-	return ""
-}
-
 // stripMCPOps drops MergeJSON operations whose Dst is the canonical
 // mcpServers path. Used by Codex and OpenCode adapters which merge MCP
 // into a different file.
@@ -220,8 +155,6 @@ var (
 	_ Adapter = (*SimpleAdapter)(nil)
 	_ Adapter = (*ProfileAdapter)(nil)
 	_ Adapter = (*CodexAdapter)(nil)
-	_ Adapter = (*AiderAdapter)(nil)
-	_ Adapter = (*MiniMaxAdapter)(nil)
 	_ Adapter = (*ClaudeAdapter)(nil)
 	_ Adapter = (*OpenCodeAdapter)(nil)
 )
