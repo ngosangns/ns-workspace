@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { api, type ClaudeSettings, type ClaudeEnv } from "../api";
+import CodeEditor from "../components/CodeEditor.vue";
 
 const manifest = ref<ClaudeSettings | null>(null);
 const preset = ref<ClaudeSettings | null>(null);
@@ -158,17 +159,7 @@ onMounted(load);
             <q-space />
             <span class="editor-hint">This is the embedded preset. Override it from the Effective tab.</span>
           </div>
-          <q-input
-            :model-value="presetRaw"
-            type="textarea"
-            filled
-            bg-color="grey-10"
-            input-class="text-mono editor-input"
-            :input-style="{ minHeight: '400px', fontFamily: 'var(--font-mono)' }"
-            label="Preset Claude Code settings"
-            readonly
-            hide-bottom-space
-          />
+          <CodeEditor :model-value="presetRaw" lang="json" readonly />
         </q-tab-panel>
       </q-tab-panels>
     </div>
@@ -218,11 +209,5 @@ onMounted(load);
 .editor-hint {
   font-size: 13px;
   color: var(--color-text-muted);
-}
-
-.editor-input :deep(textarea) {
-  padding: 18px;
-  font-size: 13px;
-  line-height: 1.6;
 }
 </style>

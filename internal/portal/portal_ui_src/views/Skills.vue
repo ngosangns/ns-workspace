@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { api, type Skill } from "../api";
+import CodeEditor from "../components/CodeEditor.vue";
 
 const skills = ref<Skill[]>([]);
 const loading = ref(true);
@@ -119,17 +120,7 @@ onMounted(load);
           <div v-else-if="dialogLoading" class="flex flex-center q-pa-xl">
             <q-spinner color="primary" size="3em" />
           </div>
-          <q-input
-            v-else
-            v-model="content"
-            type="textarea"
-            filled
-            readonly
-            bg-color="grey-10"
-            input-class="text-mono"
-            :input-style="{ minHeight: '60vh' }"
-            label="Skill content"
-          />
+          <CodeEditor v-else v-model="content" lang="markdown" readonly />
         </q-card-section>
       </q-card>
     </q-dialog>

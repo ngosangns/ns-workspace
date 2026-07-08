@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { api, type MCPManifest, type MCPServers } from "../api";
+import CodeEditor from "../components/CodeEditor.vue";
 
 const manifest = ref<MCPManifest | null>(null);
 const preset = ref<MCPServers | null>(null);
@@ -123,16 +124,7 @@ onMounted(load);
             <q-space />
             <span class="editor-hint">Edits are written to the MCP overlay config.</span>
           </div>
-          <q-input
-            v-model="effectiveRaw"
-            type="textarea"
-            filled
-            bg-color="grey-10"
-            input-class="text-mono editor-input"
-            :input-style="{ minHeight: '500px', fontFamily: 'var(--font-mono)' }"
-            label="Effective MCP servers"
-            hide-bottom-space
-          />
+          <CodeEditor v-model="effectiveRaw" lang="json" />
         </q-tab-panel>
         <q-tab-panel name="preset" class="q-pa-none">
           <div class="editor-toolbar">
@@ -140,17 +132,7 @@ onMounted(load);
             <q-space />
             <span class="editor-hint">This is the embedded preset. Override it from the Effective tab.</span>
           </div>
-          <q-input
-            :model-value="presetRaw"
-            type="textarea"
-            filled
-            bg-color="grey-10"
-            input-class="text-mono editor-input"
-            :input-style="{ minHeight: '500px', fontFamily: 'var(--font-mono)' }"
-            label="Preset MCP servers"
-            readonly
-            hide-bottom-space
-          />
+          <CodeEditor :model-value="presetRaw" lang="json" readonly />
         </q-tab-panel>
       </q-tab-panels>
     </div>
@@ -200,11 +182,5 @@ onMounted(load);
 .editor-hint {
   font-size: 13px;
   color: var(--color-text-muted);
-}
-
-.editor-input :deep(textarea) {
-  padding: 18px;
-  font-size: 13px;
-  line-height: 1.6;
 }
 </style>

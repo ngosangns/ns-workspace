@@ -54,9 +54,10 @@ Flags:
 ## Giao Diện
 
 - **Dashboard**: tổng quan số lượng skills, MCP servers, registry skills, adapters và trạng thái `~/.agents`.
-- **Skills**: danh sách skill, editor Markdown, reset về default.
-- **MCPs**: editor JSON cho `presets/mcp/servers.json`.
-- **Registry**: editor JSON cho `presets/registry/skills.json`.
+- **Skills**: danh sách skill, editor Markdown dựa trên CodeMirror 6, reset về default.
+- **MCPs**: editor JSON dựa trên CodeMirror 6 cho `presets/mcp/servers.json`, có lint JSON inline.
+- **Registry**: editor JSON dựa trên CodeMirror 6 cho `presets/registry/skills.json`, có lint JSON inline.
+- **Claude**: editor JSON dựa trên CodeMirror 6 chỉ đọc cho preset Claude Code settings.
 - **Adapters**: danh sách adapter với tier và artifacts.
 - **Sync Panel**: nút chạy `status`, `doctor`, `init`, dry-run `update`, `update`, `registry` với log stream.
 

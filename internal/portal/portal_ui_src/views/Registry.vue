@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { api, type RegistrySkills } from "../api";
+import CodeEditor from "../components/CodeEditor.vue";
 
 const registry = ref<RegistrySkills | null>(null);
 const raw = ref("");
@@ -79,17 +80,7 @@ onMounted(load);
       <div v-if="loading" class="flex flex-center q-pa-xl">
         <q-spinner color="primary" size="3em" />
       </div>
-      <q-input
-        v-else
-        v-model="raw"
-        type="textarea"
-        filled
-        bg-color="grey-10"
-        input-class="text-mono editor-input"
-        :input-style="{ minHeight: '500px', fontFamily: 'var(--font-mono)' }"
-        label="Registry skills JSON"
-        hide-bottom-space
-      />
+      <CodeEditor v-else v-model="raw" lang="json" />
     </div>
   </div>
 </template>
@@ -145,11 +136,5 @@ onMounted(load);
 .editor-hint {
   font-size: 13px;
   color: var(--color-text-muted);
-}
-
-.editor-input :deep(textarea) {
-  padding: 18px;
-  font-size: 13px;
-  line-height: 1.6;
 }
 </style>
