@@ -35,12 +35,12 @@ func (s *portalServer) handleSync(w http.ResponseWriter, r *http.Request) {
 		req.Command = command
 	}
 
-	jobID, err := s.runner.Start(req.Command, req.DryRun, s.agentsDir)
+	jobID, err := s.runner.Start(req.Command, s.agentsDir, req.Tools)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, SyncJob{ID: jobID, Command: req.Command, DryRun: req.DryRun, Running: true})
+	writeJSON(w, SyncJob{ID: jobID, Command: req.Command, Running: true})
 }
 
 func (s *portalServer) handleSyncStream(w http.ResponseWriter, r *http.Request) {

@@ -50,10 +50,13 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 				ID: "opencode", Tier: TierStable, Executables: []string{"opencode"},
 				Targets: AdapterTargets{
 					Instruction: filepath.Join(xdg, "opencode", "AGENTS.md"),
-					Skills:      filepath.Join(xdg, "opencode", "skill"),
-					Subagents:   filepath.Join(xdg, "opencode", "agent"),
+					// Skills: OpenCode discovers ~/.agents/skills natively
+					// (https://opencode.ai/docs/skills/); do not mirror.
+					Subagents:          filepath.Join(xdg, "opencode", "agent"),
+					SkillsCleanupRoots: []string{filepath.Join(xdg, "opencode", "skill")},
 				},
-				Docs: []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/"},
+				Docs:  []string{"https://opencode.ai/docs/config/", "https://opencode.ai/docs/agents/", "https://opencode.ai/docs/mcp-servers/", "https://opencode.ai/docs/skills/"},
+				Notes: "OpenCode loads skills from ~/.agents/skills (and optional ~/.config/opencode/skills / ~/.claude/skills); this adapter does not mirror skills. It still links AGENTS.md, subagents under agent/, and merges MCP into opencode.json.",
 			},
 			Plugin: OpenCodePlugin{ConfigPath: filepath.Join(xdg, "opencode", "opencode.json")},
 		},
@@ -63,10 +66,15 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
 		Spec: AdapterSpec{
 			ID: "grok", Tier: TierStable, Executables: []string{"grok"},
-			Targets: AdapterTargets{Skills: filepath.Join(home, ".grok", "skills")},
-			Docs:    []string{"https://docs.x.ai/build/overview", "https://docs.x.ai/build/features/skills-plugins-marketplaces"},
-			Notes:   "Grok Build reads AGENTS.md from projects and also discovers ~/.agents/skills; this adapter mirrors shared skills into ~/.grok/skills for native slash-command discovery.",
+			Targets: AdapterTargets{
+				Instruction: filepath.Join(home, ".grok", "AGENTS.md"),
+				// Skills: Grok discovers ~/.agents/skills natively; do not mirror.
+				SkillsCleanupRoots: []string{filepath.Join(home, ".grok", "skills")},
+			},
+			Docs:  []string{"https://docs.x.ai/build/overview", "https://docs.x.ai/build/features/skills-plugins-marketplaces"},
+			Notes: "Grok Build loads global rules from ~/.grok/ (including AGENTS.md), discovers skills from ~/.agents/skills (and optional ~/.grok/skills), and configures MCP under [mcp_servers.*] in ~/.grok/config.toml. This adapter links shared AGENTS.md and writes a managed MCP TOML block; it does not mirror skills.",
 		},
+		Plugin: GrokPlugin{},
 	}})
 
 	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
@@ -148,12 +156,21 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 		Spec: AdapterSpec{
 			ID: "cline", Tier: TierStable, Executables: []string{"cline"},
 			Targets: AdapterTargets{
-				Skills:     filepath.Join(home, ".cline", "data", "skills"),
-				Subagents:  filepath.Join(home, ".cline", "data", "agents"),
-				MCPPath:    filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"),
+				// Docs: global skills/agents live under ~/.cline/ (not data/).
+				// https://docs.cline.bot/customization/skills
+				// https://docs.cline.bot/getting-started/config
+				Skills:    filepath.Join(home, ".cline", "skills"),
+				Subagents: filepath.Join(home, ".cline", "agents"),
+				MCPPath:   filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"),
 				MCPKeyPath: []string{"mcpServers"},
+				// Previous ns-workspace path used data/skills and data/agents.
+				SkillsCleanupRoots: []string{
+					filepath.Join(home, ".cline", "data", "skills"),
+					filepath.Join(home, ".cline", "data", "agents"),
+				},
 			},
-			Docs: []string{"https://docs.cline.bot/cline-cli/configuration"},
+			Docs:  []string{"https://docs.cline.bot/cline-cli/configuration", "https://docs.cline.bot/customization/skills", "https://docs.cline.bot/getting-started/config"},
+			Notes: "Cline discovers global skills at ~/.cline/skills and agents at ~/.cline/agents; MCP settings stay under ~/.cline/data/settings/cline_mcp_settings.json. Stale managed links under the former data/skills and data/agents paths are cleaned on apply.",
 		},
 		Plugin: ClinePlugin{},
 	}})
@@ -163,10 +180,12 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 			ID: "zcode", Aliases: []string{"zcode-cli"}, Tier: TierStable, Executables: []string{"zcode"},
 			Targets: AdapterTargets{
 				Instruction: filepath.Join(home, ".zcode", "AGENTS.md"),
-				Skills:      filepath.Join(home, ".zcode", "skills"),
+				// Skills: ZCode skill-creator docs list ~/.agents/skills (and
+				// project .agents/skills) with default install there; do not mirror.
+				SkillsCleanupRoots: []string{filepath.Join(home, ".zcode", "skills")},
 			},
 			Docs:  []string{""},
-			Notes: "ZCode (desktop app by MiniMax) discovers skills from ~/.zcode/skills/ in addition to the shared ~/.agents/skills/ directory; the adapter mirrors shared skills into ~/.zcode/skills/ so ZCode picks them up even when ~/.agents/skills/ is not on the discovery path. The shared ~/.agents/AGENTS.md is file-linked into ~/.zcode/AGENTS.md so project-local discovery also picks it up. There is no first-party user-level MCP config in this ZCode release (MCP servers live per-plugin under ~/.zcode/cli/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json), so the adapter does not write an MCP file yet — the ZCodePlugin skeleton is wired for that future target.",
+			Notes: "ZCode discovers skills from ~/.agents/skills (preferred) and optional ~/.zcode/skills; this adapter does not mirror skills. Shared ~/.agents/AGENTS.md is file-linked into ~/.zcode/AGENTS.md. There is no first-party user-level MCP config in this ZCode release (MCP lives per-plugin under the plugin cache), so the adapter does not write an MCP file yet.",
 		},
 		Plugin: ZCodePlugin{},
 	}})

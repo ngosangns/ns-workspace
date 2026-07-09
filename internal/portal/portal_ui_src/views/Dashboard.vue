@@ -11,8 +11,10 @@ const status = ref<StatusSummary | null>(null);
 const loading = ref(true);
 const error = ref("");
 
-async function load() {
-  loading.value = true;
+async function load(showLoading = true) {
+  if (showLoading) {
+    loading.value = true;
+  }
   error.value = "";
   try {
     const [s, m, r, a, st] = await Promise.all([api.getSkills(), api.getMCPs(), api.getRegistry(), api.getAdapters(), api.getStatus()]);
@@ -24,7 +26,9 @@ async function load() {
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
-    loading.value = false;
+    if (showLoading) {
+      loading.value = false;
+    }
   }
 }
 
@@ -104,7 +108,7 @@ onMounted(load);
       </section>
 
       <section class="dash-section fade-in-up">
-        <SyncPanel @done="load" />
+        <SyncPanel @done="load(false)" />
       </section>
     </template>
   </div>

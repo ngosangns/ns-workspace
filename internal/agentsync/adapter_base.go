@@ -154,7 +154,8 @@ func (b *BaseAdapter) manualPlan(ctx Context) ([]Operation, error) {
 }
 
 // fileLinkOps emits LinkOrCopy / LinkSkillDirs operations for the
-// per-adapter file fan-out.
+// per-adapter file fan-out, plus cleanup of stale managed skill links
+// at legacy roots that are no longer mirrored.
 func (b *BaseAdapter) fileLinkOps(ctx Context, replace bool) []Operation {
 	ops := []Operation{}
 	t := b.Spec.Targets
@@ -172,6 +173,22 @@ func (b *BaseAdapter) fileLinkOps(ctx Context, replace bool) []Operation {
 	}
 	if t.AgentConfigSrc != "" && t.AgentConfigDst != "" {
 		ops = append(ops, InstallPresetFile{Src: t.AgentConfigSrc, Dst: t.AgentConfigDst, Replace: replace})
+	}
+	// Clean stale managed mirrors under former skill/agent roots. Shared
+	// roots cover both skills and subagents so a single op works for
+	// either tree (e.g. cline data/skills and data/agents migration).
+	for _, root := range t.SkillsCleanupRoots {
+		if root == "" || root == t.Skills || root == t.Subagents {
+			continue
+		}
+		ops = append(ops, CleanupManagedLinks{
+			DstRoot:    root,
+			SharedRoot: sourceSkills,
+		})
+		ops = append(ops, CleanupManagedLinks{
+			DstRoot:    root,
+			SharedRoot: sourceSubagents,
+		})
 	}
 	return ops
 }

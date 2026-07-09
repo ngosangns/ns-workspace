@@ -87,14 +87,13 @@ type PathStatus struct {
 // SyncRequest is the body for starting a sync command.
 type SyncRequest struct {
 	Command string `json:"command"` // init, update, registry, doctor, status
-	DryRun  bool   `json:"dryRun"`
+	Tools   string `json:"tools"`   // comma-separated provider filter, empty means all
 }
 
 // SyncJob describes a running or completed sync job.
 type SyncJob struct {
 	ID      string `json:"id"`
 	Command string `json:"command"`
-	DryRun  bool   `json:"dryRun"`
 	Running bool   `json:"running"`
 	Error   string `json:"error,omitempty"`
 }

@@ -232,6 +232,58 @@ func (op LinkSkillDirs) Describe(ctx Context) {
 }
 func (op LinkSkillDirs) Path() string { return op.DstRoot }
 
+// CleanupManagedLinks removes directory entries under DstRoot that are
+// symlinks pointing into SharedRoot (the shared ~/.agents/skills or
+// ~/.agents/agents tree). Real directories and unrelated links are left
+// alone so user-owned content is never deleted.
+type CleanupManagedLinks struct {
+	DstRoot    string
+	SharedRoot string
+}
+
+func (op CleanupManagedLinks) Apply(ctx Context) error {
+	if op.DstRoot == "" || op.SharedRoot == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(op.DstRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	shared := filepath.Clean(op.SharedRoot)
+	for _, entry := range entries {
+		path := filepath.Join(op.DstRoot, entry.Name())
+		target, err := os.Readlink(path)
+		if err != nil {
+			// Not a symlink (or unreadable): leave in place.
+			continue
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		target = filepath.Clean(target)
+		if target != shared && !strings.HasPrefix(target, shared+string(os.PathSeparator)) {
+			continue
+		}
+		if ctx.DryRun {
+			ctx.Report.Line("cleanup managed link: %s", path)
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		ctx.Report.Line("cleanup managed link: %s", path)
+	}
+	return nil
+}
+
+func (op CleanupManagedLinks) Describe(ctx Context) {
+	ctx.Report.Line("cleanup managed links: %s (from %s)", op.DstRoot, op.SharedRoot)
+}
+func (op CleanupManagedLinks) Path() string { return op.DstRoot }
+
 type MergeJSON struct {
 	Dst     string
 	KeyPath []string

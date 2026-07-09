@@ -150,14 +150,14 @@ Stable adapters ghi vào các user-level path đã biết:
 | Agent         | User-level targets                                                                                                                                                                 |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands                                                         |
-| OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `skill/`, `agent/`, `opencode.json` với hooks và MCP                                                                                        |
-| Grok Build    | `~/.grok/skills`; Grok cũng đọc `AGENTS.md` trong project và `~/.agents/skills` theo compatibility của Grok Build                                                                  |
+| OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `agent/`, `opencode.json` với MCP; skills đọc native từ `~/.agents/skills` (không mirror)                                                   |
+| Grok Build    | `~/.grok/AGENTS.md`, managed MCP block trong `~/.grok/config.toml`; skills đọc native từ `~/.agents/skills` (không mirror)                                                         |
 | Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/mcp.json`; skills không mirror vì Kimi đọc thẳng `~/.agents/skills` (generic, độc lập với `KIMI_CODE_HOME`)                                          |
 | Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`, `~/.kiro/agents/ns-full.json` (full-permissions custom agent); `--tools kiro-cli` là alias của `kiro` |
 | Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                                                                                      |
 | Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root); skills không mirror vì Gemini CLI đọc alias `.agents/skills` thẳng từ `~/.agents/skills` |
 | Codex CLI     | `~/.codex/AGENTS.md`, managed MCP block trong `~/.codex/config.toml`; Codex không có `~/.codex/skills` — chỉ đọc `.agents/skills` (repo) và `~/.agents/skills` (user) nên không cần mirror |
-| Cline         | `~/.cline/data/skills`, `~/.cline/data/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                   |
+| Cline         | `~/.cline/skills`, `~/.cline/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                             |
 
 ## Preview, Search, Graph Và Harness
 

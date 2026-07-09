@@ -130,6 +130,8 @@ func operationArtifact(op Operation) ArtifactKind {
 		return artifactFromLink(op.Src, op.Dst)
 	case LinkSkillDirs:
 		return artifactFromPath(op.SrcRoot)
+	case CleanupManagedLinks:
+		return ArtifactSkills
 	case MergeJSON:
 		if len(op.KeyPath) > 0 && strings.EqualFold(op.KeyPath[len(op.KeyPath)-1], "mcpServers") {
 			return ArtifactMCP

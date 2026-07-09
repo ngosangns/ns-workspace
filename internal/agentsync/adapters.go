@@ -38,6 +38,13 @@ type AdapterTargets struct {
 	// settings.json. Both fields must be set for the write to happen.
 	AgentConfigSrc string
 	AgentConfigDst string
+	// SkillsCleanupRoots lists native skill (or agent) directories that
+	// previously received managed symlinks from ~/.agents but are no
+	// longer Targets.Skills / Subagents. On apply, entries that are
+	// symlinks into the shared home are removed so stale mirrors do not
+	// linger after a discovery-path change (e.g. provider now reads
+	// ~/.agents/skills natively).
+	SkillsCleanupRoots []string
 }
 
 // AdapterSpec is the data-driven half of an adapter: identity, native

@@ -9,6 +9,10 @@ import (
 	"github.com/ngosangns/ns-workspace/internal/agentsync"
 )
 
+// completedJobTTL is how long finished sync jobs stay queryable so the
+// SSE client can attach after a fast command (status/doctor) finishes.
+const completedJobTTL = 2 * time.Minute
+
 // SyncRunner executes agentsync commands and streams report lines.
 type SyncRunner struct {
 	presets fs.FS
@@ -22,7 +26,6 @@ type syncJob struct {
 	mu      sync.Mutex
 	ID      string
 	Command string
-	DryRun  bool
 	Lines   []string
 	Done    bool
 	Err     error
@@ -48,7 +51,9 @@ func NewSyncRunner(presets fs.FS) *SyncRunner {
 }
 
 // Start begins a sync command and returns a job ID.
-func (r *SyncRunner) Start(command string, dryRun bool, agentsDir string) (string, error) {
+// tools is a comma-separated provider filter (e.g. "claude" or "claude,codex");
+// an empty value means all providers.
+func (r *SyncRunner) Start(command string, agentsDir string, tools string) (string, error) {
 	switch command {
 	case "init", "update", "status", "doctor", "registry":
 		// supported
@@ -63,28 +68,33 @@ func (r *SyncRunner) Start(command string, dryRun bool, agentsDir string) (strin
 	job := &syncJob{
 		ID:      id,
 		Command: command,
-		DryRun:  dryRun,
 	}
 	job.cond = sync.NewCond(&job.mu)
 	r.jobs[id] = job
 
-	go r.run(job, agentsDir)
+	go r.run(job, agentsDir, tools)
 	return id, nil
 }
 
-func (r *SyncRunner) run(job *syncJob, agentsDir string) {
+func (r *SyncRunner) run(job *syncJob, agentsDir string, tools string) {
 	defer func() {
 		job.mu.Lock()
 		job.Done = true
 		job.mu.Unlock()
 		job.broadcast()
-		r.mu.Lock()
-		delete(r.jobs, job.ID)
-		r.mu.Unlock()
+		// Keep the job long enough for the portal SSE client to connect
+		// and drain lines. Fast commands (status/doctor) often finish
+		// before the browser opens EventSource; deleting immediately
+		// made those streams return 404 with an empty terminal.
+		time.AfterFunc(completedJobTTL, func() {
+			r.mu.Lock()
+			delete(r.jobs, job.ID)
+			r.mu.Unlock()
+		})
 	}()
 
 	manager := agentsync.Manager{Presets: r.presets}
-	opt, err := r.buildOptions(job.Command, dryRun(job), agentsDir)
+	opt, err := r.buildOptions(job.Command, agentsDir, tools)
 	if err != nil {
 		job.Err = err
 		job.append(fmt.Sprintf("error: %v", err))
@@ -115,7 +125,7 @@ func (r *SyncRunner) run(job *syncJob, agentsDir string) {
 	}
 }
 
-func (r *SyncRunner) buildOptions(command string, dryRun bool, agentsDir string) (agentsync.Options, error) {
+func (r *SyncRunner) buildOptions(command string, agentsDir string, tools string) (agentsync.Options, error) {
 	homeDefault, err := agentsync.DefaultAgentsDir()
 	if err != nil {
 		return agentsync.Options{}, err
@@ -127,19 +137,16 @@ func (r *SyncRunner) buildOptions(command string, dryRun bool, agentsDir string)
 	if err != nil {
 		return agentsync.Options{}, err
 	}
+	toolFilter := agentsync.ParseTools(tools)
+	if len(toolFilter) == 0 {
+		toolFilter = map[string]bool{"all": true}
+	}
 	return agentsync.Options{
 		Command:    command,
 		AgentsDir:  agentsDir,
 		ConfigPath: configDefault,
-		DryRun:     dryRun,
-		ToolFilter: map[string]bool{"all": true},
+		ToolFilter: toolFilter,
 	}, nil
-}
-
-func dryRun(job *syncJob) bool {
-	job.mu.Lock()
-	defer job.mu.Unlock()
-	return job.DryRun
 }
 
 // Job returns a snapshot of a job. If id is empty, returns nil.
@@ -150,7 +157,8 @@ func (r *SyncRunner) Job(id string) *syncJob {
 }
 
 // Subscribe streams lines to the provided callback until the job is done.
-// It returns immediately if the job is unknown or already done.
+// It returns immediately if the job is unknown or already done (after
+// replaying any buffered lines).
 func (job *syncJob) Subscribe(fn func(string)) {
 	if job == nil {
 		return

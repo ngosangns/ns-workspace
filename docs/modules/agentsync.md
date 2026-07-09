@@ -73,9 +73,12 @@ Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, K
 
 Plugin adapter hiện có:
 
-- OpenCode dùng `opencodePlugin.ExtraOperations` nhận MCP presets dưới key `mcp` và đổi server type `http` thành `remote`; config values lấy từ `presets/opencode/opencode.json` và merge vào native config qua `MergeJSON` thay vì qua `ApplyAdapterSettings`.
+- OpenCode merge MCP presets dưới key `mcp` (remote: `type/url/enabled`; local: `type/command[]/enabled`) và config values từ `presets/opencode/opencode.json` vào native config qua `MergeJSON` / `OpenCodeAdapter.Plan`.
 - Claude tạo script helper `~/.agents/generated/claude/mcp.commands.sh` để add MCP bằng CLI user scope.
 - Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers.
+- Grok link `~/.agents/AGENTS.md` → `~/.grok/AGENTS.md` và dùng `GrokPlugin.ExtraOperations` để append managed TOML block MCP vào `~/.grok/config.toml` (`[mcp_servers.<name>]`). Skills **không** mirror — Grok đọc `~/.agents/skills` native.
+- OpenCode / ZCode / Codex / Gemini / Kimi: skills chỉ qua `~/.agents/skills` (không mirror native skills dir). OpenCode vẫn link AGENTS.md + subagents + merge MCP; ZCode link AGENTS.md; stale symlink cũ dưới `~/.config/opencode/skill`, `~/.grok/skills`, `~/.zcode/skills` được cleanup nếu trỏ vào shared home.
+- Cline skills/agents: `~/.cline/skills` và `~/.cline/agents` (theo docs); cleanup path cũ `~/.cline/data/skills` và `data/agents`.
 - Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`. Ghi custom agent `~/.kiro/agents/ns-full.json` với `tools: ["*"]`, `allowedTools: ["@builtin", "@*"]`, `includeMcpJson: true` và `resources` trỏ đến synced skills/steering.
 
 ## Preset Và Registry Rules
@@ -144,13 +147,14 @@ Test `TestProviderFullBypassConfig` assert cả 4 provider đều sinh ra config
 Shared manifest `presets/mcp/servers.json` dùng shape chuẩn MCP (`type`/`url` cho HTTP, `command`/`args` cho stdio). Mỗi provider CLI lại đọc field khác nhau, nên trước khi merge settings hoặc MCP, hàm `transformMCPServersForAdapter` (trong `internal/agentsync/agentsync.go`) rewrite từng server entry theo schema của provider đích:
 
 - **claude**: giữ nguyên `type: "http"` + `url` (Claude Code chấp nhận shape này).
-- **opencode**: đổi `type: "http"` thành `type: "remote"` (OpenCode dùng literal "remote" cho HTTP transport).
+- **opencode**: remote HTTP → `type: "remote"` + `url` + `enabled: true`; stdio → `type: "local"` + `command` argv array (gộp `command` string + `args`) + `enabled: true`; `env` → `environment`. Theo [OpenCode MCP docs](https://opencode.ai/docs/mcp-servers/).
 - **qwen**: drop `type`, đổi `url` → `httpUrl` cho HTTP servers. SSE giữ `url`, stdio giữ `command`+`args`. Theo [Qwen MCP docs](https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/).
 - **gemini**: cùng rule với qwen (`httpUrl`, không `type`). Theo [Gemini CLI MCP docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md).
 - **cline**: drop `type` (Cline docs không document field này). Giữ `url` (HTTP/SSE) hoặc `command`+`args` (stdio).
 - **kimi** và các provider khác: giữ nguyên shape chuẩn MCP.
+- **grok**: không đi qua transform JSON; MCP được render thành managed TOML block trong `~/.grok/config.toml` qua `grokMCPBlock` (`[mcp_servers.<name>]`, bỏ `type`).
 
-Transform này áp dụng cho cả hai đường materialization: profile-based (`ApplyAdapterSettings` → `buildAdapterSettings`) và inline merge (`MergeJSON` trong `specAdapter.Plan`). Test `TestProviderMCPServerShapeMatchesVendorDocs` và `TestTransformMCPServersForAdapter` lock-in contract để schema sai provider nào sẽ fail ngay khi test.
+Transform JSON áp dụng cho profile-based (`ApplyAdapterSettings` → `buildAdapterSettings`) và inline merge (`MergeJSON`). Grok/Codex dùng `AppendManagedBlock` TOML riêng. Test `TestProviderMCPServerShapeMatchesVendorDocs`, `TestTransformMCPServersForAdapter`, và `TestGrokMCPBlock*` lock-in contract.
 
 Ưu điểm:
 

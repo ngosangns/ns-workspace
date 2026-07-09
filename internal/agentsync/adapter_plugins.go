@@ -34,9 +34,9 @@ func (ClaudePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, erro
 	return manifest, nil
 }
 
-// OpenCodePlugin implements the OpenCode MCP rewrite: HTTP servers
-// get `type: "remote"` and the path plugins layered on top of the
-// preset provider config.
+// OpenCodePlugin implements the OpenCode MCP rewrite: remote HTTP
+// servers get type "remote"+url+enabled; local/stdio get type "local"
+// with command as argv array + enabled. See transformOpenCodeMCPServer.
 type OpenCodePlugin struct {
 	ConfigPath string
 }
@@ -62,8 +62,8 @@ func (p OpenCodePlugin) ExtraStatusPaths(ctx Context, _ AdapterSpec) []string {
 	return []string{p.ConfigPath}
 }
 
-// TransformMCPServers rewrites `type:"http"` to `type:"remote"` for
-// OpenCode's remote transport.
+// TransformMCPServers rewrites shared MCP entries into OpenCode's
+// local/remote schema (type, command argv, enabled).
 func (OpenCodePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
 	return opencodeMCPManifest(manifest), nil
 }
@@ -193,21 +193,66 @@ func (ClinePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 	return MCPManifest{MCPServers: transformed}, nil
 }
 
-// ZCodePlugin powers the ZCode adapter. ZCode (the desktop app by
-// MiniMax) discovers skills from ~/.zcode/skills/ in addition to the
-// shared ~/.agents/skills/ directory. There is no first-party
-// user-level MCP config file, so the plugin currently does not emit
-// ArtifactMCP — file fan-out via BaseAdapter covers skills and
-// instructions. When a stable ~/.zcode/mcp.json target ships, the
-// plugin's TransformMCPServers will become the dispatch point and
-// keep the canonical {type:"http",url} / {command,args} shape.
+// GrokPlugin powers the Grok Build adapter's TOML MCP managed block.
+// Instruction and skills are file-linked by BaseAdapter from
+// AdapterTargets; MCP lives in ~/.grok/config.toml under
+// [mcp_servers.<name>] and cannot go through MergeJSON, so ExtraOperations
+// emits AppendManagedBlock (same primitive Codex uses for config.toml).
+type GrokPlugin struct{}
+
+// ExtendCapabilities adds ArtifactMCP so `agents` reports the managed
+// config.toml MCP target alongside instructions and skills.
+func (GrokPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
+	caps.Artifacts = append(caps.Artifacts, ArtifactMCP)
+	return caps
+}
+
+// ExtraOperations appends a managed MCP block into ~/.grok/config.toml
+// when MCP is enabled and the shared manifest has servers. Empty
+// manifests skip the op (Codex-compatible: a previously written block
+// is left in place if the preset becomes empty).
+func (GrokPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operation, error) {
+	if ctx.NoMCP {
+		return nil, nil
+	}
+	manifest, err := readMCPManifestHook(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(manifest.MCPServers) == 0 {
+		return nil, nil
+	}
+	return []Operation{AppendManagedBlock{
+		Dst:     filepath.Join(ctx.Home, ".grok", "config.toml"),
+		Label:   "mcp",
+		Content: grokMCPBlock(manifest),
+		Replace: true,
+	}}, nil
+}
+
+// ExtraStatusPaths returns the Grok config.toml path so status/doctor
+// surface the managed MCP target.
+func (GrokPlugin) ExtraStatusPaths(ctx Context, _ AdapterSpec) []string {
+	return []string{filepath.Join(ctx.Home, ".grok", "config.toml")}
+}
+
+// TransformMCPServers returns the manifest unchanged. Grok MCP is
+// rendered to TOML by grokMCPBlock from the shared shape; there is no
+// JSON mcpServers path for this adapter.
+func (GrokPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
+	return manifest, nil
+}
+
+// ZCodePlugin powers the ZCode adapter. ZCode discovers skills from
+// ~/.agents/skills (and optional ~/.zcode/skills); this adapter does
+// not mirror skills. There is no first-party user-level MCP config
+// file yet. When a stable ~/.zcode/mcp.json target ships, the plugin's
+// TransformMCPServers will become the dispatch point.
 type ZCodePlugin struct{}
 
-// ExtendCapabilities adds ArtifactSkills and ArtifactInstructions so
-// `agents` reports the file fan-out. MCP is intentionally absent
-// until ZCode ships a user-level MCP config path.
+// ExtendCapabilities leaves capabilities to artifactsFromSpec
+// (instruction link only). Skills live in shared ~/.agents/skills.
 func (ZCodePlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
-	caps.Artifacts = append(caps.Artifacts, ArtifactSkills, ArtifactInstructions)
 	return caps
 }
 
@@ -241,6 +286,7 @@ var (
 	_ AdapterPlugin = QwenPlugin{}
 	_ AdapterPlugin = GeminiPlugin{}
 	_ AdapterPlugin = ClinePlugin{}
+	_ AdapterPlugin = GrokPlugin{}
 	_ AdapterPlugin = ZCodePlugin{}
 	_ AdapterPlugin = NoopPlugin{}
 )

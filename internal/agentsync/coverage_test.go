@@ -351,12 +351,11 @@ func TestClinePlugin(t *testing.T) {
 func TestZCodePlugin(t *testing.T) {
 	_, _ = newTestContext(t)
 	p := ZCodePlugin{}
+	// Skills live in shared ~/.agents/skills; the plugin no longer injects
+	// ArtifactSkills/ArtifactInstructions (those come from AdapterTargets).
 	caps := p.ExtendCapabilities(AdapterSpec{}, AgentCapabilities{Tier: TierStable})
-	if !containsKind(caps.Artifacts, ArtifactSkills) {
-		t.Fatalf("ZCode caps missing Skills: %v", caps.Artifacts)
-	}
-	if !containsKind(caps.Artifacts, ArtifactInstructions) {
-		t.Fatalf("ZCode caps missing Instructions: %v", caps.Artifacts)
+	if containsKind(caps.Artifacts, ArtifactSkills) {
+		t.Fatalf("ZCode plugin should not inject Skills: %v", caps.Artifacts)
 	}
 	// ZCode does not yet ship a user-level MCP config file, so the
 	// plugin should not advertise MCP capability until that target
@@ -1779,6 +1778,97 @@ func TestCodexMCPBlockCommandAndURL(t *testing.T) {
 	}
 }
 
+func TestGrokMCPBlockEmpty(t *testing.T) {
+	got := grokMCPBlock(MCPManifest{MCPServers: map[string]any{}})
+	if got != "" {
+		t.Fatalf("grokMCPBlock empty = %q, want empty", got)
+	}
+}
+
+func TestGrokMCPBlockCommandURLHeadersAndTypeDrop(t *testing.T) {
+	manifest := MCPManifest{MCPServers: map[string]any{
+		"zebra": map[string]any{"type": "http", "url": "https://z.example.com"},
+		"alpha": map[string]any{
+			"type":    "http",
+			"url":     "https://a.example.com",
+			"headers": map[string]any{"Authorization": "Bearer t", "X-A": "1"},
+		},
+		"local": map[string]any{"command": "npx", "args": []any{"-y", "my-mcp"}, "env": map[string]any{"FOO": "bar", "AAA": "1"}},
+		"weird name": map[string]any{"url": "https://quoted.example.com"},
+		"junk":       "not a map",
+	}}
+	got := grokMCPBlock(manifest)
+	// Sorted names: alpha, local, weird name, zebra
+	if !strings.HasPrefix(got, "[mcp_servers.alpha]\n") {
+		t.Fatalf("expected sorted bare key first: %s", got)
+	}
+	if !strings.Contains(got, `url = "https://a.example.com"`) {
+		t.Fatalf("missing alpha url: %s", got)
+	}
+	if !strings.Contains(got, `headers = { "Authorization" = "Bearer t", "X-A" = "1" }`) {
+		t.Fatalf("missing sorted headers: %s", got)
+	}
+	if !strings.Contains(got, "[mcp_servers.local]\n") || !strings.Contains(got, `command = "npx"`) {
+		t.Fatalf("missing local stdio server: %s", got)
+	}
+	if !strings.Contains(got, `env = { "AAA" = "1", "FOO" = "bar" }`) {
+		t.Fatalf("missing sorted env: %s", got)
+	}
+	if !strings.Contains(got, `[mcp_servers."weird name"]`) {
+		t.Fatalf("unsafe name should be quoted: %s", got)
+	}
+	if strings.Contains(got, "type") {
+		t.Fatalf("shared type field must be dropped: %s", got)
+	}
+}
+
+func TestGrokPluginExtraOperations(t *testing.T) {
+	home := t.TempDir()
+	ctx := Context{
+		Home: home,
+		Options: Options{
+			AgentsDir: filepath.Join(home, ".agents"),
+		},
+		Presets:       os.DirFS("../.."),
+		manifestCache: map[string]any{},
+	}
+	// Seed shared MCP so readMCPManifest succeeds in init mode.
+	if err := os.MkdirAll(filepath.Join(home, ".agents", "mcp"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".agents", "mcp", "servers.json"), []byte(`{"mcpServers":{"context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}`), 0o644); err != nil {
+		t.Fatalf("write mcp: %v", err)
+	}
+
+	p := GrokPlugin{}
+	caps := p.ExtendCapabilities(AdapterSpec{}, AgentCapabilities{Tier: TierStable})
+	if len(caps.Artifacts) != 1 || caps.Artifacts[0] != ArtifactMCP {
+		t.Fatalf("ExtendCapabilities = %v", caps.Artifacts)
+	}
+	paths := p.ExtraStatusPaths(ctx, AdapterSpec{})
+	if len(paths) != 1 || paths[0] != filepath.Join(home, ".grok", "config.toml") {
+		t.Fatalf("ExtraStatusPaths = %v", paths)
+	}
+
+	ops, err := p.ExtraOperations(ctx, AdapterSpec{}, false)
+	if err != nil {
+		t.Fatalf("ExtraOperations: %v", err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("ExtraOperations len = %d", len(ops))
+	}
+	block, ok := ops[0].(AppendManagedBlock)
+	if !ok || block.Label != "mcp" || !strings.Contains(block.Content, "[mcp_servers.context7]") {
+		t.Fatalf("unexpected op: %#v", ops[0])
+	}
+
+	ctx.NoMCP = true
+	ops, err = p.ExtraOperations(ctx, AdapterSpec{}, false)
+	if err != nil || ops != nil {
+		t.Fatalf("NoMCP should skip ops: ops=%v err=%v", ops, err)
+	}
+}
+
 func TestMCPCommandScriptEmpty(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	got, err := mcpCommandScript(ctx, "claude", func(name, server string) string {
@@ -3123,17 +3213,29 @@ func TestBuildAdapterSettingsFieldNotObject(t *testing.T) {
 // --- Additional coverage tests for mcp.go ---
 
 func TestOpenCodeMCPManifest(t *testing.T) {
-	// HTTP server: type should be rewritten to "remote"
 	in := MCPManifest{MCPServers: map[string]any{
 		"http":  map[string]any{"type": "http", "url": "https://example.com"},
-		"other": map[string]any{"type": "stdio", "command": "x"},
+		"local": map[string]any{"command": "npx", "args": []any{"-y", "pkg"}, "env": map[string]any{"K": "V"}},
 	}}
 	got := opencodeMCPManifest(in)
-	if got.MCPServers["http"].(map[string]any)["type"] != "remote" {
-		t.Fatalf("http should be rewritten to remote: %+v", got)
+	remote := got.MCPServers["http"].(map[string]any)
+	if remote["type"] != "remote" || remote["enabled"] != true || remote["url"] != "https://example.com" {
+		t.Fatalf("http should become remote+enabled+url: %+v", remote)
 	}
-	if got.MCPServers["other"].(map[string]any)["type"] != "stdio" {
-		t.Fatalf("non-http should be kept: %+v", got)
+	local := got.MCPServers["local"].(map[string]any)
+	if local["type"] != "local" || local["enabled"] != true {
+		t.Fatalf("stdio should become local+enabled: %+v", local)
+	}
+	cmd, ok := local["command"].([]any)
+	if !ok || len(cmd) != 3 || cmd[0] != "npx" || cmd[1] != "-y" || cmd[2] != "pkg" {
+		t.Fatalf("local command argv wrong: %+v", local["command"])
+	}
+	if _, hasArgs := local["args"]; hasArgs {
+		t.Fatalf("local must drop args: %+v", local)
+	}
+	env, _ := local["environment"].(map[string]any)
+	if env["K"] != "V" {
+		t.Fatalf("env should map to environment: %+v", local)
 	}
 	// Non-map value
 	in2 := MCPManifest{MCPServers: map[string]any{"x": "string"}}
@@ -3203,7 +3305,7 @@ func TestAllPlugins(t *testing.T) {
 		{"QwenPlugin", QwenPlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"GeminiPlugin", GeminiPlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"ClinePlugin", ClinePlugin{}, []ArtifactKind{ArtifactMCP}},
-		{"ZCodePlugin", ZCodePlugin{}, []ArtifactKind{ArtifactSkills, ArtifactInstructions}},
+		{"ZCodePlugin", ZCodePlugin{}, nil},
 	}
 	for _, tc := range plugins {
 		t.Run(tc.name, func(t *testing.T) {

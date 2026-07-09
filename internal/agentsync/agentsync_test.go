@@ -38,7 +38,9 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".agents", "skills", "_shared", "CONVENTIONS.md"))
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
-	mustExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".grok", "AGENTS.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".grok", "config.toml"))
 	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
@@ -65,10 +67,24 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	if strings.Contains(opencode, "PreToolUse") || !strings.Contains(opencode, `"type": "remote"`) || !strings.Contains(opencode, "context7") || !strings.Contains(opencode, `"permission": "allow"`) {
 		t.Fatalf("opencode config should include remote MCP presets with permission allow, without unsupported hooks: %s", opencode)
 	}
+	if !strings.Contains(opencode, `"type": "local"`) || !strings.Contains(opencode, `"enabled": true`) || !strings.Contains(opencode, "chrome-devtools") {
+		t.Fatalf("opencode config should include local MCP with type/enabled and argv command: %s", opencode)
+	}
+	if strings.Contains(opencode, `"command": "npx"`) {
+		t.Fatalf("opencode local MCP must use command argv array, not string: %s", opencode)
+	}
 
 	codex := readFile(t, filepath.Join(home, ".codex", "config.toml"))
 	if !strings.Contains(codex, "[mcp_servers.\"context7\"]") {
 		t.Fatalf("codex config did not include MCP preset: %s", codex)
+	}
+
+	grok := readFile(t, filepath.Join(home, ".grok", "config.toml"))
+	if !strings.Contains(grok, "ns-workspace mcp") || !strings.Contains(grok, "[mcp_servers.context7]") || !strings.Contains(grok, `url = "https://mcp.context7.com/mcp"`) {
+		t.Fatalf("grok config did not include managed MCP preset: %s", grok)
+	}
+	if strings.Contains(grok, `type = "http"`) || strings.Contains(grok, `"type"`) {
+		t.Fatalf("grok MCP block should drop shared type field: %s", grok)
 	}
 }
 
@@ -302,10 +318,78 @@ func TestGrokSelectionCreatesNativeSkills(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	mustExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".grok", "AGENTS.md"))
 	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".grok", "config.toml"))
+	grok := readFile(t, filepath.Join(home, ".grok", "config.toml"))
+	if !strings.Contains(grok, "[mcp_servers.context7]") || !strings.Contains(grok, "ns-workspace mcp") {
+		t.Fatalf("grok selection should write managed MCP block: %s", grok)
+	}
 	mustNotExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustNotExist(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
+}
+
+func TestGrokNoMCPSkipsManagedBlock(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		NoMCP:      true,
+		ToolFilter: ParseTools("grok"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	mustExist(t, filepath.Join(home, ".grok", "AGENTS.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "config.toml"))
+}
+
+func TestGrokUpdatePreservesUserConfigTOML(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	grokDir := filepath.Join(home, ".grok")
+	if err := os.MkdirAll(grokDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	seed := "[cli]\nauto_update = true\n\n[ui]\npermission_mode = \"always-approve\"\n\n"
+	if err := os.WriteFile(filepath.Join(grokDir, "config.toml"), []byte(seed), 0o644); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "update",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("grok"),
+	}
+	if err := manager.Apply(opt, true); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	got := readFile(t, filepath.Join(home, ".grok", "config.toml"))
+	if !strings.Contains(got, "permission_mode = \"always-approve\"") || !strings.Contains(got, "auto_update = true") {
+		t.Fatalf("user TOML sections should be preserved: %s", got)
+	}
+	if !strings.Contains(got, "ns-workspace mcp") || !strings.Contains(got, "[mcp_servers.context7]") {
+		t.Fatalf("managed MCP block should be present after update: %s", got)
+	}
 }
 
 func TestKiroHomeOverrideUsesKiroPresetPaths(t *testing.T) {
@@ -736,7 +820,7 @@ func TestProviderFullBypassConfig(t *testing.T) {
 // Verified against:
 //
 //   - Claude Code settings docs (mcpServers.{name}: type/url or command/args).
-//   - OpenCode MCP docs (mcp.{name}: type "remote" + url).
+//   - OpenCode MCP docs (mcp.{name}: type "remote"+url+enabled, or type "local"+command[]+enabled).
 //   - Qwen Code MCP docs (mcpServers.{name}: httpUrl for HTTP servers, no type).
 //   - Gemini CLI MCP docs (mcpServers.{name}: httpUrl for HTTP servers, no type).
 //   - Cline MCP docs (mcpServers.{name}: url or command+args, no type field).
@@ -762,8 +846,9 @@ func TestProviderMCPServerShapeMatchesVendorDocs(t *testing.T) {
 	// {command,args} for stdio servers (both shapes pass through verbatim).
 	assertClaudeMCPServers(t, readJSONFile(t, filepath.Join(home, ".claude", "settings.json")))
 
-	// OpenCode: mcp.{name}.{type:"remote", url} for HTTP servers and
-	// {command,args} for stdio servers (both shapes pass through verbatim).
+	// OpenCode: mcp.{name}.{type:"remote",url,enabled} for HTTP servers and
+	// {type:"local",command:[...],enabled} for stdio (shared command+args
+	// folded into a single argv array per OpenCode schema).
 	assertOpenCodeMCPServers(t, readJSONFile(t, filepath.Join(home, ".config", "opencode", "opencode.json")))
 }
 
@@ -804,9 +889,13 @@ func assertClaudeMCPServers(t *testing.T, claude map[string]any) {
 }
 
 // assertOpenCodeMCPServers asserts that every mcp.{name} entry written
-// into OpenCode's config.json keeps the vendor-documented shape: HTTP
-// servers keep `type:"remote"` + `url`, stdio servers keep `command` +
-// `args`. The shared preset may contain both kinds of entries.
+// into OpenCode's config.json matches the vendor schema:
+//
+//   - remote: type "remote" + url + enabled
+//   - local:  type "local" + command as argv array + enabled (no separate args)
+//
+// Shared presets still use command string + args; the opencode transform
+// folds them into command[].
 func assertOpenCodeMCPServers(t *testing.T, opencode map[string]any) {
 	t.Helper()
 	opencodeMCP, _ := opencode["mcp"].(map[string]any)
@@ -815,23 +904,30 @@ func assertOpenCodeMCPServers(t *testing.T, opencode map[string]any) {
 	}
 	for name, raw := range opencodeMCP {
 		server := raw.(map[string]any)
+		if enabled, ok := server["enabled"].(bool); !ok || !enabled {
+			t.Fatalf("opencode mcp.%s expected enabled=true, got %v: %v", name, server["enabled"], server)
+		}
 		switch {
-		case isHTTPServer(server):
+		case server["type"] == "remote" || isHTTPServer(server):
 			if server["type"] != "remote" {
 				t.Fatalf("opencode mcp.%s expected type=remote, got %v: %v", name, server["type"], server)
 			}
 			if _, ok := server["url"].(string); !ok {
 				t.Fatalf("opencode mcp.%s missing url: %v", name, server)
 			}
-		case isStdioServer(server):
-			if cmd, _ := server["command"].(string); cmd == "" {
-				t.Fatalf("opencode mcp.%s missing command: %v", name, server)
+		case server["type"] == "local" || isStdioServer(server):
+			if server["type"] != "local" {
+				t.Fatalf("opencode mcp.%s expected type=local, got %v: %v", name, server["type"], server)
 			}
-			if _, ok := server["args"].([]any); !ok {
-				t.Fatalf("opencode mcp.%s missing args: %v", name, server)
+			cmd, ok := server["command"].([]any)
+			if !ok || len(cmd) == 0 {
+				t.Fatalf("opencode mcp.%s expected command argv array, got %v: %v", name, server["command"], server)
+			}
+			if _, ok := server["args"]; ok {
+				t.Fatalf("opencode mcp.%s must not keep separate args field after transform: %v", name, server)
 			}
 		default:
-			t.Fatalf("opencode mcp.%s has unrecognized shape (no url/url+type for HTTP, no command for stdio): %v", name, server)
+			t.Fatalf("opencode mcp.%s has unrecognized shape: %v", name, server)
 		}
 	}
 }
@@ -1131,10 +1227,27 @@ func TestTransformMCPServersForAdapter(t *testing.T) {
 			if _, ok := http[tc.urlKey].(string); !ok {
 				t.Fatalf("%s http server missing %s: %v", tc.adapter, tc.urlKey, http)
 			}
-			// Stdio entry should always keep command+args untouched.
-			local, _ := out["local"].(map[string]any)
-			if local == nil || local["command"] != "npx" {
-				t.Fatalf("%s lost stdio command: %v", tc.adapter, local)
+			if tc.adapter == "opencode" {
+				if http["enabled"] != true {
+					t.Fatalf("opencode remote missing enabled=true: %v", http)
+				}
+				local, _ := out["local"].(map[string]any)
+				if local == nil || local["type"] != "local" || local["enabled"] != true {
+					t.Fatalf("opencode local shape wrong: %v", local)
+				}
+				cmd, ok := local["command"].([]any)
+				if !ok || len(cmd) < 2 || cmd[0] != "npx" || cmd[1] != "-y" {
+					t.Fatalf("opencode local command argv wrong: %v", local["command"])
+				}
+				if _, ok := local["args"]; ok {
+					t.Fatalf("opencode local must not keep args: %v", local)
+				}
+			} else {
+				// Stdio entry should keep command+args for non-OpenCode adapters.
+				local, _ := out["local"].(map[string]any)
+				if local == nil || local["command"] != "npx" {
+					t.Fatalf("%s lost stdio command: %v", tc.adapter, local)
+				}
 			}
 		})
 	}
@@ -1197,12 +1310,9 @@ func TestPresetSkillsOverrideProviderTargetSkills(t *testing.T) {
 }
 
 // TestZCodeAdapterMaterializesNativeLayout verifies that selecting
-// the zcode adapter materializes the shared AGENTS.md into
-// ~/.zcode/AGENTS.md and mirrors shared skills into
-// ~/.zcode/skills/<name>/SKILL.md. There is no first-party
-// user-level MCP config in this ZCode release, so no mcp.json
-// assertion is made; the test confirms sibling providers are
-// untouched to keep filter scoping honest.
+// the zcode adapter links shared AGENTS.md into ~/.zcode/AGENTS.md
+// and relies on ~/.agents/skills for skill discovery (no native
+// skills mirror). Sibling providers stay untouched.
 func TestZCodeAdapterMaterializesNativeLayout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1222,11 +1332,8 @@ func TestZCodeAdapterMaterializesNativeLayout(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".zcode", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".zcode", "skills", "cleanup", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".zcode", "skills", "commit", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".zcode", "skills", "init", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".zcode", "skills", "_shared", "CONVENTIONS.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
 	// Selecting only zcode must not touch sibling providers.
 	mustNotExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustNotExist(t, filepath.Join(home, ".kiro", "AGENTS.md"))
@@ -1252,5 +1359,68 @@ func TestZCodeAliasResolvesAdapter(t *testing.T) {
 		t.Fatalf("init via zcode-cli alias failed: %v", err)
 	}
 	mustExist(t, filepath.Join(home, ".zcode", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
+}
+
+func TestCleanupManagedLinksRemovesSharedSymlinksOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	agents := filepath.Join(home, ".agents")
+	sharedSkill := filepath.Join(agents, "skills", "execution")
+	if err := os.MkdirAll(sharedSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sharedSkill, "SKILL.md"), []byte("# shared\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stale managed mirrors that should be removed.
+	legacyGrok := filepath.Join(home, ".grok", "skills")
+	legacyOC := filepath.Join(home, ".config", "opencode", "skill")
+	legacyZ := filepath.Join(home, ".zcode", "skills")
+	legacyClineData := filepath.Join(home, ".cline", "data", "skills")
+	for _, dir := range []string{legacyGrok, legacyOC, legacyZ, legacyClineData} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(sharedSkill, filepath.Join(dir, "execution")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// User-owned real dir must survive cleanup.
+	userOwned := filepath.Join(legacyGrok, "my-local-skill")
+	if err := os.MkdirAll(userOwned, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userOwned, "SKILL.md"), []byte("# mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "update",
+		AgentsDir:  agents,
+		NoRegistry: true,
+		ToolFilter: ParseTools("grok,opencode,zcode,cline"),
+	}
+	if err := manager.Apply(opt, true); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	mustNotExist(t, filepath.Join(legacyGrok, "execution"))
+	mustNotExist(t, filepath.Join(legacyOC, "execution"))
+	mustNotExist(t, filepath.Join(legacyZ, "execution"))
+	mustNotExist(t, filepath.Join(legacyClineData, "execution"))
+	mustExist(t, filepath.Join(userOwned, "SKILL.md"))
+	// Cline now mirrors to ~/.cline/skills
+	mustExist(t, filepath.Join(home, ".cline", "skills", "execution", "SKILL.md"))
+	// OpenCode/Grok/ZCode must not re-create native skill mirrors.
+	mustNotExist(t, filepath.Join(home, ".config", "opencode", "skill", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
 }

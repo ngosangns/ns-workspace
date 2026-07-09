@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { api, type SyncJob } from "../api";
+import { ref, onMounted, computed } from "vue";
+import { api, type Adapter, type SyncJob } from "../api";
 
 const emit = defineEmits<{ (e: "done"): void }>();
 
@@ -9,7 +9,34 @@ const running = ref(false);
 const error = ref("");
 const currentJob = ref<SyncJob | null>(null);
 
-async function run(command: string, dryRun = false) {
+const adapters = ref<Adapter[]>([]);
+const adaptersLoading = ref(false);
+const selectedProvider = ref<string>("");
+
+const providerOptions = computed(() => [
+  { label: "All providers", value: "" },
+  ...adapters.value.map((a) => ({ label: a.name, value: a.id })),
+]);
+
+const selectedProviderLabel = computed(() => {
+  if (!selectedProvider.value) return "all providers";
+  const found = adapters.value.find((a) => a.id === selectedProvider.value);
+  return found ? found.name : selectedProvider.value;
+});
+
+async function loadAdapters() {
+  adaptersLoading.value = true;
+  try {
+    adapters.value = await api.getAdapters();
+  } catch {
+    // Non-fatal: adapter list is only used for the provider selector.
+    adapters.value = [];
+  } finally {
+    adaptersLoading.value = false;
+  }
+}
+
+async function run(command: string) {
   if (running.value) return;
   running.value = true;
   error.value = "";
@@ -17,7 +44,8 @@ async function run(command: string, dryRun = false) {
   currentJob.value = null;
 
   try {
-    const job = await api.startSync(command, dryRun);
+    const tools = selectedProvider.value || undefined;
+    const job = await api.startSync(command, tools);
     currentJob.value = job;
     stream(job.id);
   } catch (e: any) {
@@ -26,11 +54,23 @@ async function run(command: string, dryRun = false) {
   }
 }
 
+function parseLogLine(raw: string): string {
+  // Backend SSE sends JSON-encoded strings so multiline/special chars stay
+  // intact; fall back to the raw payload if it is not JSON.
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "string") return parsed;
+  } catch {
+    // keep raw
+  }
+  return raw;
+}
+
 function stream(jobId: string) {
   const es = api.streamSync(jobId);
   es.onmessage = (event) => {
     if (event.data) {
-      logs.value.push(event.data);
+      logs.value.push(parseLogLine(event.data));
     }
   };
   es.addEventListener("end", () => {
@@ -39,10 +79,17 @@ function stream(jobId: string) {
     emit("done");
   });
   es.onerror = () => {
+    // EventSource fires error for 404 and network drops. Surface it when
+    // we never received any lines (typical race before job retention fix).
+    if (logs.value.length === 0 && running.value) {
+      error.value = "Sync stream failed before any output arrived.";
+    }
     es.close();
     running.value = false;
   };
 }
+
+onMounted(loadAdapters);
 </script>
 
 <template>
@@ -50,6 +97,24 @@ function stream(jobId: string) {
     <h2 class="sync-title">Sync</h2>
 
     <div class="sync-toolbar">
+      <div class="sync-group sync-group--provider">
+        <span class="sync-group-label">Provider</span>
+        <q-select
+          v-model="selectedProvider"
+          :options="providerOptions"
+          option-value="value"
+          option-label="label"
+          emit-value
+          map-options
+          dense
+          outlined
+          :disable="running || adaptersLoading"
+          :loading="adaptersLoading"
+          class="sync-provider-select"
+          dropdown-icon="sym_o_expand_more"
+        />
+      </div>
+      <div class="sync-divider" />
       <div class="sync-group">
         <span class="sync-group-label">Inspect</span>
         <q-btn :disable="running" flat class="sync-btn" label="Status" @click="run('status')" />
@@ -60,7 +125,6 @@ function stream(jobId: string) {
         <span class="sync-group-label">Modify</span>
         <q-btn :disable="running" flat class="sync-btn" label="Init" @click="run('init')" />
         <q-btn :disable="running" color="primary" class="sync-btn sync-btn--primary" label="Update" @click="run('update')" />
-        <q-btn :disable="running" flat class="sync-btn" label="Dry Run" @click="run('update', true)" />
       </div>
       <div class="sync-divider" />
       <div class="sync-group">
@@ -80,7 +144,7 @@ function stream(jobId: string) {
         </div>
         <span class="sync-terminal-title">
           <q-spinner v-if="running" color="primary" size="14px" class="q-mr-sm" />
-          {{ currentJob?.command || "sync" }} — {{ running ? "running" : "done" }}
+          {{ currentJob?.command || "sync" }} — {{ selectedProviderLabel }} — {{ running ? "running" : "done" }}
         </span>
       </div>
       <q-scroll-area class="sync-scroll">
@@ -123,6 +187,10 @@ function stream(jobId: string) {
   gap: 8px;
 }
 
+.sync-group--provider {
+  min-width: 180px;
+}
+
 .sync-group-label {
   font-size: 10px;
   font-weight: 700;
@@ -130,6 +198,11 @@ function stream(jobId: string) {
   letter-spacing: 0.1em;
   color: var(--color-text-muted);
   margin-right: 4px;
+}
+
+.sync-provider-select {
+  flex: 1;
+  min-width: 160px;
 }
 
 .sync-divider {

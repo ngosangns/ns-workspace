@@ -179,14 +179,14 @@ func TestUserConfigOverlayOverridesOpenCodeManifest(t *testing.T) {
 		t.Fatalf("opencode config missing user MCP: %+v", nativeOC["mcp"])
 	}
 
-	// The custom skill should be installed in the shared home AND in the
-	// opencode native skill dir (since opencode was selected).
+	// The custom skill is installed in the shared home. OpenCode discovers
+	// ~/.agents/skills natively, so there is no native skill mirror.
 	sharedSkill := filepath.Join(home, ".agents", "skills", "custom-skill", "SKILL.md")
 	content := readFile(t, sharedSkill)
 	if !strings.Contains(content, "user skill override") {
 		t.Fatalf("shared skill did not pick up user content: %q", content)
 	}
-	mustExist(t, filepath.Join(home, ".config", "opencode", "skill", "custom-skill", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".config", "opencode", "skill", "custom-skill", "SKILL.md"))
 }
 
 func TestUserConfigOverlayIsAbsentByDefault(t *testing.T) {

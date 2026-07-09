@@ -1,12 +1,20 @@
 package agentsync
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// registrySkillInstallTimeout bounds each `npx skills add` invocation so a
+// bad or unreachable registry entry (e.g. a placeholder source) cannot hang
+// a sync job forever; the underlying npx process has no built-in timeout.
+const registrySkillInstallTimeout = 2 * time.Minute
 
 // writeRegistryHelpers writes the registry skills manifest, the install
 // script, and the README into <AgentsDir>/registry/. Used by the core
@@ -82,15 +90,23 @@ func installRegistrySkills(ctx Context) error {
 			ctx.Report.Line("run: %s", registryCommand(skill, true, ctx.CopyMode, ctx.Options.AgentsDir))
 			continue
 		}
-		c := exec.Command("npx", args...)
+		cmdCtx, cancel := context.WithTimeout(context.Background(), registrySkillInstallTimeout)
+		c := exec.CommandContext(cmdCtx, "npx", args...)
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
-		c.Stdin = os.Stdin
+		// No stdin: this can run headless (e.g. from the portal server),
+		// where os.Stdin isn't an interactive terminal. --yes flags above
+		// are relied on to avoid any interactive prompts.
 		c.Env = baseEnv
-		if err := c.Run(); err != nil {
+		err := c.Run()
+		cancel()
+		if err != nil {
 			msg := fmt.Sprintf("%v", err)
 			if ghToken != "" {
 				msg = strings.ReplaceAll(msg, ghToken, "***")
+			}
+			if errors.Is(cmdCtx.Err(), context.DeadlineExceeded) {
+				msg = fmt.Sprintf("timed out after %s (source %q may be unreachable)", registrySkillInstallTimeout, skill.Source)
 			}
 			ctx.Report.Line("warning: registry skill %s failed: %s", skill.Name, msg)
 			continue

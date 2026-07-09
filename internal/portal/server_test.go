@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 func newTestServer(t *testing.T) *portalServer {
@@ -236,6 +237,113 @@ func TestSyncReporter(t *testing.T) {
 	rep.Line("hello %s", "world")
 	if len(job.Lines) != 1 || job.Lines[0] != "hello world" {
 		t.Fatalf("unexpected lines: %v", job.Lines)
+	}
+}
+
+// TestSyncStatusJobRetainedForLateStream reproduces the portal bug where
+// status/doctor finished (and deleted the job) before the SSE client
+// connected, so Status/Doctor produced no terminal output.
+func TestSyncStatusJobRetainedForLateStream(t *testing.T) {
+	fsys := fstest.MapFS{
+		"presets/mcp/servers.json":     &fstest.MapFile{Data: []byte(`{"mcpServers":{}}`)},
+		"presets/settings/claude.json": &fstest.MapFile{Data: []byte(`{}`)},
+		"presets/agents/AGENTS.md":     &fstest.MapFile{Data: []byte("# agents\n")},
+	}
+	runner := NewSyncRunner(fsys)
+	agentsDir := t.TempDir()
+
+	id, err := runner.Start("status", agentsDir, "all")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Wait until the fast command finishes (job.Done), simulating a slow
+	// browser connecting after the work is complete.
+	deadline := time.Now().Add(3 * time.Second)
+	var job *syncJob
+	for time.Now().Before(deadline) {
+		job = runner.Job(id)
+		if job == nil {
+			t.Fatal("job was deleted before the SSE client could attach")
+		}
+		job.mu.Lock()
+		done := job.Done
+		job.mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if job == nil {
+		t.Fatal("job missing after wait")
+	}
+	job.mu.Lock()
+	if !job.Done {
+		job.mu.Unlock()
+		t.Fatal("status job did not finish in time")
+	}
+	if len(job.Lines) == 0 {
+		job.mu.Unlock()
+		t.Fatal("status job produced no report lines")
+	}
+	job.mu.Unlock()
+
+	var got []string
+	job.Subscribe(func(line string) { got = append(got, line) })
+	if len(got) == 0 {
+		t.Fatal("Subscribe after Done returned no lines")
+	}
+}
+
+func TestHandleSyncStatusStreamReplaysLines(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Start status via HTTP so the real stream path is exercised after the
+	// job is already complete.
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/status", strings.NewReader(`{"command":"status","tools":"all"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("start status: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var started SyncJob
+	if err := json.Unmarshal(rr.Body.Bytes(), &started); err != nil {
+		t.Fatalf("unmarshal job: %v", err)
+	}
+	if started.ID == "" {
+		t.Fatal("missing job id")
+	}
+
+	// Poll until the job is done so we connect "late" like a slow EventSource.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		job := srv.runner.Job(started.ID)
+		if job == nil {
+			t.Fatal("job deleted before stream attach")
+		}
+		job.mu.Lock()
+		done := job.Done
+		n := len(job.Lines)
+		job.mu.Unlock()
+		if done && n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	streamReq := httptest.NewRequest(http.MethodGet, "/api/sync/stream?jobId="+started.ID, nil)
+	streamRR := httptest.NewRecorder()
+	srv.router().ServeHTTP(streamRR, streamReq)
+	if streamRR.Code != http.StatusOK {
+		t.Fatalf("stream: expected 200, got %d: %s", streamRR.Code, streamRR.Body.String())
+	}
+	body := streamRR.Body.String()
+	if !strings.Contains(body, "event: start") || !strings.Contains(body, "event: end") {
+		t.Fatalf("stream missing start/end events: %s", body)
+	}
+	if !strings.Contains(body, "data:") {
+		t.Fatalf("stream missing data lines: %s", body)
 	}
 }
 

@@ -68,7 +68,6 @@ export interface StatusSummary {
 export interface SyncJob {
   id: string;
   command: string;
-  dryRun: boolean;
   running: boolean;
   error?: string;
 }
@@ -142,10 +141,10 @@ export const api = {
   getStatus: () => fetchJSON<StatusSummary>("/status"),
   getConfig: () => fetchJSON<UserOverlay>("/config"),
 
-  startSync: (command: string, dryRun = false) =>
+  startSync: (command: string, tools?: string) =>
     fetchJSON<SyncJob>(`/sync/${command}`, {
       method: "POST",
-      body: JSON.stringify({ command, dryRun }),
+      body: JSON.stringify({ command, tools }),
     }),
   streamSync: (jobId: string) => new EventSource(`${API_BASE}/sync/stream?jobId=${encodeURIComponent(jobId)}`),
 };

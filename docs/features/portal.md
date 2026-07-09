@@ -59,7 +59,7 @@ Flags:
 - **Registry**: editor JSON dựa trên CodeMirror 6 cho `presets/registry/skills.json`, có lint JSON inline.
 - **Claude**: editor JSON dựa trên CodeMirror 6 chỉ đọc cho preset Claude Code settings.
 - **Adapters**: danh sách adapter với tier và artifacts.
-- **Sync Panel**: nút chạy `status`, `doctor`, `init`, dry-run `update`, `update`, `registry` với log stream.
+- **Sync Panel**: nút chạy `status`, `doctor`, `init`, `update`, `registry` với log stream (job giữ lại sau khi xong để SSE bắt kịp lệnh nhanh như status/doctor).
 
 Docs preview đã được tách sang lệnh `preview` và không còn trong portal.
 
