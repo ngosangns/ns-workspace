@@ -95,9 +95,19 @@ Phase order của `SyncPlan`:
 
 Khi build `update`, MCP/settings manifests được đọc từ embedded presets để stale shared output không đi tiếp sang native configs. Khi build `init`, existing shared manifest được dùng nếu file đã tồn tại; nếu chưa có, embedded preset là fallback.
 
-Registry skills trong `presets/registry/skills.json` được ghi thành `~/.agents/registry/skills.json` và `install.sh`. Khi không dùng `--no-registry`, manager chạy `npx --yes skills add ... --global --agent universal --yes` cho từng skill để cài vào shared skills home trước; adapter fan-out vẫn do `ns-workspace update` link/copy từ `~/.agents/skills`. Lỗi từng registry skill được report thành warning để các bước khác vẫn có thể hoàn tất.
+Registry skills trong `presets/registry/skills.json` được ghi thành `~/.agents/registry/skills.json` và `install.sh`. Khi không dùng `--no-registry`, manager cài từng entry vào shared skills home theo `installer`:
 
-Registry hiện ship 4 skill: `find-skills`, `dispatching-parallel-agents`, `gitbutler` và `taste-skill`.
+- mặc định / `npx-skills`: `npx --yes skills add <source> --skill <skill> --global --agent universal --yes`
+- `but-skill` (GitButler): `but skill install --path <agents-home>/skills/<skill> --format none` theo [but skill docs](https://docs.gitbutler.com/commands/but-skill) (non-interactive cần `--path` hoặc `--detect`)
+
+Adapter fan-out skills (khi còn mirror) lấy từ `~/.agents/skills`. Lỗi từng registry skill là warning để các bước khác vẫn chạy. `but` CLI không có trên PATH → skip entry `but-skill` kèm warning.
+
+Skill GitButler (`but`) có hai lớp:
+
+1. **Preset** `presets/skills/but/` — `SKILL.md` + `references/{concepts,examples,reference}.md` (snapshot từ `but skill install`, Agent Skills layout). Core phase materialize vào `~/.agents/skills/but` trên mọi `init`/`update`.
+2. **Registry** entry `gitbutler` với `installer: "but-skill"` — khi có CLI `but` trên PATH, update chạy `but skill install --path <agents-home>/skills/but --format none` để refresh cho khớp version CLI (theo [but skill docs](https://docs.gitbutler.com/commands/but-skill)). Không dùng `npx skills add`.
+
+`but skill install` chỉ ship **một** skill package (name `but`); interactive mode chọn *format path* (`.agents`, `.claude`, OpenCode, …), không phải nhiều skill khác nhau.
 
 `--no-mcp` bỏ qua MCP materialization cho adapter và shared MCP preset. `--no-registry` vẫn ghi registry helper files nhưng không chạy cài skills.
 

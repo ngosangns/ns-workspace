@@ -16,9 +16,8 @@ func newTestServer(t *testing.T) *portalServer {
 	tmp := t.TempDir()
 	fsys := fstest.MapFS{
 		"presets/skills/commit/SKILL.md": &fstest.MapFile{Data: []byte("# commit\n")},
-		"presets/mcp/servers.json": &fstest.MapFile{Data: []byte(`{"mcpServers":{}}`)},
-		"presets/registry/skills.json": &fstest.MapFile{Data: []byte(`{"skills":[]}`)},
-		"presets/settings/claude.json":   &fstest.MapFile{Data: []byte(`{"permissions":{"defaultMode":"bypassPermissions"},"env":{}}`)},
+		"presets/mcp/servers.json":       &fstest.MapFile{Data: []byte(`{"mcpServers":{}}`)},
+		"presets/registry/skills.json":   &fstest.MapFile{Data: []byte(`{"skills":[]}`)},
 	}
 	srv, err := newPortalServer(fsys, tmp)
 	if err != nil {
@@ -146,60 +145,6 @@ func TestHandleMCPs(t *testing.T) {
 	}
 	if manifest.Servers()["ctx"] != nil {
 		t.Fatal("reset should remove override server")
-	}
-}
-
-func TestHandleClaudeSettings(t *testing.T) {
-	srv := newTestServer(t)
-	body := `{"permissions":{"defaultMode":"bypassPermissions"},"env":{"ANTHROPIC_BASE_URL":"https://router.example.com/anthropic","ANTHROPIC_MODEL":"anthropic/claude-opus-4"}}`
-	req := httptest.NewRequest(http.MethodPut, "/api/settings/claude", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	srv.router().ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("put claude settings: expected 200, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	var settings ClaudeSettings
-	if err := json.Unmarshal(rr.Body.Bytes(), &settings); err != nil {
-		t.Fatalf("unmarshal claude settings: %v", err)
-	}
-	if settings.Env.AnthropicBaseURL != "https://router.example.com/anthropic" {
-		t.Fatalf("unexpected base url: %q", settings.Env.AnthropicBaseURL)
-	}
-	if !settings.Overridden {
-		t.Fatal("expected claude settings overridden after put")
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/api/settings/claude/preset", nil)
-	rr = httptest.NewRecorder()
-	srv.router().ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("get claude preset: expected 200, got %d: %s", rr.Code, rr.Body.String())
-	}
-	var preset ClaudeSettings
-	if err := json.Unmarshal(rr.Body.Bytes(), &preset); err != nil {
-		t.Fatalf("unmarshal claude preset: %v", err)
-	}
-	if preset.Env.AnthropicBaseURL != "" {
-		t.Fatal("preset should not contain overlay env values")
-	}
-
-	req = httptest.NewRequest(http.MethodDelete, "/api/settings/claude", nil)
-	rr = httptest.NewRecorder()
-	srv.router().ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("delete claude settings: expected 200, got %d: %s", rr.Code, rr.Body.String())
-	}
-	settings = ClaudeSettings{}
-	if err := json.Unmarshal(rr.Body.Bytes(), &settings); err != nil {
-		t.Fatalf("unmarshal claude settings after reset: %v", err)
-	}
-	if settings.Overridden {
-		t.Fatal("expected claude settings not overridden after reset")
-	}
-	if settings.Env.AnthropicBaseURL != "" {
-		t.Fatal("reset should remove overlay env values")
 	}
 }
 

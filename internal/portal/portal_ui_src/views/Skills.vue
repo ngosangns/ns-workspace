@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { PhArrowCounterClockwise } from "@phosphor-icons/vue";
 import { api, type Skill } from "../api";
+import AppAlert from "../components/AppAlert.vue";
 import CodeEditor from "../components/CodeEditor.vue";
+import UiButton from "../components/UiButton.vue";
+import UiDialog from "../components/UiDialog.vue";
 
 const skills = ref<Skill[]>([]);
 const loading = ref(true);
@@ -66,168 +70,61 @@ onMounted(load);
 
 <template>
   <div>
-    <header class="skills-header fade-in-up">
-      <div>
-        <h1 class="skills-title">Skills</h1>
-        <p class="skills-subtitle">{{ skills.length }} skills available across providers.</p>
-      </div>
+    <header class="page-header fade-in-up">
+      <h1 class="page-title">Skills</h1>
+      <p class="page-subtitle">{{ loading ? "Loading skills..." : `${skills.length} skills available across providers.` }}</p>
     </header>
 
-    <q-banner v-if="error" class="bg-negative text-white q-mb-lg rounded-borders" rounded>{{ error }}</q-banner>
-    <div v-else-if="loading" class="flex flex-center q-pa-xl">
-      <q-spinner color="primary" size="3em" />
-    </div>
-    <div v-else class="row q-col-gutter-md">
-      <div v-for="skill in skills" :key="skill.id" class="col-12 col-sm-6 col-md-4 fade-in-up">
-        <div class="skill-card" @click="open(skill)">
-          <div class="skill-card-header">
-            <div class="skill-card-name">{{ skill.name }}</div>
-            <q-badge :color="skill.overridden ? 'primary' : 'grey-7'" text-color="dark" class="skill-card-badge" rounded>
-              {{ skill.overridden ? "Overridden" : "Embedded" }}
-            </q-badge>
-          </div>
-          <div class="skill-card-preview">{{ preview(skill) }}</div>
-          <div class="skill-card-footer">
-            <span class="skill-card-source">{{ skill.source }}</span>
-            <q-btn
-              v-if="skill.overridden"
-              flat
-              dense
-              color="negative"
-              icon="sym_o_restore"
-              label="Reset"
-              class="skill-card-reset"
-              @click.stop="reset(skill.id)"
-            />
-          </div>
-        </div>
+    <AppAlert v-if="error" kind="error">{{ error }}</AppAlert>
+
+    <div v-else-if="loading" class="fade-in-up is-visible" aria-busy="true" aria-label="Loading skills">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-for="n in 6" :key="n" class="skeleton h-[168px]" />
       </div>
     </div>
 
-    <q-dialog v-model="dialog" maximized @hide="closeDialog">
-      <q-card class="skill-dialog">
-        <q-card-section class="row items-center q-pb-none">
-          <div>
-            <div class="text-h6">{{ selected?.name || "Skill" }}</div>
-            <div class="text-caption text-secondary">{{ selected?.source }}</div>
-          </div>
-          <q-space />
-          <q-btn icon="sym_o_close" flat round dense @click="closeDialog" />
-        </q-card-section>
+    <div
+      v-else-if="skills.length === 0"
+      class="fade-in-up is-visible rounded-lg border border-dashed border-border-strong bg-surface px-5 py-12 text-center"
+    >
+      <p class="m-0 mb-1.5 text-[15px] font-semibold text-fg">No skills found</p>
+      <p class="m-0 text-[13px] text-fg-muted">Sync or install skills to see them listed here.</p>
+    </div>
 
-        <q-card-section>
-          <q-banner v-if="dialogError" class="bg-negative text-white q-mb-md rounded-borders" rounded>{{ dialogError }}</q-banner>
-          <div v-else-if="dialogLoading" class="flex flex-center q-pa-xl">
-            <q-spinner color="primary" size="3em" />
-          </div>
-          <CodeEditor v-else v-model="content" lang="markdown" readonly />
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+    <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <button
+        v-for="(skill, index) in skills"
+        :key="skill.id"
+        type="button"
+        class="surface flex min-h-[168px] w-full flex-col p-4 text-left transition duration-160 ease-[var(--ease-out-soft)] hover:-translate-y-px hover:border-border-strong hover:bg-elevated hover:shadow-[var(--shadow-soft)] active:scale-[0.995] fade-in-up"
+        :style="{ transitionDelay: `${Math.min(index, 8) * 30}ms` }"
+        @click="open(skill)"
+      >
+        <div class="mb-2.5 flex items-start justify-between gap-3">
+          <div class="text-[15px] font-semibold leading-snug tracking-tight text-fg">{{ skill.name }}</div>
+          <span :class="['status-pill shrink-0', skill.overridden ? 'status-pill--accent' : 'status-pill--muted']">
+            {{ skill.overridden ? "Overridden" : "Embedded" }}
+          </span>
+        </div>
+        <div class="line-clamp-3 flex-1 text-[13px] leading-normal text-fg-secondary">{{ preview(skill) }}</div>
+        <div class="mt-3.5 flex items-center justify-between gap-2 border-t border-border pt-3">
+          <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11.5px] text-fg-muted">
+            {{ skill.source }}
+          </span>
+          <UiButton v-if="skill.overridden" size="sm" variant="danger" class="shrink-0" @click.stop="reset(skill.id)">
+            <PhArrowCounterClockwise :size="14" weight="bold" />
+            Reset
+          </UiButton>
+        </div>
+      </button>
+    </div>
+
+    <UiDialog :open="dialog" :title="selected?.name || 'Skill'" :subtitle="selected?.source" @close="closeDialog">
+      <AppAlert v-if="dialogError" kind="error">{{ dialogError }}</AppAlert>
+      <div v-else-if="dialogLoading" aria-busy="true">
+        <div class="skeleton h-[420px]" />
+      </div>
+      <CodeEditor v-else v-model="content" lang="markdown" readonly />
+    </UiDialog>
   </div>
 </template>
-
-<style scoped>
-.skills-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 24px;
-}
-
-.skills-title {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 6px;
-  color: var(--color-text);
-}
-
-.skills-subtitle {
-  font-size: 15px;
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.skill-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  cursor: pointer;
-  transition:
-    border-color var(--transition-fast),
-    transform var(--transition-fast),
-    box-shadow var(--transition-fast);
-}
-
-.skill-card:hover {
-  border-color: var(--color-border-strong);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-}
-
-.skill-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.skill-card-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.3;
-}
-
-.skill-card-badge {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 3px 8px;
-  flex-shrink: 0;
-}
-
-.skill-card-preview {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-  flex: 1 1 auto;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.skill-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
-}
-
-.skill-card-source {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-}
-
-.skill-card-reset {
-  font-size: 12px;
-}
-
-.skill-dialog {
-  background: var(--color-surface);
-  color: var(--color-text);
-  width: 100%;
-  max-width: 900px;
-}
-</style>

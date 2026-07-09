@@ -12,8 +12,8 @@
     },
     {
       "name": "gitbutler",
-      "source": "gitbutlerapp/gitbutler",
-      "skill": "but"
+      "skill": "but",
+      "installer": "but-skill"
     },
     {
       "name": "taste-skill",

@@ -21,7 +21,6 @@ func newTestStore(t *testing.T) (*Store, fs.FS, string) {
 		"presets/skills/cleanup/SKILL.md": &fstest.MapFile{Data: []byte("# cleanup\n")},
 		"presets/mcp/servers.json": &fstest.MapFile{Data: []byte(`{"mcpServers":{"context7":{"type":"http","url":"https://example.com/mcp"}}}`)},
 		"presets/registry/skills.json": &fstest.MapFile{Data: []byte(`{"skills":[{"name":"find-skills","source":"vercel-labs/skills","skill":"find-skills"}]}`)},
-		"presets/settings/claude.json": &fstest.MapFile{Data: []byte(`{"permissions":{"defaultMode":"bypassPermissions"},"env":{}}`)},
 	}
 
 	store := &Store{
@@ -147,60 +146,6 @@ func TestReadWriteMCPs(t *testing.T) {
 	}
 	if manifest.Overridden {
 		t.Fatal("expected MCP manifest not overridden after reset")
-	}
-}
-
-func TestReadWriteClaudeSettings(t *testing.T) {
-	store, _, _ := newTestStore(t)
-
-	settings, err := store.ReadClaudeSettings()
-	if err != nil {
-		t.Fatalf("ReadClaudeSettings error: %v", err)
-	}
-	if settings.Overridden {
-		t.Fatal("expected Claude settings not overridden initially")
-	}
-	if settings.Permissions["defaultMode"] != "bypassPermissions" {
-		t.Fatalf("unexpected permissions: %+v", settings.Permissions)
-	}
-
-	settings.Env.AnthropicBaseURL = "https://router.example.com/anthropic"
-	settings.Env.AnthropicModel = "anthropic/claude-opus-4"
-	if err := store.WriteClaudeSettings(settings); err != nil {
-		t.Fatalf("WriteClaudeSettings error: %v", err)
-	}
-
-	settings, err = store.ReadClaudeSettings()
-	if err != nil {
-		t.Fatalf("ReadClaudeSettings after write error: %v", err)
-	}
-	if !settings.Overridden {
-		t.Fatal("expected Claude settings overridden after write")
-	}
-	if settings.Env.AnthropicBaseURL != "https://router.example.com/anthropic" {
-		t.Fatalf("unexpected base url: %q", settings.Env.AnthropicBaseURL)
-	}
-
-	preset, err := store.ReadClaudeSettingsPreset()
-	if err != nil {
-		t.Fatalf("ReadClaudeSettingsPreset error: %v", err)
-	}
-	if preset.Env.AnthropicBaseURL != "" {
-		t.Fatal("preset should not contain overlay env values")
-	}
-
-	if err := store.ResetClaudeSettings(); err != nil {
-		t.Fatalf("ResetClaudeSettings error: %v", err)
-	}
-	settings, err = store.ReadClaudeSettings()
-	if err != nil {
-		t.Fatalf("ReadClaudeSettings after reset error: %v", err)
-	}
-	if settings.Overridden {
-		t.Fatal("expected Claude settings not overridden after reset")
-	}
-	if settings.Env.AnthropicBaseURL != "" {
-		t.Fatal("reset should remove overlay env values")
 	}
 }
 

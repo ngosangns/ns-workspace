@@ -174,6 +174,7 @@ const wrapperClass = computed(() => ({
 
 .code-editor :deep(.cm-editor) {
   min-height: 500px;
+  background: var(--color-app);
 }
 
 .code-editor :deep(.cm-editor.cm-focused) {
@@ -182,6 +183,11 @@ const wrapperClass = computed(() => ({
 
 .code-editor :deep(.cm-scroller) {
   font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.code-editor :deep(.cm-gutters) {
+  border-right: 1px solid var(--color-border);
 }
 
 .code-editor--readonly :deep(.cm-cursor) {

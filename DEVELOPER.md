@@ -19,7 +19,7 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 | `internal/preview/`                | Backend scan docs, search/graph API, static export (`export.go` + `export_ui/`), knowledge façade (`knowledge.go`), lệnh `kb` validate/index OKF (`kb.go`), và lệnh `preview` dùng Quartz. |
 | `internal/kbmcp/`                  | Command-line truy cập `docs/`: dispatcher (`server.go`) và tool handlers list/lookup/search/modify (`tools.go`).                                       |
 | `internal/graphquery/`             | Registry/setup/cache LSP cho Search/LSP Code Graph, CLI `lsp`, installer npm/go/archive và warning dùng chung.                                         |
-| `internal/portal/portal_ui_src/`   | Source Vue 3/TypeScript của portal UI.                                                                                                                 |
+| `internal/portal/portal_ui_src/`   | Source Vue 3/TypeScript/Tailwind của portal UI.                                                                                                        |
 | `internal/portal/portal_ui/`       | Static build output được Go embed cho portal.                                                                                                          |
 | `presets/`                         | Preset embedded cho agents, skills, settings, subagents, registry, OpenCode và MCP servers.                                                            |
 | `docs/`                            | Knowledge base hiện trạng của repo, gồm index, sync snapshot, architecture, modules, features, specs.                                                  |

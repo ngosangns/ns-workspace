@@ -3,6 +3,7 @@ package agentsync
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -600,6 +601,85 @@ func TestRegistryCommandArgsStayAlignedWithScriptCommand(t *testing.T) {
 		if !strings.Contains(line, part) {
 			t.Fatalf("registry command %q missing %q", line, part)
 		}
+	}
+}
+
+func TestButSkillRegistryCommandUsesButCLI(t *testing.T) {
+	skill := RegistrySkill{Name: "gitbutler", Skill: "but", Installer: installerButSkill}
+	if skill.installerKind() != installerButSkill {
+		t.Fatalf("installerKind = %q", skill.installerKind())
+	}
+	path := butSkillInstallPath("/tmp/ns-agents", skill)
+	if path != "/tmp/ns-agents/skills/but" {
+		t.Fatalf("butSkillInstallPath = %q", path)
+	}
+	line := registryCommand(skill, true, false, "/tmp/ns-agents")
+	for _, part := range []string{"but skill install", "--path", "/tmp/ns-agents/skills/but", "--format none"} {
+		if !strings.Contains(line, part) {
+			t.Fatalf("but skill command %q missing %q", line, part)
+		}
+	}
+	if strings.Contains(line, "npx") {
+		t.Fatalf("but-skill entry must not use npx: %q", line)
+	}
+}
+
+func TestInstallRegistrySkillsButSkillDryRun(t *testing.T) {
+	home := t.TempDir()
+	agents := filepath.Join(home, ".agents")
+	if err := os.MkdirAll(filepath.Join(agents, "registry"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Write a minimal registry with only but-skill so npx is not required.
+	manifest := `{"skills":[{"name":"gitbutler","skill":"but","installer":"but-skill"}]}`
+	if err := os.WriteFile(filepath.Join(agents, "registry", "skills.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep := &bufferReporter{}
+	ctx := Context{
+		Options: Options{
+			AgentsDir: agents,
+			DryRun:    true,
+		},
+		Report:        rep,
+		manifestCache: map[string]any{},
+	}
+	if err := installRegistrySkills(ctx); err != nil {
+		t.Fatalf("installRegistrySkills dry-run: %v", err)
+	}
+	joined := rep.joined()
+	if !strings.Contains(joined, "but skill install") || !strings.Contains(joined, filepath.Join(agents, "skills", "but")) {
+		t.Fatalf("dry-run should print but skill install path: %s", joined)
+	}
+}
+
+func TestInstallOneRegistrySkillButSkill(t *testing.T) {
+	if _, err := exec.LookPath("but"); err != nil {
+		t.Skip("but CLI not installed")
+	}
+	home := t.TempDir()
+	agents := filepath.Join(home, ".agents")
+	if err := os.MkdirAll(filepath.Join(agents, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rep := &bufferReporter{}
+	ctx := Context{
+		Options:       Options{AgentsDir: agents},
+		Report:        rep,
+		manifestCache: map[string]any{},
+	}
+	skill := RegistrySkill{Name: "gitbutler", Skill: "but", Installer: installerButSkill}
+	if err := installOneRegistrySkill(ctx, skill, os.Environ(), ""); err != nil {
+		t.Fatalf("installOneRegistrySkill but-skill: %v", err)
+	}
+	mustExist(t, filepath.Join(agents, "skills", "but", "SKILL.md"))
+	body := readFile(t, filepath.Join(agents, "skills", "but", "SKILL.md"))
+	if !strings.Contains(body, "name: but") && !strings.Contains(body, "GitButler") {
+		snippet := body
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		t.Fatalf("installed but skill looks wrong: %s", snippet)
 	}
 }
 

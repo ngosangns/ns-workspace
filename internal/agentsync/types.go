@@ -3,6 +3,7 @@ package agentsync
 import (
 	"fmt"
 	"io/fs"
+	"strings"
 )
 
 // Options carries CLI flags and runtime paths for an agentsync run.
@@ -46,20 +47,50 @@ type SettingsManifest struct {
 	Hooks map[string]any `json:"hooks"`
 }
 
-// RegistryManifest models `presets/registry/skills.json` — the list of
-// third-party skills installed via `npx --yes skills add ... --agent universal`.
+// RegistryManifest models `presets/registry/skills.json` — third-party
+// skills installed during update/registry. Default installer is
+// `npx --yes skills add ... --agent universal`; entries may opt into
+// other installers (e.g. GitButler `but skill install`).
 type RegistryManifest struct {
 	Skills []RegistrySkill `json:"skills"`
 }
 
 // RegistrySkill is one entry inside RegistryManifest.
+//
+// Installer selects how the skill is materialised:
+//
+//   - "" / "npx-skills": `npx --yes skills add <source> --skill <skill>`
+//   - "but-skill": `but skill install --path <agents>/skills/<skill>`
+//     (official GitButler CLI skill; see https://docs.gitbutler.com/commands/but-skill)
+//
+// Source is required for npx-skills and ignored for but-skill.
 type RegistrySkill struct {
-	Name   string `json:"name"`
-	Source string `json:"source"`
-	Skill  string `json:"skill"`
+	Name      string `json:"name"`
+	Source    string `json:"source,omitempty"`
+	Skill     string `json:"skill"`
+	Installer string `json:"installer,omitempty"`
 }
 
-const registryAgentTarget = "universal"
+const (
+	registryAgentTarget = "universal"
+
+	// installerNpxSkills is the default registry installer (skills.sh / npx).
+	installerNpxSkills = "npx-skills"
+	// installerButSkill installs via GitButler CLI (`but skill install`).
+	installerButSkill = "but-skill"
+)
+
+// installerKind returns the effective installer for this entry.
+func (s RegistrySkill) installerKind() string {
+	switch strings.TrimSpace(s.Installer) {
+	case installerButSkill:
+		return installerButSkill
+	case "", installerNpxSkills:
+		return installerNpxSkills
+	default:
+		return strings.TrimSpace(s.Installer)
+	}
+}
 
 // ArtifactKind enumerates the kinds of materializable artifacts the
 // agentsync pipeline can produce. Tests and status output use it to

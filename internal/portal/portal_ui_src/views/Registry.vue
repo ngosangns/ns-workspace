@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { PhFloppyDisk } from "@phosphor-icons/vue";
 import { api, type RegistrySkills } from "../api";
+import AppAlert from "../components/AppAlert.vue";
 import CodeEditor from "../components/CodeEditor.vue";
+import UiButton from "../components/UiButton.vue";
+import { useFlashMessage } from "../composables/useFlashMessage";
 
 const registry = ref<RegistrySkills | null>(null);
 const raw = ref("");
 const loading = ref(true);
 const saving = ref(false);
 const error = ref("");
-const success = ref("");
+const { message: success, flash, clear: clearSuccess } = useFlashMessage();
 
 const isValid = computed(() => {
   try {
@@ -22,7 +26,7 @@ const isValid = computed(() => {
 async function load() {
   loading.value = true;
   error.value = "";
-  success.value = "";
+  clearSuccess();
   try {
     registry.value = await api.getRegistry();
     raw.value = JSON.stringify(registry.value, null, 2);
@@ -40,12 +44,12 @@ async function save() {
   }
   saving.value = true;
   error.value = "";
-  success.value = "";
+  clearSuccess();
   try {
     const parsed = JSON.parse(raw.value);
     registry.value = await api.updateRegistry(parsed);
     raw.value = JSON.stringify(registry.value, null, 2);
-    success.value = "Saved successfully";
+    flash("Saved");
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
@@ -58,83 +62,37 @@ onMounted(load);
 
 <template>
   <div>
-    <header class="editor-header fade-in-up">
-      <div>
-        <h1 class="editor-title">Registry Skills</h1>
-        <p class="editor-subtitle">Skills installed via <code>npx skills add</code> during sync.</p>
-      </div>
+    <header class="page-header fade-in-up">
+      <h1 class="page-title">Registry Skills</h1>
+      <p class="page-subtitle">
+        Skills installed via
+        <code class="rounded border border-border bg-app-muted px-1.5 py-px font-mono text-xs text-fg-secondary">npx skills add</code>
+        during sync.
+      </p>
     </header>
 
-    <div class="editor-surface fade-in-up">
-      <div class="editor-toolbar">
-        <q-btn color="primary" icon="sym_o_save" :disable="!isValid" :loading="saving" label="Save" @click="save" />
-        <q-chip v-if="isValid" icon="sym_o_check" color="positive" text-color="white" class="editor-chip">Valid JSON</q-chip>
-        <q-chip v-else icon="sym_o_error" color="negative" text-color="white" class="editor-chip">Invalid JSON</q-chip>
-        <q-space />
-        <span class="editor-hint">Registry entries are merged on the next sync.</span>
+    <div class="surface overflow-hidden fade-in-up">
+      <div class="flex flex-wrap items-center gap-3 border-b border-border bg-elevated px-4 py-3">
+        <UiButton variant="primary" :disabled="!isValid" :loading="saving" @click="save">
+          <PhFloppyDisk :size="16" weight="bold" />
+          Save
+        </UiButton>
+        <span :class="['status-pill', isValid ? 'status-pill--ok' : 'status-pill--err']">
+          {{ isValid ? "Valid JSON" : "Invalid JSON" }}
+        </span>
+        <div class="flex-1" />
+        <span class="text-[12.5px] text-fg-muted">Registry entries are merged on the next sync.</span>
       </div>
 
-      <q-banner v-if="error" class="bg-negative text-white q-mx-md q-mt-md rounded-borders" rounded>{{ error }}</q-banner>
-      <q-banner v-if="success" class="bg-positive text-white q-mx-md q-mt-md rounded-borders" rounded>{{ success }}</q-banner>
+      <div v-if="error || success" class="space-y-2 px-4 pt-3">
+        <AppAlert v-if="error" kind="error" class="!mb-0">{{ error }}</AppAlert>
+        <AppAlert v-if="success" kind="success" class="!mb-0">{{ success }}</AppAlert>
+      </div>
 
-      <div v-if="loading" class="flex flex-center q-pa-xl">
-        <q-spinner color="primary" size="3em" />
+      <div v-if="loading" class="min-h-[200px]" aria-busy="true">
+        <div class="skeleton m-4 h-[480px] rounded-[10px]" />
       </div>
       <CodeEditor v-else v-model="raw" lang="json" />
     </div>
   </div>
 </template>
-
-<style scoped>
-.editor-header {
-  margin-bottom: 24px;
-}
-
-.editor-title {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 6px;
-  color: var(--color-text);
-}
-
-.editor-subtitle {
-  font-size: 15px;
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.editor-subtitle code {
-  background: rgba(255, 255, 255, 0.08);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-.editor-surface {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.editor-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.editor-chip {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.editor-hint {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-</style>

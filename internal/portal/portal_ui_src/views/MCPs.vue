@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { PhFloppyDisk, PhArrowCounterClockwise } from "@phosphor-icons/vue";
 import { api, type MCPManifest, type MCPServers } from "../api";
+import AppAlert from "../components/AppAlert.vue";
 import CodeEditor from "../components/CodeEditor.vue";
+import UiButton from "../components/UiButton.vue";
+import { useFlashMessage } from "../composables/useFlashMessage";
 
 const manifest = ref<MCPManifest | null>(null);
 const preset = ref<MCPServers | null>(null);
@@ -11,7 +15,7 @@ const loading = ref(true);
 const saving = ref(false);
 const resetting = ref(false);
 const error = ref("");
-const success = ref("");
+const { message: success, flash, clear: clearSuccess } = useFlashMessage();
 
 const isValid = computed(() => {
   try {
@@ -29,7 +33,7 @@ const presetRaw = computed(() => JSON.stringify(preset.value?.mcpServers ?? {}, 
 async function load() {
   loading.value = true;
   error.value = "";
-  success.value = "";
+  clearSuccess();
   try {
     const [m, p] = await Promise.all([api.getMCPs(), api.getMCPPreset()]);
     manifest.value = m;
@@ -49,12 +53,12 @@ async function save() {
   }
   saving.value = true;
   error.value = "";
-  success.value = "";
+  clearSuccess();
   try {
     const parsed = JSON.parse(effectiveRaw.value);
     manifest.value = await api.updateMCPs({ mcpServers: parsed });
     effectiveRaw.value = JSON.stringify(manifest.value?.mcpServers ?? {}, null, 2);
-    success.value = "Saved successfully";
+    flash("Saved");
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
@@ -65,11 +69,11 @@ async function save() {
 async function reset() {
   resetting.value = true;
   error.value = "";
-  success.value = "";
+  clearSuccess();
   try {
     manifest.value = await api.resetMCPs();
     effectiveRaw.value = JSON.stringify(manifest.value?.mcpServers ?? {}, null, 2);
-    success.value = "Reset to preset successfully";
+    flash("Reset to preset");
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
@@ -82,105 +86,73 @@ onMounted(load);
 
 <template>
   <div>
-    <header class="editor-header fade-in-up">
-      <div>
-        <h1 class="editor-title">MCP Servers</h1>
-        <p class="editor-subtitle">Configure MCP server definitions used during sync.</p>
-      </div>
+    <header class="page-header fade-in-up">
+      <h1 class="page-title">MCP Servers</h1>
+      <p class="page-subtitle">Configure MCP server definitions used during sync.</p>
     </header>
 
-    <div class="editor-surface fade-in-up">
-      <div class="editor-toolbar">
-        <q-tabs v-model="tab" dense class="text-grey-5" active-color="primary" indicator-color="primary" align="left" narrow-indicator>
-          <q-tab name="effective" label="Effective" />
-          <q-tab name="preset" label="Preset" />
-        </q-tabs>
-        <q-space />
-        <q-chip v-if="isOverridden" icon="sym_o_edit" color="warning" text-color="dark" class="editor-chip">Overridden</q-chip>
-        <q-chip v-else icon="sym_o_database" color="positive" text-color="white" class="editor-chip">Embedded preset</q-chip>
+    <div class="surface overflow-hidden fade-in-up">
+      <div class="flex flex-wrap items-center gap-3 border-b border-border bg-elevated px-4 py-3">
+        <div class="flex gap-0.5 rounded-md border border-border bg-app-muted p-0.5">
+          <button
+            type="button"
+            class="rounded-[5px] px-3 py-1.5 text-[13px] font-semibold transition duration-160 ease-[var(--ease-out-soft)]"
+            :class="tab === 'effective' ? 'bg-surface text-fg shadow-sm' : 'text-fg-secondary hover:text-fg'"
+            @click="tab = 'effective'"
+          >
+            Effective
+          </button>
+          <button
+            type="button"
+            class="rounded-[5px] px-3 py-1.5 text-[13px] font-semibold transition duration-160 ease-[var(--ease-out-soft)]"
+            :class="tab === 'preset' ? 'bg-surface text-fg shadow-sm' : 'text-fg-secondary hover:text-fg'"
+            @click="tab = 'preset'"
+          >
+            Preset
+          </button>
+        </div>
+        <div class="flex-1" />
+        <span v-if="isOverridden" class="status-pill status-pill--warn">Overridden</span>
+        <span v-else class="status-pill status-pill--ok">Embedded preset</span>
       </div>
 
-      <q-banner v-if="error" class="bg-negative text-white q-mx-md q-mt-md rounded-borders" rounded>{{ error }}</q-banner>
-      <q-banner v-if="success" class="bg-positive text-white q-mx-md q-mt-md rounded-borders" rounded>{{ success }}</q-banner>
-
-      <div v-if="loading" class="flex flex-center q-pa-xl">
-        <q-spinner color="primary" size="3em" />
+      <div v-if="error || success" class="space-y-2 px-4 pt-3">
+        <AppAlert v-if="error" kind="error" class="!mb-0">{{ error }}</AppAlert>
+        <AppAlert v-if="success" kind="success" class="!mb-0">{{ success }}</AppAlert>
       </div>
-      <q-tab-panels v-else v-model="tab" animated class="bg-transparent">
-        <q-tab-panel name="effective" class="q-pa-none">
-          <div class="editor-toolbar">
-            <q-btn color="primary" icon="sym_o_save" :disable="!isValid" :loading="saving" label="Save" @click="save" />
-            <q-btn
-              color="warning"
-              icon="sym_o_restart_alt"
-              :disable="!isOverridden"
-              :loading="resetting"
-              label="Reset to preset"
-              outline
-              @click="reset"
-            />
-            <q-chip v-if="isValid" icon="sym_o_check" color="positive" text-color="white" class="editor-chip">Valid JSON</q-chip>
-            <q-chip v-else icon="sym_o_error" color="negative" text-color="white" class="editor-chip">Invalid JSON</q-chip>
-            <q-space />
-            <span class="editor-hint">Edits are written to the MCP overlay config.</span>
+
+      <div v-if="loading" class="min-h-[200px]" aria-busy="true">
+        <div class="skeleton m-4 h-[480px] rounded-[10px]" />
+      </div>
+
+      <template v-else>
+        <div v-if="tab === 'effective'">
+          <div class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+            <UiButton variant="primary" :disabled="!isValid" :loading="saving" @click="save">
+              <PhFloppyDisk :size="16" weight="bold" />
+              Save
+            </UiButton>
+            <UiButton variant="warning" :disabled="!isOverridden" :loading="resetting" @click="reset">
+              <PhArrowCounterClockwise :size="16" weight="bold" />
+              Reset to preset
+            </UiButton>
+            <span :class="['status-pill', isValid ? 'status-pill--ok' : 'status-pill--err']">
+              {{ isValid ? "Valid JSON" : "Invalid JSON" }}
+            </span>
+            <div class="flex-1" />
+            <span class="text-[12.5px] text-fg-muted">Edits are written to the MCP overlay config.</span>
           </div>
           <CodeEditor v-model="effectiveRaw" lang="json" />
-        </q-tab-panel>
-        <q-tab-panel name="preset" class="q-pa-none">
-          <div class="editor-toolbar">
-            <q-chip icon="sym_o_lock" color="info" text-color="dark" class="editor-chip">Read-only preset</q-chip>
-            <q-space />
-            <span class="editor-hint">This is the embedded preset. Override it from the Effective tab.</span>
+        </div>
+        <div v-else>
+          <div class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+            <span class="status-pill status-pill--muted">Read-only preset</span>
+            <div class="flex-1" />
+            <span class="text-[12.5px] text-fg-muted">Override from the Effective tab.</span>
           </div>
           <CodeEditor :model-value="presetRaw" lang="json" readonly />
-        </q-tab-panel>
-      </q-tab-panels>
+        </div>
+      </template>
     </div>
   </div>
 </template>
-
-<style scoped>
-.editor-header {
-  margin-bottom: 24px;
-}
-
-.editor-title {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 6px;
-  color: var(--color-text);
-}
-
-.editor-subtitle {
-  font-size: 15px;
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.editor-surface {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.editor-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.editor-chip {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.editor-hint {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-</style>

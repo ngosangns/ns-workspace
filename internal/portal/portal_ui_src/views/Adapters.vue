@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { PhArrowSquareOut } from "@phosphor-icons/vue";
 import { api, type Adapter } from "../api";
+import AppAlert from "../components/AppAlert.vue";
 
 const adapters = ref<Adapter[]>([]);
 const loading = ref(true);
@@ -9,13 +11,13 @@ const error = ref("");
 function tierClass(tier: string): string {
   switch (tier) {
     case "stable":
-      return "adapter-tier--stable";
+      return "status-pill--ok";
     case "manual":
-      return "adapter-tier--manual";
+      return "status-pill--warn";
     case "experimental":
-      return "adapter-tier--experimental";
+      return "status-pill--muted";
     default:
-      return "adapter-tier--experimental";
+      return "status-pill--muted";
   }
 }
 
@@ -36,165 +38,64 @@ onMounted(load);
 
 <template>
   <div>
-    <header class="adapters-header fade-in-up">
-      <div>
-        <h1 class="adapters-title">Adapters</h1>
-        <p class="adapters-subtitle">{{ adapters.length }} providers configured for sync.</p>
-      </div>
+    <header class="page-header fade-in-up">
+      <h1 class="page-title">Adapters</h1>
+      <p class="page-subtitle">
+        {{ loading ? "Loading adapters..." : `${adapters.length} providers configured for sync.` }}
+      </p>
     </header>
 
-    <q-banner v-if="error" class="bg-negative text-white q-mb-lg rounded-borders" rounded>{{ error }}</q-banner>
-    <div v-else-if="loading" class="flex flex-center q-pa-xl">
-      <q-spinner color="primary" size="3em" />
-    </div>
-    <div v-else class="row q-col-gutter-md">
-      <div v-for="adapter in adapters" :key="adapter.id" class="col-12 col-sm-6 col-md-4 fade-in-up">
-        <div class="adapter-card">
-          <div class="adapter-card-header">
-            <div class="adapter-card-name">{{ adapter.name }}</div>
-            <q-badge :class="['adapter-tier', tierClass(adapter.tier)]" rounded>
-              {{ adapter.tier }}
-            </q-badge>
-          </div>
-          <div v-if="adapter.artifacts && adapter.artifacts.length" class="adapter-card-artifacts">
-            <span v-for="artifact in adapter.artifacts" :key="artifact" class="adapter-artifact">{{ artifact }}</span>
-          </div>
-          <div v-if="adapter.notes" class="adapter-card-notes">{{ adapter.notes }}</div>
-          <div v-if="adapter.docs && adapter.docs.length" class="adapter-card-docs">
-            <a
-              v-for="doc in adapter.docs"
-              :key="doc"
-              :href="doc"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="adapter-doc-link"
-              @click.stop
-            >
-              <q-icon name="sym_o_open_in_new" size="14px" />
-              Docs
-            </a>
-          </div>
-        </div>
+    <AppAlert v-if="error" kind="error">{{ error }}</AppAlert>
+
+    <div v-else-if="loading" class="fade-in-up is-visible" aria-busy="true" aria-label="Loading adapters">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-for="n in 6" :key="n" class="skeleton h-[148px]" />
       </div>
+    </div>
+
+    <div
+      v-else-if="adapters.length === 0"
+      class="fade-in-up is-visible rounded-lg border border-dashed border-border-strong bg-surface px-5 py-12 text-center"
+    >
+      <p class="m-0 mb-1.5 text-[15px] font-semibold text-fg">No adapters configured</p>
+      <p class="m-0 text-[13px] text-fg-muted">Provider adapters appear here once presets are available.</p>
+    </div>
+
+    <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <article
+        v-for="(adapter, index) in adapters"
+        :key="adapter.id"
+        class="surface flex h-full flex-col p-4 transition duration-160 ease-[var(--ease-out-soft)] hover:border-border-strong hover:bg-elevated fade-in-up"
+        :style="{ transitionDelay: `${Math.min(index, 8) * 30}ms` }"
+      >
+        <div class="mb-3 flex items-start justify-between gap-3">
+          <div class="text-[15px] font-semibold leading-snug tracking-tight text-fg">{{ adapter.name }}</div>
+          <span :class="['status-pill shrink-0', tierClass(adapter.tier)]">{{ adapter.tier }}</span>
+        </div>
+        <div v-if="adapter.artifacts && adapter.artifacts.length" class="mb-3 flex flex-wrap gap-1.5">
+          <span
+            v-for="artifact in adapter.artifacts"
+            :key="artifact"
+            class="rounded-sm border border-border bg-app-muted px-2 py-[3px] font-mono text-[11px] text-fg-secondary"
+          >
+            {{ artifact }}
+          </span>
+        </div>
+        <div v-if="adapter.notes" class="mb-3 flex-1 text-[13px] leading-normal text-fg-secondary">{{ adapter.notes }}</div>
+        <div v-if="adapter.docs && adapter.docs.length" class="mt-auto flex flex-wrap gap-2.5">
+          <a
+            v-for="doc in adapter.docs"
+            :key="doc"
+            :href="doc"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 text-xs font-medium text-accent transition duration-160 ease-[var(--ease-out-soft)] hover:text-accent-hover hover:underline hover:underline-offset-2"
+          >
+            <PhArrowSquareOut :size="14" weight="bold" />
+            Docs
+          </a>
+        </div>
+      </article>
     </div>
   </div>
 </template>
-
-<style scoped>
-.adapters-header {
-  margin-bottom: 24px;
-}
-
-.adapters-title {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 6px;
-  color: var(--color-text);
-}
-
-.adapters-subtitle {
-  font-size: 15px;
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.adapter-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  height: 100%;
-  transition:
-    border-color var(--transition-fast),
-    transform var(--transition-fast);
-}
-
-.adapter-card:hover {
-  border-color: var(--color-border-strong);
-  transform: translateY(-1px);
-}
-
-.adapter-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.adapter-card-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.3;
-}
-
-.adapter-tier {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 3px 8px;
-  flex-shrink: 0;
-}
-
-.adapter-tier--stable {
-  background: rgba(52, 211, 153, 0.15);
-  color: var(--color-positive);
-}
-
-.adapter-tier--manual {
-  background: rgba(251, 191, 36, 0.15);
-  color: var(--color-warning);
-}
-
-.adapter-tier--experimental {
-  background: rgba(156, 163, 175, 0.15);
-  color: var(--color-text-secondary);
-}
-
-.adapter-card-artifacts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.adapter-artifact {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--color-text-secondary);
-  background: rgba(255, 255, 255, 0.05);
-  padding: 3px 8px;
-  border-radius: 999px;
-}
-
-.adapter-card-notes {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-  margin-bottom: 12px;
-}
-
-.adapter-card-docs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.adapter-doc-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--color-accent);
-  text-decoration: none;
-  transition: color var(--transition-fast);
-}
-
-.adapter-doc-link:hover {
-  color: var(--color-accent-hover);
-  text-decoration: underline;
-}
-</style>

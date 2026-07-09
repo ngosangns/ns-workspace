@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, nextTick, watch } from "vue";
+import { PhCircleNotch } from "@phosphor-icons/vue";
 import { api, type Adapter, type SyncJob } from "../api";
+import AppAlert from "./AppAlert.vue";
+import UiButton from "./UiButton.vue";
+import UiSelect from "./UiSelect.vue";
 
 const emit = defineEmits<{ (e: "done"): void }>();
 
@@ -8,6 +12,7 @@ const logs = ref<string[]>([]);
 const running = ref(false);
 const error = ref("");
 const currentJob = ref<SyncJob | null>(null);
+const logEnd = ref<HTMLElement | null>(null);
 
 const adapters = ref<Adapter[]>([]);
 const adaptersLoading = ref(false);
@@ -29,11 +34,15 @@ async function loadAdapters() {
   try {
     adapters.value = await api.getAdapters();
   } catch {
-    // Non-fatal: adapter list is only used for the provider selector.
     adapters.value = [];
   } finally {
     adaptersLoading.value = false;
   }
+}
+
+async function scrollLogsToEnd() {
+  await nextTick();
+  logEnd.value?.scrollIntoView({ block: "end", behavior: "smooth" });
 }
 
 async function run(command: string) {
@@ -55,8 +64,6 @@ async function run(command: string) {
 }
 
 function parseLogLine(raw: string): string {
-  // Backend SSE sends JSON-encoded strings so multiline/special chars stay
-  // intact; fall back to the raw payload if it is not JSON.
   try {
     const parsed = JSON.parse(raw);
     if (typeof parsed === "string") return parsed;
@@ -79,8 +86,6 @@ function stream(jobId: string) {
     emit("done");
   });
   es.onerror = () => {
-    // EventSource fires error for 404 and network drops. Surface it when
-    // we never received any lines (typical race before job retention fix).
     if (logs.value.length === 0 && running.value) {
       error.value = "Sync stream failed before any output arrived.";
     }
@@ -89,212 +94,83 @@ function stream(jobId: string) {
   };
 }
 
+watch(
+  () => logs.value.length,
+  () => {
+    void scrollLogsToEnd();
+  },
+);
+
 onMounted(loadAdapters);
 </script>
 
 <template>
-  <div class="sync-panel">
-    <h2 class="sync-title">Sync</h2>
+  <div class="surface p-[18px]">
+    <div class="mb-3.5">
+      <h2 class="m-0 mb-1 text-[0.9375rem] font-semibold tracking-tight text-fg">Sync</h2>
+      <p class="m-0 text-[13px] text-fg-muted">Run agentsync commands against local providers.</p>
+    </div>
 
-    <div class="sync-toolbar">
-      <div class="sync-group sync-group--provider">
-        <span class="sync-group-label">Provider</span>
-        <q-select
-          v-model="selectedProvider"
-          :options="providerOptions"
-          option-value="value"
-          option-label="label"
-          emit-value
-          map-options
-          dense
-          outlined
-          :disable="running || adaptersLoading"
-          :loading="adaptersLoading"
-          class="sync-provider-select"
-          dropdown-icon="sym_o_expand_more"
-        />
+    <div class="mb-3.5 flex flex-wrap items-center gap-x-3.5 gap-y-2.5">
+      <div class="flex min-w-[180px] flex-wrap items-center gap-1.5">
+        <label class="mr-0.5 text-[11px] font-semibold tracking-wide text-fg-muted" for="sync-provider">Provider</label>
+        <UiSelect id="sync-provider" v-model="selectedProvider" :options="providerOptions" :disabled="running || adaptersLoading" />
       </div>
-      <div class="sync-divider" />
-      <div class="sync-group">
-        <span class="sync-group-label">Inspect</span>
-        <q-btn :disable="running" flat class="sync-btn" label="Status" @click="run('status')" />
-        <q-btn :disable="running" flat class="sync-btn" label="Doctor" @click="run('doctor')" />
+
+      <div class="hidden h-[22px] w-px shrink-0 bg-border sm:block" aria-hidden="true" />
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="mr-0.5 text-[11px] font-semibold tracking-wide text-fg-muted">Inspect</span>
+        <UiButton :disabled="running" @click="run('status')">Status</UiButton>
+        <UiButton :disabled="running" @click="run('doctor')">Doctor</UiButton>
       </div>
-      <div class="sync-divider" />
-      <div class="sync-group">
-        <span class="sync-group-label">Modify</span>
-        <q-btn :disable="running" flat class="sync-btn" label="Init" @click="run('init')" />
-        <q-btn :disable="running" color="primary" class="sync-btn sync-btn--primary" label="Update" @click="run('update')" />
+
+      <div class="hidden h-[22px] w-px shrink-0 bg-border sm:block" aria-hidden="true" />
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="mr-0.5 text-[11px] font-semibold tracking-wide text-fg-muted">Modify</span>
+        <UiButton :disabled="running" @click="run('init')">Init</UiButton>
+        <UiButton variant="primary" :disabled="running" @click="run('update')">Update</UiButton>
       </div>
-      <div class="sync-divider" />
-      <div class="sync-group">
-        <span class="sync-group-label">Registry</span>
-        <q-btn :disable="running" flat class="sync-btn" label="Install" @click="run('registry')" />
+
+      <div class="hidden h-[22px] w-px shrink-0 bg-border sm:block" aria-hidden="true" />
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="mr-0.5 text-[11px] font-semibold tracking-wide text-fg-muted">Registry</span>
+        <UiButton :disabled="running" @click="run('registry')">Install</UiButton>
       </div>
     </div>
 
-    <q-banner v-if="error" class="bg-negative text-white q-mb-md rounded-borders" rounded>{{ error }}</q-banner>
+    <AppAlert v-if="error" kind="error">{{ error }}</AppAlert>
 
-    <div v-if="logs.length > 0 || running" class="sync-terminal">
-      <div class="sync-terminal-header">
-        <div class="sync-terminal-dots">
-          <span class="sync-dot sync-dot--red" />
-          <span class="sync-dot sync-dot--yellow" />
-          <span class="sync-dot sync-dot--green" />
-        </div>
-        <span class="sync-terminal-title">
-          <q-spinner v-if="running" color="primary" size="14px" class="q-mr-sm" />
-          {{ currentJob?.command || "sync" }} — {{ selectedProviderLabel }} — {{ running ? "running" : "done" }}
+    <div v-if="logs.length > 0 || running" class="overflow-hidden rounded-md border border-border bg-app" role="log" aria-live="polite">
+      <div class="flex items-center gap-2.5 border-b border-border bg-elevated px-3.5 py-2.5">
+        <span
+          class="h-1.5 w-1.5 shrink-0 rounded-full"
+          :class="running ? 'bg-accent shadow-[0_0_0_3px_var(--color-accent-soft)]' : 'bg-fg-muted'"
+          aria-hidden="true"
+        />
+        <span
+          class="inline-flex min-w-0 flex-1 items-center overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-fg-secondary"
+        >
+          <PhCircleNotch v-if="running" :size="14" class="mr-2 shrink-0 animate-spin text-accent" />
+          {{ currentJob?.command || "sync" }} · {{ selectedProviderLabel }} · {{ running ? "running" : "done" }}
         </span>
+        <span class="shrink-0 font-mono text-[11px] text-fg-muted">{{ logs.length }} lines</span>
       </div>
-      <q-scroll-area class="sync-scroll">
-        <div class="sync-logs">
-          <div v-for="(line, i) in logs" :key="i" class="sync-log-line">{{ line }}</div>
-          <div v-if="running && logs.length === 0" class="sync-log-line sync-log-line--muted">Starting...</div>
+      <div class="h-[300px] overflow-auto">
+        <div class="px-3.5 py-3">
+          <div
+            v-for="(line, i) in logs"
+            :key="i"
+            class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-fg-secondary"
+          >
+            {{ line }}
+          </div>
+          <div v-if="running && logs.length === 0" class="font-mono text-xs text-fg-muted">Starting...</div>
+          <div ref="logEnd" />
         </div>
-      </q-scroll-area>
+      </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.sync-panel {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-}
-
-.sync-title {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 14px;
-  color: var(--color-text);
-}
-
-.sync-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  margin-bottom: 16px;
-}
-
-.sync-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sync-group--provider {
-  min-width: 180px;
-}
-
-.sync-group-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--color-text-muted);
-  margin-right: 4px;
-}
-
-.sync-provider-select {
-  flex: 1;
-  min-width: 160px;
-}
-
-.sync-divider {
-  width: 1px;
-  height: 24px;
-  background: var(--color-border);
-}
-
-.sync-btn {
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-md);
-  padding: 6px 14px;
-  font-weight: 600;
-}
-
-.sync-btn:hover {
-  color: var(--color-text);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.sync-btn--primary {
-  color: var(--color-bg);
-  background: var(--color-accent);
-}
-
-.sync-btn--primary:hover {
-  background: var(--color-accent-hover);
-}
-
-.sync-terminal {
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.sync-terminal-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.sync-terminal-dots {
-  display: flex;
-  gap: 6px;
-}
-
-.sync-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.sync-dot--red {
-  background: #f87171;
-}
-
-.sync-dot--yellow {
-  background: #fbbf24;
-}
-
-.sync-dot--green {
-  background: #34d399;
-}
-
-.sync-terminal-title {
-  font-size: 12px;
-  font-family: var(--font-mono);
-  color: var(--color-text-secondary);
-}
-
-.sync-scroll {
-  height: 300px;
-}
-
-.sync-logs {
-  padding: 14px;
-}
-
-.sync-log-line {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--color-text-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.sync-log-line--muted {
-  color: var(--color-text-muted);
-}
-</style>

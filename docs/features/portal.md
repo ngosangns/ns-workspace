@@ -30,7 +30,7 @@ Flags:
 ## Kiến Trúc
 
 - **Backend**: module `internal/portal` viết bằng Go, expose REST API và embed static UI.
-- **Frontend**: Vue 3 + TypeScript trong `internal/portal/portal_ui_src/`, build ra `internal/portal/portal_ui/` qua Vite.
+- **Frontend**: Vue 3 + TypeScript + Tailwind CSS v4 trong `internal/portal/portal_ui_src/`, build ra `internal/portal/portal_ui/` qua Vite.
 - **Preset editing**: vì embedded presets là read-only, mọi chỉnh sửa được lưu qua **user-config overlay** (`~/.config/ns-workspace/config.json`) vào thư mục `~/.config/ns-workspace/portal/`. `agentsync.Manager` tự động ưu tiên overlay khi chạy sync.
 
 ## API
@@ -57,7 +57,6 @@ Flags:
 - **Skills**: danh sách skill, editor Markdown dựa trên CodeMirror 6, reset về default.
 - **MCPs**: editor JSON dựa trên CodeMirror 6 cho `presets/mcp/servers.json`, có lint JSON inline.
 - **Registry**: editor JSON dựa trên CodeMirror 6 cho `presets/registry/skills.json`, có lint JSON inline.
-- **Claude**: editor JSON dựa trên CodeMirror 6 chỉ đọc cho preset Claude Code settings.
 - **Adapters**: danh sách adapter với tier và artifacts.
 - **Sync Panel**: nút chạy `status`, `doctor`, `init`, `update`, `registry` với log stream (job giữ lại sau khi xong để SSE bắt kịp lệnh nhanh như status/doctor).
 

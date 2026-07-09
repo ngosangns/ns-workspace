@@ -1,26 +1,37 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import { quasar, transformAssetUrls } from "@quasar/vite-plugin";
+import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
 
 export default defineConfig({
-  plugins: [
-    vue({
-      template: { transformAssetUrls },
-    }),
-    quasar({
-      sassVariables: resolve(__dirname, "internal/portal/portal_ui_src/quasar-variables.sass"),
-      autoImportComponentCase: "kebab",
-    }),
-  ],
+  plugins: [vue(), tailwindcss()],
   base: "/",
   root: "internal/portal/portal_ui_src",
   publicDir: "public",
   build: {
     outDir: "../portal_ui",
     emptyOutDir: true,
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       input: resolve(__dirname, "internal/portal/portal_ui_src/index.html"),
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("@codemirror") || id.includes("/codemirror/")) {
+              return "codemirror";
+            }
+            if (id.includes("vue") || id.includes("vue-router")) {
+              return "vue";
+            }
+            if (id.includes("@fontsource")) {
+              return "fonts";
+            }
+            if (id.includes("@phosphor-icons")) {
+              return "icons";
+            }
+          }
+        },
+      },
     },
   },
   resolve: {

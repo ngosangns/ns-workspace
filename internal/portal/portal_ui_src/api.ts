@@ -21,20 +21,6 @@ export interface MCPManifest extends MCPServers {
   overridden: boolean;
 }
 
-export interface ClaudeEnv {
-  ANTHROPIC_BASE_URL?: string;
-  ANTHROPIC_AUTH_TOKEN?: string;
-  ANTHROPIC_MODEL?: string;
-  ANTHROPIC_SMALL_FAST_MODEL?: string;
-}
-
-export interface ClaudeSettings {
-  permissions: Record<string, any>;
-  env: ClaudeEnv;
-  source: "embedded" | "overlay";
-  overridden: boolean;
-}
-
 export interface RegistrySkill {
   name: string;
   source: string;
@@ -119,15 +105,6 @@ export const api = {
       body: JSON.stringify(servers),
     }),
   resetMCPs: () => fetchJSON<MCPManifest>("/mcps", { method: "DELETE" }),
-
-  getClaudeSettings: () => fetchJSON<ClaudeSettings>("/settings/claude"),
-  getClaudeSettingsPreset: () => fetchJSON<ClaudeSettings>("/settings/claude/preset"),
-  updateClaudeSettings: (settings: ClaudeSettings) =>
-    fetchJSON<ClaudeSettings>("/settings/claude", {
-      method: "PUT",
-      body: JSON.stringify(settings),
-    }),
-  resetClaudeSettings: () => fetchJSON<ClaudeSettings>("/settings/claude", { method: "DELETE" }),
 
   getRegistry: () => fetchJSON<RegistrySkills>("/registry"),
   updateRegistry: (registry: RegistrySkills) =>

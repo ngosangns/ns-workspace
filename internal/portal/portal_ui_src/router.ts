@@ -1,21 +1,37 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
-import Dashboard from "./views/Dashboard.vue";
-import Skills from "./views/Skills.vue";
-import MCPs from "./views/MCPs.vue";
-import Registry from "./views/Registry.vue";
-import Adapters from "./views/Adapters.vue";
-import Claude from "./views/Claude.vue";
 
 const routes: RouteRecordRaw[] = [
-  { path: "/", component: Dashboard },
-  { path: "/skills", component: Skills },
-  { path: "/mcps", component: MCPs },
-  { path: "/registry", component: Registry },
-  { path: "/adapters", component: Adapters },
-  { path: "/claude", component: Claude },
+  {
+    path: "/",
+    name: "dashboard",
+    component: () => import("./views/Dashboard.vue"),
+  },
+  {
+    path: "/skills",
+    name: "skills",
+    component: () => import("./views/Skills.vue"),
+  },
+  {
+    path: "/mcps",
+    name: "mcps",
+    component: () => import("./views/MCPs.vue"),
+  },
+  {
+    path: "/registry",
+    name: "registry",
+    component: () => import("./views/Registry.vue"),
+  },
+  {
+    path: "/adapters",
+    name: "adapters",
+    component: () => import("./views/Adapters.vue"),
+  },
 ];
 
 export const router = createRouter({
   history: createWebHashHistory(),
   routes,
+  scrollBehavior() {
+    return { top: 0 };
+  },
 });
