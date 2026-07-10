@@ -84,10 +84,21 @@ func (s AdapterSpec) aliases() []string {
 //  4. The filter is empty (treat as "all" so callers can pass a fresh
 //     map without explicitly inserting the sentinel).
 func selected(opt Options, adapter Adapter) bool {
+	name := strings.ToLower(adapter.Name())
+	// Portal toggles can permanently disable a provider regardless of --tools.
+	if opt.DisabledProviders != nil && opt.DisabledProviders[name] {
+		return false
+	}
+	if aliased, ok := adapter.(interface{ Aliases() []string }); ok {
+		for _, alias := range aliased.Aliases() {
+			if opt.DisabledProviders != nil && opt.DisabledProviders[strings.ToLower(alias)] {
+				return false
+			}
+		}
+	}
 	if len(opt.ToolFilter) == 0 {
 		return true
 	}
-	name := strings.ToLower(adapter.Name())
 	if opt.ToolFilter["all"] || opt.ToolFilter[name] {
 		return true
 	}

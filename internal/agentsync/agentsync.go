@@ -42,6 +42,19 @@ func (op InstallPresetFile) Apply(ctx Context) error {
 	if err != nil {
 		return err
 	}
+	// Materialize MCP servers as pure JSON (enabled only). Portal overlays
+	// may store disabled servers as // comments in JSONC form.
+	if filepath.ToSlash(op.Src) == "presets/mcp/servers.json" {
+		enabled, _, _, err := ParseMCPServersJSONC(data)
+		if err != nil {
+			return err
+		}
+		data, err = json.MarshalIndent(MCPManifest{MCPServers: enabled}, "", "  ")
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+	}
 	return writeFileManaged(ctx, op.Dst, data, op.Replace)
 }
 
@@ -56,6 +69,11 @@ type InstallPresetTree struct {
 
 func (op InstallPresetTree) Apply(ctx Context) error {
 	managed := map[string]bool{}
+	// Portal-disabled skill top-level dirs are skipped (and removed on update).
+	disabledSkills := map[string]bool{}
+	if filepath.ToSlash(op.SrcRoot) == "presets/skills" {
+		disabledSkills = loadDisabledSkills(ctx)
+	}
 	walkErr := fs.WalkDir(ctx.Presets, op.SrcRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -64,8 +82,15 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		if err != nil || rel == "." {
 			return err
 		}
+		relSlash := filepath.ToSlash(rel)
+		if skillTop := skillTopLevelName(relSlash); skillTop != "" && disabledSkills[skillTop] {
+			if d.IsDir() && skillTop == relSlash {
+				return fs.SkipDir
+			}
+			return nil
+		}
 		dst := filepath.Join(op.DstRoot, rel)
-		managed[filepath.ToSlash(rel)] = true
+		managed[relSlash] = true
 		if d.IsDir() {
 			return ensureDir(ctx, dst)
 		}
@@ -80,6 +105,9 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 	}
 	for _, rel := range ctx.UserConfig.EntriesUnder(op.SrcRoot) {
 		if managed[rel] {
+			continue
+		}
+		if skillTop := skillTopLevelName(rel); skillTop != "" && disabledSkills[skillTop] {
 			continue
 		}
 		managed[rel] = true
@@ -102,6 +130,22 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		}
 	}
 	return nil
+}
+
+// skillTopLevelName returns the first path segment for skill tree entries
+// (e.g. "commit/SKILL.md" → "commit"). Empty for root-only names that are
+// not skill dirs (e.g. catalog files could be skipped by callers).
+func skillTopLevelName(rel string) string {
+	rel = strings.Trim(filepath.ToSlash(rel), "/")
+	if rel == "" || rel == "." {
+		return ""
+	}
+	parts := strings.SplitN(rel, "/", 2)
+	name := parts[0]
+	if name == "_shared" || strings.HasPrefix(name, ".") {
+		return ""
+	}
+	return name
 }
 
 func removeStaleEntries(ctx Context, dstRoot string, managed map[string]bool) error {
@@ -546,7 +590,9 @@ func (m Manager) context(opt Options) (Context, error) {
 	if err != nil {
 		return Context{}, err
 	}
-	return Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, UserConfig: userCfg, Report: stdoutReporter{}, manifestCache: map[string]any{}, seenDirs: map[string]bool{}}, nil
+	ctx := Context{Options: opt, Home: home, XDGConfigHome: xdg, Presets: m.Presets, UserConfig: userCfg, Report: stdoutReporter{}, manifestCache: map[string]any{}, seenDirs: map[string]bool{}}
+	applyPortalToggles(&ctx)
+	return ctx, nil
 }
 
 // managerAdaptersFn is a seam test: lets tests inject a custom adapter

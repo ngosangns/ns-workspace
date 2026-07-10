@@ -1,9 +1,11 @@
 # OS/editor files
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
 # Environment and local config
 .env
@@ -20,13 +22,23 @@ build/
 coverage.out
 coverage.html
 
+# Frontend tooling caches (portal Vite / TS)
+.vite/
+*.tsbuildinfo
+.eslintcache
+.cache/
+
 # Logs and temporary files
 *.log
 tmp/
 temp/
+*.tmp
 
 # Generated output
 graphify-out/
 node_modules/
+
+# Local harness runtime state (tasks stay tracked under .harness/tasks/)
+.harness/state/
 
 *.bak

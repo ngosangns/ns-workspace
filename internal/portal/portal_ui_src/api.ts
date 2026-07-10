@@ -5,6 +5,7 @@ export interface Skill {
   name: string;
   source: string;
   overridden: boolean;
+  enabled: boolean;
   content?: string;
 }
 
@@ -12,13 +13,27 @@ export interface SkillUpdate {
   content: string;
 }
 
+export interface EnableRequest {
+  enabled: boolean;
+}
+
 export interface MCPServers {
   mcpServers: Record<string, any>;
+}
+
+export interface MCPServerItem {
+  name: string;
+  enabled: boolean;
+  config: any;
 }
 
 export interface MCPManifest extends MCPServers {
   source: "embedded" | "overlay";
   overridden: boolean;
+  disabledServers?: Record<string, any>;
+  items?: MCPServerItem[];
+  /** Full JSONC file (live keys + // commented disabled servers). */
+  content?: string;
 }
 
 export interface RegistrySkill {
@@ -35,6 +50,7 @@ export interface Adapter {
   id: string;
   name: string;
   tier: string;
+  enabled: boolean;
   docs?: string[];
   artifacts?: string[];
   notes?: string;
@@ -96,6 +112,11 @@ export const api = {
       body: JSON.stringify({ content }),
     }),
   resetSkill: (id: string) => fetchJSON<void>(`/skills/${id}`, { method: "DELETE" }),
+  setSkillEnabled: (id: string, enabled: boolean) =>
+    fetchJSON<Skill>(`/skills/${id}/enabled`, {
+      method: "POST",
+      body: JSON.stringify({ enabled } satisfies EnableRequest),
+    }),
 
   getMCPs: () => fetchJSON<MCPManifest>("/mcps"),
   getMCPPreset: () => fetchJSON<MCPServers>("/mcps/preset"),
@@ -104,7 +125,17 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(servers),
     }),
+  updateMCPsContent: (content: string) =>
+    fetchJSON<MCPManifest>("/mcps", {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    }),
   resetMCPs: () => fetchJSON<MCPManifest>("/mcps", { method: "DELETE" }),
+  setMCPEnabled: (name: string, enabled: boolean) =>
+    fetchJSON<MCPManifest>(`/mcps/${encodeURIComponent(name)}/enabled`, {
+      method: "POST",
+      body: JSON.stringify({ enabled } satisfies EnableRequest),
+    }),
 
   getRegistry: () => fetchJSON<RegistrySkills>("/registry"),
   updateRegistry: (registry: RegistrySkills) =>
@@ -114,6 +145,11 @@ export const api = {
     }),
 
   getAdapters: () => fetchJSON<Adapter[]>("/adapters"),
+  setAdapterEnabled: (id: string, enabled: boolean) =>
+    fetchJSON<Adapter>(`/adapters/${encodeURIComponent(id)}/enabled`, {
+      method: "POST",
+      body: JSON.stringify({ enabled } satisfies EnableRequest),
+    }),
 
   getStatus: () => fetchJSON<StatusSummary>("/status"),
   getConfig: () => fetchJSON<UserOverlay>("/config"),

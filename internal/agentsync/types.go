@@ -21,6 +21,13 @@ type Options struct {
 	NoMCP      bool
 	NoRegistry bool
 	ToolFilter map[string]bool
+	// DisabledProviders is filled from presets/portal/toggles.jsonc during
+	// context setup. Keys are lower-case adapter ids. When set, selected()
+	// returns false even if --tools would otherwise include the adapter.
+	DisabledProviders map[string]bool
+	// DisabledSkills is filled from presets/portal/toggles.jsonc. Top-level
+	// skill directory names that should be skipped by InstallPresetTree.
+	DisabledSkills map[string]bool
 }
 
 // Manager owns the preset FS and exposes the high-level

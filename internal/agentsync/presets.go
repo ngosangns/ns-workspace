@@ -68,8 +68,11 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 	if !ctx.Update {
 		data, err := os.ReadFile(path)
 		if err == nil {
-			if err := json.Unmarshal(data, &manifest); err != nil {
+			if err := UnmarshalJSONC(data, &manifest); err != nil {
 				return manifest, err
+			}
+			if manifest.MCPServers == nil {
+				manifest.MCPServers = map[string]any{}
 			}
 			ctx.manifestCache[cacheKey] = manifest
 			return manifest, nil
@@ -82,8 +85,12 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 	if err != nil {
 		return manifest, err
 	}
-	if err := json.Unmarshal(data, &manifest); err != nil {
+	// Honor JSONC (// comments for portal-disabled servers).
+	if err := UnmarshalJSONC(data, &manifest); err != nil {
 		return manifest, err
+	}
+	if manifest.MCPServers == nil {
+		manifest.MCPServers = map[string]any{}
 	}
 	ctx.manifestCache[cacheKey] = manifest
 	return manifest, nil

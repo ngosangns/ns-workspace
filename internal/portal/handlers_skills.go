@@ -22,12 +22,49 @@ func (s *portalServer) handleSkills(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *portalServer) handleSkill(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/skills/")
-	if id == "" {
+	path := strings.TrimPrefix(r.URL.Path, "/api/skills/")
+	if path == "" {
 		writeError(w, http.StatusBadRequest, errMissingID)
 		return
 	}
 
+	// POST /api/skills/{id}/enabled
+	if strings.HasSuffix(path, "/enabled") {
+		id := strings.TrimSuffix(path, "/enabled")
+		id = strings.TrimSuffix(id, "/")
+		if id == "" {
+			writeError(w, http.StatusBadRequest, errMissingID)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, errMethodNotAllowed)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		var req EnableRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := s.store.SetSkillEnabled(id, req.Enabled); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		skill, err := s.store.ReadSkill(id)
+		if err != nil {
+			// Skill may be listed but content missing; return enable state only.
+			writeJSON(w, Skill{ID: id, Name: id, Enabled: req.Enabled})
+			return
+		}
+		writeJSON(w, skill)
+		return
+	}
+
+	id := path
 	switch r.Method {
 	case http.MethodGet:
 		skill, err := s.store.ReadSkill(id)

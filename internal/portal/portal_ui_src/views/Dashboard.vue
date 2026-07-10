@@ -73,8 +73,9 @@ onMounted(load);
               {{ skills.length }}
             </div>
             <div class="mb-2.5 text-[13px] font-medium text-fg-secondary">Installed on this host</div>
-            <div class="mt-auto">
+            <div class="mt-auto flex flex-wrap gap-1.5">
               <span class="status-pill status-pill--accent">{{ skills.filter((s) => s.overridden).length }} overridden</span>
+              <span class="status-pill status-pill--muted">{{ skills.filter((s) => !s.enabled).length }} disabled</span>
             </div>
           </div>
 

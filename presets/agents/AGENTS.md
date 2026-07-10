@@ -11,6 +11,9 @@ Agent phải nhận diện trigger skill được viết ở đầu message củ
 Riêng trigger `//s` hoặc `/s` ở đầu message là trigger tắt cho skill
 `spawn-opencode`, dùng để spawn OpenCode process như sub-agent.
 
+Trigger `//k` hoặc `/k` ở đầu message là trigger tắt cho skill `spawn-kimi`,
+dùng để spawn Kimi Code CLI process như sub-agent.
+
 Trigger có thể chứa một tag hoặc nhiều tag ghép liền nhau. Khi có nhiều tag, áp
 dụng các skill tương ứng theo đúng thứ tự chữ cái trong trigger.
 
@@ -36,10 +39,12 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | `//l`   | `loop`             | Kích hoạt looping agentic self-correct với multi-agent routing và memory persistence.                        |
 | `//r`   | `read-search-docs` | Search/đọc docs và specs, không sửa file.                                                                    |
 | `//s`   | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
+| `//k`   | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song. |
 | `//p`   | `plan`             | Tạo hoặc cập nhật file planning cho task lớn và chờ user duyệt trước khi sửa source.                         |
 | `//u`   | `update-docs`      | Cập nhật docs/specs, gồm cả `requirements.md` của feature/module folder khi user yêu cầu.                    |
 | `//v`   | `eval`             | Chạy evaluator để đánh giá task/skill/subagent theo acceptance criteria.                                     |
 | `/s`    | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
+| `/k`    | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song. |
 
 ## Trigger Ghép
 

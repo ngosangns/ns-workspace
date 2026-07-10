@@ -2,11 +2,12 @@ package portal
 
 // Skill is a preset skill exposed through the portal API.
 type Skill struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Source    string `json:"source"` // "embedded" or overlay path
-	Overridden bool  `json:"overridden"`
-	Content   string `json:"content,omitempty"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Source     string `json:"source"` // "embedded" or overlay path
+	Overridden bool   `json:"overridden"`
+	Enabled    bool   `json:"enabled"`
+	Content    string `json:"content,omitempty"`
 }
 
 // SkillUpdate is the request body for updating a skill.
@@ -14,19 +15,40 @@ type SkillUpdate struct {
 	Content string `json:"content"`
 }
 
+// EnableRequest is the body for enable/disable endpoints.
+type EnableRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 // MCPServers is the shared MCP manifest exposed through the portal API.
 type MCPServers struct {
 	MCPServers map[string]any `json:"mcpServers"`
 }
 
+// MCPServerItem is one MCP server with enable state for the portal list UI.
+type MCPServerItem struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	Config  any    `json:"config"`
+}
+
 // MCPManifest combines the effective MCP servers with provenance metadata.
 type MCPManifest struct {
 	MCPServers `json:",inline"`
+	// DisabledServers are portal-disabled entries preserved as // comments
+	// in the JSONC overlay (not deleted from the file).
+	DisabledServers map[string]any `json:"disabledServers,omitempty"`
+	// Items is the flat list used by the UI (enabled + disabled; never drops entries).
+	Items []MCPServerItem `json:"items,omitempty"`
+	// Content is the full JSONC file text (live keys + // commented disabled
+	// servers). Portal file editor should show this so disable is visible as
+	// comment-out, not as deletion.
+	Content    string `json:"content,omitempty"`
 	Overridden bool   `json:"overridden"`
 	Source     string `json:"source"`
 }
 
-// Servers returns the effective MCP server map.
+// Servers returns the effective (enabled) MCP server map.
 func (m *MCPManifest) Servers() map[string]any {
 	return m.MCPServers.MCPServers
 }
@@ -48,6 +70,7 @@ type Adapter struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
 	Tier      string   `json:"tier"`
+	Enabled   bool     `json:"enabled"`
 	Docs      []string `json:"docs,omitempty"`
 	Artifacts []string `json:"artifacts,omitempty"`
 	Notes     string   `json:"notes,omitempty"`
