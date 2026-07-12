@@ -1,11 +1,13 @@
 ---
 name: working-document
 description: >-
-  Đọc một commit hoặc toàn bộ commits của một branch và viết ra một tài liệu
+  Đọc một commit hoặc toàn bộ commits của một branch và viết ra tài liệu
   (working document) giải thích chi tiết từng bước thay đổi: nguyên nhân, lý do,
   cách thay đổi, và vị trí cụ thể của từng method/property/logic trong codebase.
-  Kèm theo diagrams/flows khi cần thiết. Dùng khi người dùng muốn tài liệu hoá,
-  review, hoặc giải thích các thay đổi từ git history một cách dễ hiểu.
+  Kèm theo diagrams/flows khi cần thiết. Tạo phiên bản chi tiết cho developer và
+  phiên bản tóm tắt cho business khi thay đổi có tác động nghiệp vụ. Dùng khi
+  ngườidùng muốn tài liệu hoá, review, hoặc giải thích các thay đổi từ git history
+  một cách dễ hiểu.
 keywords:
   - working document
   - tài liệu thay đổi
@@ -20,26 +22,33 @@ keywords:
 # Working Document Skill
 
 Skill này biến lịch sử git (một commit hoặc toàn bộ commits của một branch) thành
-một **tài liệu giải thích dễ hiểu**, đi qua từng bước thay đổi, nêu rõ nguyên nhân,
+tài liệu giải thích dễ hiểu, đi qua từng bước thay đổi, nêu rõ nguyên nhân,
 lý do, cách thực hiện, và chỉ rõ vị trí của từng method/property/logic trong code.
+
+Khi thay đổi có tác động nghiệp vụ, skill tạo **hai phiên bản**:
+
+- **Developer version** tại `docs/developer/working-documents/`: walkthrough kỹ thuật chi tiết.
+- **Business version** tại `docs/business/working-documents/`: tóm tắt tác động nghiệp vụ, user impact, acceptance criteria liên quan.
 
 ## Khi nào dùng skill này
 
-- Người dùng yêu cầu "viết tài liệu cho commit/branch này"
-- Cần giải thích cho người khác (hoặc cho chính mình sau này) một loạt thay đổi
+- Ngườidùng yêu cầu "viết tài liệu cho commit/branch này"
+- Cần giải thích cho ngườikhác (hoặc cho chính mình sau này) một loạt thay đổi
 - Onboarding, review, hoặc tổng kết một feature/bugfix vừa hoàn thành
 - Cần một bản walkthrough có diagram/flow cho thay đổi phức tạp
 
 ## Đầu vào cần làm rõ
 
-Trước khi bắt đầu, xác định (hỏi người dùng nếu chưa rõ):
+Trước khi bắt đầu, xác định (hỏi ngườidùng nếu chưa rõ):
 
 1. **Phạm vi**: một commit cụ thể (`<sha>`) hay toàn bộ commits của một branch?
 2. **Mốc so sánh** (nếu là branch): so với branch nền nào? (mặc định thử
    `main`/`master`, hoặc merge-base giữa branch hiện tại và branch nền)
-3. **Nơi lưu tài liệu**: mặc định ghi vào `docs/working-documents/<tên-mô-tả>.md`
-   trừ khi người dùng chỉ định khác.
-4. **Ngôn ngữ tài liệu**: viết theo ngôn ngữ người dùng đang dùng (mặc định tiếng Việt).
+3. **Nơi lưu tài liệu**:
+   - Developer version: mặc định `docs/developer/working-documents/<tên-mô-tả>.md`
+   - Business version (nếu có business impact): `docs/business/working-documents/<tên-mô-tả>.md`
+   - Chỉ định khác nếu user yêu cầu.
+4. **Ngôn ngữ tài liệu**: viết theo ngôn ngữ ngườidùng đang dùng (mặc định tiếng Việt).
 
 ## Quy trình thực hiện
 
@@ -86,7 +95,18 @@ Với mỗi thay đổi quan trọng, **đọc file thực tế** (không chỉ 
 Luôn ghi rõ vị trí theo định dạng: `tên thành phần` → thuộc `Class/Module` →
 trong `đường/dẫn/file.ext`.
 
-### Bước 3 — Viết tài liệu
+### Bước 3 — Xác định business impact
+
+Đánh giá xem thay đổi có ảnh hưởng nghiệp vụ không. Có business impact nếu thay đổi:
+
+- User workflow, UI/UX, public behavior
+- Business rule, validation, acceptance criteria
+- Public contract/API ảnh hưởng consumer
+- Quyền, phân quyền, compliance
+
+Nếu có → tạo thêm business version. Nếu chỉ là refactor nội bộ, công cụ, log → chỉ cần developer version.
+
+### Bước 4 — Viết tài liệu
 
 Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 
@@ -97,13 +117,24 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 - **Luôn neo vào code thật**: khi nhắc đến `methodX`, nói rõ nó thuộc `ClassY`
   trong `path/to/file`.
 - **Dùng diagram/flow khi cần**: nếu thay đổi liên quan đến luồng dữ liệu, thứ tự
-  gọi, vòng đời, hoặc kiến trúc, hãy vẽ bằng Mermaid (`flowchart`, `sequenceDiagram`,
+  gọi, vòng đờihoặc kiến trúc, hãy vẽ bằng Mermaid (`flowchart`, `sequenceDiagram`,
   `classDiagram`). Không vẽ diagram thừa cho thay đổi đơn giản.
 - Tránh dán nguyên diff dài; trích đoạn ngắn (vài dòng) kèm giải thích là đủ.
 
 ## Cấu trúc tài liệu đầu ra
 
+### Developer version (`docs/developer/working-documents/<name>.md`)
+
 ````markdown
+---
+type: working-document
+audience: developer
+title: "Working Document: <Tiêu đề / tên branch hoặc commit>"
+description: "Chi tiết kỹ thuật các thay đổi từ <commit/branch>."
+tags: [working-document]
+timestamp: <ISO 8601>
+---
+
 # Working Document: <Tiêu đề / tên branch hoặc commit>
 
 ## Tổng quan
@@ -131,7 +162,6 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
   flowchart TD
     A[...] --> B[...]
   ```
-````
 
 ### Bước 2 —
 
@@ -145,8 +175,43 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 
 - Ảnh hưởng đến phần nào của hệ thống
 - Rủi ro, breaking changes, điểm cần kiểm thử
+- Link đến business version nếu có: [Tóm tắt nghiệp vụ](../business/working-documents/<name>.md)
 - Các bước tiếp theo (nếu có)
+````
 
+### Business version (`docs/business/working-documents/<name>.md`)
+
+```markdown
+---
+type: working-document
+audience: business
+title: "Tóm tắt nghiệp vụ: <Tiêu đề / tên branch hoặc commit>"
+description: "Tác động nghiệp vụ và user impact của các thay đổi từ <commit/branch>."
+tags: [working-document]
+timestamp: <ISO 8601>
+---
+
+# Tóm tắt nghiệp vụ: <Tiêu đề / tên branch hoặc commit>
+
+## Tổng quan
+
+- **Phạm vi**: <commit sha | branch base..head>
+- **Mục tiêu nghiệp vụ**: <thay đổi giải quyết vấn đề gì cho user/business>
+- **User impact**: <thay đổi gì trong cách user tương tác hệ thống>
+
+## Thay đổi chính
+
+### Bước 1 — <Tiêu đề thay đổi>
+
+- **Vấn đề nghiệp vụ**: <tại sao cần làm>
+- **Kết quả mong đợi**: <behavior mới user sẽ thấy>
+- **Acceptance criteria liên quan**: <các AC bị ảnh hưởng/thêm mới>
+
+## Tác động & Lưu ý
+
+- Ảnh hưởng đến user/business process
+- Breaking changes về behavior nếu có
+- Link đến developer version: [Chi tiết kỹ thuật](../developer/working-documents/<name>.md)
 ```
 
 ## Quy tắc bắt buộc
@@ -155,6 +220,5 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 - LUÔN đọc code thật để xác nhận vị trí method/property/logic — không suy đoán.
 - LUÔN chỉ rõ "thành phần → thuộc gì → ở file nào" khi nhắc đến code.
 - Diagram chỉ thêm khi nó làm rõ luồng/kiến trúc; bỏ qua nếu thay đổi đơn giản.
-- Viết để người đọc không quen codebase vẫn hiểu được.
+- Viết để ngườidọc không quen codebase vẫn hiểu được.
 - KHÔNG sửa code trong skill này; chỉ đọc git + code và viết tài liệu.
-```

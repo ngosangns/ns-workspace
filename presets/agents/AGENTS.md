@@ -28,23 +28,23 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 
 ## Short Tags Cho Skill Local
 
-| Trigger | Skill              | Khi Dùng                                                                                                     |
-| ------- | ------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `//c`   | `commit`           | Chuẩn bị và tạo git commit an toàn cho thay đổi hiện tại, với phạm vi staged rõ ràng và message súc tích.    |
-| `//d`   | `cleanup`          | Quét diff/work đã triển khai/branch/commit, đọc docs và lập plan cleanup dead code, dead flows, dead docs.   |
-| `//e`   | `execution`        | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo.                      |
-| `//f`   | `fix`              | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể.                    |
-| `//h`   | `harness`          | Chạy harness để đánh giá và kiểm chứng task qua subagent.                                                    |
-| `//i`   | `init`             | Khởi tạo knowledge base: quét codebase, lập aspect inventory markdown cho ngườimới, rồi cập nhật docs.       |
-| `//l`   | `loop`             | Kích hoạt looping agentic self-correct với multi-agent routing và memory persistence.                        |
-| `//r`   | `read-search-docs` | Search/đọc docs và specs, không sửa file.                                                                    |
-| `//s`   | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
-| `//k`   | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song. |
-| `//p`   | `plan`             | Tạo hoặc cập nhật file planning cho task lớn và chờ user duyệt trước khi sửa source.                         |
-| `//u`   | `update-docs`      | Cập nhật docs/specs, gồm cả `requirements.md` của feature/module folder khi user yêu cầu.                    |
-| `//v`   | `eval`             | Chạy evaluator để đánh giá task/skill/subagent theo acceptance criteria.                                     |
-| `/s`    | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ. |
-| `/k`    | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song. |
+| Trigger | Skill              | Khi Dùng                                                                                                                                  |
+| ------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `//c`   | `commit`           | Chuẩn bị và tạo git commit an toàn cho thay đổi hiện tại, với phạm vi staged rõ ràng và message súc tích.                                 |
+| `//d`   | `cleanup`          | Quét diff/work đã triển khai/branch/commit, đọc docs và lập plan cleanup (developer/specs/planning) cho dead code, dead flows, dead docs. |
+| `//e`   | `execution`        | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo.                                                   |
+| `//f`   | `fix`              | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể.                                                 |
+| `//h`   | `harness`          | Chạy harness để đánh giá và kiểm chứng task qua subagent.                                                                                 |
+| `//i`   | `init`             | Khởi tạo knowledge base: quét codebase, lập aspect inventory markdown cho ngườimới, rồi cập nhật docs theo 2 audience business/developer. |
+| `//l`   | `loop`             | Kích hoạt looping agentic self-correct với multi-agent routing và memory persistence.                                                     |
+| `//r`   | `read-search-docs` | Search/đọc docs và specs, không sửa file.                                                                                                 |
+| `//s`   | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ.                              |
+| `//k`   | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song.                           |
+| `//p`   | `plan`             | Tạo hoặc cập nhật file planning (developer/specs/planning) và business spec nếu có impact, rồi chờ user duyệt.                            |
+| `//u`   | `update-docs`      | Cập nhật docs/specs theo 2 audience business/developer, gồm cả `requirements.md` của feature/module folder.                               |
+| `//v`   | `eval`             | Chạy evaluator để đánh giá task/skill/subagent theo acceptance criteria.                                                                  |
+| `/s`    | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ.                              |
+| `/k`    | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song.                           |
 
 ## Trigger Ghép
 

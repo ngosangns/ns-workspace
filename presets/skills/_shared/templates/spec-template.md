@@ -1,10 +1,14 @@
 # Mẫu Spec
 
-Dùng cho `docs/specs/*.md`:
+Dùng cho specs trong cả hai cây audience:
+
+- `docs/business/specs/*.md` — business specs: user stories, acceptance criteria, business rules.
+- `docs/developer/specs/*.md` — technical specs: design, API, implementation details.
 
 ```markdown
 ---
 type: spec
+audience: business | developer
 title: "[Tính năng hoặc thay đổi]"
 description: "[Mô tả ngắn]"
 tags: [spec]
