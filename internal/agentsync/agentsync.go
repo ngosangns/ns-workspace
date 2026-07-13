@@ -368,6 +368,13 @@ type AppendManagedBlock struct {
 	Label   string
 	Content string
 	Replace bool
+	// CleanupTables, when non-empty, removes any existing TOML table
+	// sections whose header matches [mcp_servers.<name>] (or
+	// [mcp_servers."<name>"]) for the listed names before the managed
+	// block is inserted. This prevents duplicate-key errors when a
+	// previous config (user-written or vendor-generated) already defines
+	// the same MCP servers outside the managed block.
+	CleanupTables []string
 }
 
 func (op AppendManagedBlock) Apply(ctx Context) error {
@@ -379,6 +386,9 @@ func (op AppendManagedBlock) Apply(ctx Context) error {
 		current = string(data)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
+	}
+	if len(op.CleanupTables) > 0 {
+		current = removeTOMLTables(current, "mcp_servers", op.CleanupTables)
 	}
 	next := replaceManagedBlock(current, begin, end, block)
 	return writeFileManaged(ctx, op.Dst, []byte(next), op.Replace)

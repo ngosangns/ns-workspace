@@ -122,6 +122,78 @@ func replaceManagedBlock(current, begin, end, block string) string {
 	return strings.TrimRight(current, "\n") + "\n\n" + block
 }
 
+// removeTOMLTables strips every [prefix.<name>] table section (and its
+// body) from a TOML document for each name in names. Names may be written
+// as bare keys or quoted strings in the original document. The function
+// stops removing lines at the next table/header line (`[`) or managed
+// block marker (`# >>>` / `# <<<`). It is intentionally conservative and
+// only removes exact table-header matches, preserving user config outside
+// those tables.
+func removeTOMLTables(content, prefix string, names []string) string {
+	if len(names) == 0 {
+		return content
+	}
+	nameSet := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		nameSet[n] = struct{}{}
+	}
+
+	// sectionHeaderLine matches lines like:
+	//   [mcp_servers.foo]
+	//   [mcp_servers."foo"]
+	//   [mcp_servers.'foo']
+	// capturing the unquoted name.
+	lines := strings.Split(content, "\n")
+	var out []string
+	skip := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if skip {
+			// End the current skipped section when we hit another table or
+			// a managed block marker.
+			if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "# >>>") || strings.HasPrefix(trimmed, "# <<<") {
+				skip = false
+			} else {
+				continue
+			}
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			name, ok := parseTOMLTableName(trimmed, prefix)
+			if ok {
+				if _, match := nameSet[name]; match {
+					skip = true
+					continue
+				}
+			}
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+// parseTOMLTableName parses a TOML table header line of the form
+// [prefix.<name>] or [prefix."<name>"] and returns the unquoted name.
+// It returns ("", false) if the line does not match the expected prefix.
+func parseTOMLTableName(line, prefix string) (string, bool) {
+	// Strip surrounding brackets.
+	if !strings.HasPrefix(line, "[") || !strings.HasSuffix(line, "]") {
+		return "", false
+	}
+	inner := strings.TrimSpace(line[1 : len(line)-1])
+	expected := prefix + "."
+	if !strings.HasPrefix(inner, expected) {
+		return "", false
+	}
+	name := strings.TrimSpace(inner[len(expected):])
+	// Unquote if necessary.
+	if len(name) >= 2 {
+		if (name[0] == '"' && name[len(name)-1] == '"') || (name[0] == '\'' && name[len(name)-1] == '\'') {
+			return name[1 : len(name)-1], true
+		}
+	}
+	return name, true
+}
+
 // encodeJSONInline renders v as compact JSON suitable for embedding in a
 // shell single-quoted argument. Returns an error if v fails to marshal.
 func encodeJSONInline(v any) (string, error) {

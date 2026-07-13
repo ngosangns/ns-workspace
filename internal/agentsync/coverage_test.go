@@ -6571,6 +6571,70 @@ func TestAppendManagedBlockReplace(t *testing.T) {
 	}
 }
 
+func TestAppendManagedBlockCleanupTOMLTables(t *testing.T) {
+	ctx, _ := newTestContext(t)
+	dst := filepath.Join(t.TempDir(), "config.toml")
+	initial := `[cli]
+auto_update = true
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["-y", "old"]
+
+[mcp_servers.kimi]
+command = "npx"
+args = ["-y", "old-kimi"]
+
+[mcp_servers.user-only]
+command = "custom"
+`
+	if err := os.WriteFile(dst, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	op := AppendManagedBlock{
+		Dst:           dst,
+		Label:         "mcp",
+		Content:       "[mcp_servers.chrome-devtools]\ncommand = \"npx\"\nargs = [\"-y\", \"new\"]\n\n[mcp_servers.kimi]\ncommand = \"npx\"\nargs = [\"-y\", \"kimi-for-claude\"]\n",
+		Replace:       true,
+		CleanupTables: []string{"chrome-devtools", "kimi"},
+	}
+	if err := op.Apply(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), `args = ["-y", "old"]`) || strings.Contains(string(got), `args = ["-y", "old-kimi"]`) {
+		t.Fatalf("cleanup did not remove duplicate mcp_servers sections: %s", got)
+	}
+	if !strings.Contains(string(got), `[mcp_servers.user-only]`) {
+		t.Fatalf("cleanup removed unmanaged user section: %s", got)
+	}
+	if !strings.Contains(string(got), `args = ["-y", "new"]`) {
+		t.Fatalf("managed block content missing: %s", got)
+	}
+}
+
+func TestRemoveTOMLTablesQuotedAndUnquoted(t *testing.T) {
+	input := `[mcp_servers.foo]
+command = "a"
+
+[mcp_servers."bar-baz"]
+command = "b"
+
+[mcp_servers.user]
+command = "keep"
+`
+	got := removeTOMLTables(input, "mcp_servers", []string{"foo", "bar-baz"})
+	if strings.Contains(got, `command = "a"`) || strings.Contains(got, `command = "b"`) {
+		t.Fatalf("expected foo and bar-baz removed: %s", got)
+	}
+	if !strings.Contains(got, `command = "keep"`) {
+		t.Fatalf("expected user section kept: %s", got)
+	}
+}
+
 func TestMergeJSONExistingEquals(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	dir := t.TempDir()

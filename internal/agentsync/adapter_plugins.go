@@ -3,6 +3,7 @@ package agentsync
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 )
 
 // ClaudePlugin powers the ClaudeAdapter's extra script generation and
@@ -222,11 +223,17 @@ func (GrokPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operati
 	if len(manifest.MCPServers) == 0 {
 		return nil, nil
 	}
+	names := make([]string, 0, len(manifest.MCPServers))
+	for name := range manifest.MCPServers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	return []Operation{AppendManagedBlock{
-		Dst:     filepath.Join(ctx.Home, ".grok", "config.toml"),
-		Label:   "mcp",
-		Content: grokMCPBlock(manifest),
-		Replace: true,
+		Dst:           filepath.Join(ctx.Home, ".grok", "config.toml"),
+		Label:         "mcp",
+		Content:       grokMCPBlock(manifest),
+		Replace:       true,
+		CleanupTables: names,
 	}}, nil
 }
 

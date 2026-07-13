@@ -76,7 +76,7 @@ Plugin adapter hiện có:
 - OpenCode merge MCP presets dưới key `mcp` (remote: `type/url/enabled`; local: `type/command[]/enabled`) và config values từ `presets/opencode/opencode.json` vào native config qua `MergeJSON` / `OpenCodeAdapter.Plan`.
 - Claude tạo script helper `~/.agents/generated/claude/mcp.commands.sh` để add MCP bằng CLI user scope.
 - Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers.
-- Grok link `~/.agents/AGENTS.md` → `~/.grok/AGENTS.md` và dùng `GrokPlugin.ExtraOperations` để append managed TOML block MCP vào `~/.grok/config.toml` (`[mcp_servers.<name>]`). Skills **không** mirror — Grok đọc `~/.agents/skills` native.
+- Grok link `~/.agents/AGENTS.md` → `~/.grok/AGENTS.md` và dùng `GrokPlugin.ExtraOperations` để append managed TOML block MCP vào `~/.grok/config.toml` (`[mcp_servers.<name>]`). Trước khi ghi block, các `[mcp_servers.<name>]` trùng tên với preset bên ngoài block được dọn để tránh lỗi TOML duplicate key. Skills **không** mirror — Grok đọc `~/.agents/skills` native.
 - OpenCode / ZCode / Codex / Gemini / Kimi: skills chỉ qua `~/.agents/skills` (không mirror native skills dir). OpenCode vẫn link AGENTS.md + subagents + merge MCP; ZCode link AGENTS.md; stale symlink cũ dưới `~/.config/opencode/skill`, `~/.grok/skills`, `~/.zcode/skills` được cleanup nếu trỏ vào shared home.
 - Cline skills/agents: `~/.cline/skills` và `~/.cline/agents` (theo docs); cleanup path cũ `~/.cline/data/skills` và `data/agents`.
 - Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`. Ghi custom agent `~/.kiro/agents/ns-full.json` với `tools: ["*"]`, `allowedTools: ["@builtin", "@*"]`, `includeMcpJson: true` và `resources` trỏ đến synced skills/steering.
