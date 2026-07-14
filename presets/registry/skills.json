@@ -84,6 +84,106 @@
       "name": "shadcn-ui",
       "source": "shadcn/ui",
       "skill": "shadcn"
+    },
+    {
+      "name": "stop-slop",
+      "source": "boraoztunc/skills",
+      "skill": "stop-slop"
+    },
+    {
+      "name": "human-copywrite",
+      "source": "forint573/human-copywrite",
+      "skill": "human-copywrite"
+    },
+    {
+      "name": "landing-page-design",
+      "source": "2389-research/landing-page-design",
+      "skill": "landing-page-design"
+    },
+    {
+      "name": "analytics-dashboard",
+      "source": "charlie947/social-media-skills",
+      "skill": "analytics-dashboard"
+    },
+    {
+      "name": "content-matrix",
+      "source": "charlie947/social-media-skills",
+      "skill": "content-matrix"
+    },
+    {
+      "name": "gemini-carousel",
+      "source": "charlie947/social-media-skills",
+      "skill": "gemini-carousel"
+    },
+    {
+      "name": "gemini-infographic",
+      "source": "charlie947/social-media-skills",
+      "skill": "gemini-infographic"
+    },
+    {
+      "name": "graphic-designer",
+      "source": "charlie947/social-media-skills",
+      "skill": "graphic-designer"
+    },
+    {
+      "name": "hook-generator",
+      "source": "charlie947/social-media-skills",
+      "skill": "hook-generator"
+    },
+    {
+      "name": "newsletter-voice",
+      "source": "charlie947/social-media-skills",
+      "skill": "newsletter-voice"
+    },
+    {
+      "name": "niche-research",
+      "source": "charlie947/social-media-skills",
+      "skill": "niche-research"
+    },
+    {
+      "name": "pinned-comment",
+      "source": "charlie947/social-media-skills",
+      "skill": "pinned-comment"
+    },
+    {
+      "name": "post-formatter",
+      "source": "charlie947/social-media-skills",
+      "skill": "post-formatter"
+    },
+    {
+      "name": "post-scorer",
+      "source": "charlie947/social-media-skills",
+      "skill": "post-scorer"
+    },
+    {
+      "name": "post-writer",
+      "source": "charlie947/social-media-skills",
+      "skill": "post-writer"
+    },
+    {
+      "name": "profile-optimizer",
+      "source": "charlie947/social-media-skills",
+      "skill": "profile-optimizer"
+    },
+    {
+      "name": "quote-post",
+      "source": "charlie947/social-media-skills",
+      "skill": "quote-post"
+    },
+    {
+      "name": "reels-scripting",
+      "source": "charlie947/social-media-skills",
+      "skill": "reels-scripting"
+    },
+    {
+      "name": "voice-builder",
+      "source": "charlie947/social-media-skills",
+      "skill": "voice-builder"
+    },
+    {
+      "name": "youtube-thumbnail",
+      "source": "charlie947/social-media-skills",
+      "skill": "youtube-thumbnail"
     }
   ]
 }
