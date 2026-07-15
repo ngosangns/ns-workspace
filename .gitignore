@@ -3,6 +3,7 @@
 Thumbs.db
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 *~
@@ -16,29 +17,49 @@ Thumbs.db
 bin/
 dist/
 build/
+vendor/
 *.exe
 *.test
 *.out
+*.coverprofile
 coverage.out
 coverage.html
+coverage.txt
+cover.out
+__debug_bin*
+debug
+/ns-workspace
+/main
 
 # Frontend tooling caches (portal Vite / TS)
 .vite/
 *.tsbuildinfo
 .eslintcache
 .cache/
+.turbo/
 
 # Logs and temporary files
 *.log
 tmp/
 temp/
 *.tmp
+*.bak
 
-# Generated output
-graphify-out/
+# Dependencies
 node_modules/
 
-# Local harness runtime state (tasks stay tracked under .harness/tasks/)
-.harness/state/
+# Generated local outputs (CLI defaults / cwd dumps)
+graphify-out/
+/search.html
+/kb.html
+/ns-workspace-kb.html
+*.local.html
 
-*.bak
+# Local harness runtime (task defs under .harness/tasks/ stay tracked)
+.harness/state/
+.harness/decision-request.md
+.harness/memory/
+
+# GitButler / local VCS tooling
+.gitbutler/
+.but/
