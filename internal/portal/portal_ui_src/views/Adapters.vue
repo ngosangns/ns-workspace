@@ -58,16 +58,18 @@ onMounted(load);
         {{
           loading
             ? "Loading adapters..."
-            : `${adapters.length} providers · ${adapters.filter((a) => a.enabled).length} enabled · ${adapters.filter((a) => !a.enabled).length} disabled. Disable comments them out in toggles — providers stay listed.`
+            : `${adapters.length} providers · ${adapters.filter((a) => a.enabled).length} enabled · ${adapters.filter((a) => !a.enabled).length} disabled. Disable keeps providers listed; they are skipped during sync.`
         }}
       </p>
     </header>
 
     <AppAlert v-if="error" kind="error">{{ error }}</AppAlert>
 
-    <div v-else-if="loading" class="fade-in-up is-visible" aria-busy="true" aria-label="Loading adapters">
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="n in 6" :key="n" class="skeleton h-[148px]" />
+    <div v-else-if="loading" class="surface overflow-hidden fade-in-up is-visible" aria-busy="true" aria-label="Loading adapters">
+      <div class="space-y-0 divide-y divide-border p-0">
+        <div v-for="n in 6" :key="n" class="px-4 py-3">
+          <div class="skeleton h-12 rounded-md" />
+        </div>
       </div>
     </div>
 
@@ -79,19 +81,56 @@ onMounted(load);
       <p class="m-0 text-[13px] text-fg-muted">Provider adapters appear here once presets are available.</p>
     </div>
 
-    <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <article
-        v-for="(adapter, index) in adapters"
-        :key="adapter.id"
-        class="surface flex h-full flex-col p-4 transition duration-160 ease-[var(--ease-out-soft)] hover:border-border-strong hover:bg-elevated fade-in-up"
-        :class="adapter.enabled ? '' : 'opacity-60'"
-        :style="{ transitionDelay: `${Math.min(index, 8) * 30}ms` }"
-      >
-        <div class="mb-3 flex items-start justify-between gap-3">
-          <div class="text-[15px] font-semibold leading-snug tracking-tight text-fg">{{ adapter.name }}</div>
-          <div class="flex shrink-0 items-center gap-2">
-            <span :class="['status-pill', tierClass(adapter.tier)]">{{ adapter.tier }}</span>
-            <label class="flex items-center gap-1.5">
+    <div v-else class="surface overflow-hidden fade-in-up">
+      <ul class="m-0 list-none divide-y divide-border p-0">
+        <li
+          v-for="adapter in adapters"
+          :key="adapter.id"
+          class="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3 transition duration-160 ease-[var(--ease-out-soft)] hover:bg-elevated"
+          :class="adapter.enabled ? '' : 'opacity-60'"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-[14px] font-semibold tracking-tight text-fg">{{ adapter.name }}</span>
+              <span class="font-mono text-[11.5px] text-fg-muted">{{ adapter.id }}</span>
+              <span :class="['status-pill', tierClass(adapter.tier)]">{{ adapter.tier }}</span>
+            </div>
+            <p v-if="adapter.notes" class="m-0 mt-1 text-[13px] leading-normal text-fg-secondary">
+              {{ adapter.notes }}
+            </p>
+            <div
+              v-if="(adapter.artifacts && adapter.artifacts.length) || (adapter.docs && adapter.docs.length)"
+              class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5"
+            >
+              <div v-if="adapter.artifacts && adapter.artifacts.length" class="flex flex-wrap gap-1.5">
+                <span
+                  v-for="artifact in adapter.artifacts"
+                  :key="artifact"
+                  class="rounded-sm border border-border bg-app-muted px-2 py-[2px] font-mono text-[11px] text-fg-secondary"
+                >
+                  {{ artifact }}
+                </span>
+              </div>
+              <div v-if="adapter.docs && adapter.docs.length" class="flex flex-wrap gap-2.5">
+                <a
+                  v-for="doc in adapter.docs"
+                  :key="doc"
+                  :href="doc"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1 text-xs font-medium text-accent transition duration-160 ease-[var(--ease-out-soft)] hover:text-accent-hover hover:underline hover:underline-offset-2"
+                >
+                  <PhArrowSquareOut :size="14" weight="bold" />
+                  Docs
+                </a>
+              </div>
+            </div>
+          </div>
+          <div class="flex shrink-0 items-center gap-3 self-center">
+            <span :class="['status-pill', adapter.enabled ? 'status-pill--ok' : 'status-pill--muted']">
+              {{ adapter.enabled ? "Enabled" : "Disabled" }}
+            </span>
+            <label class="flex items-center gap-2">
               <span class="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
                 {{ adapter.enabled ? "On" : "Off" }}
               </span>
@@ -105,36 +144,8 @@ onMounted(load);
               />
             </label>
           </div>
-        </div>
-        <div v-if="adapter.artifacts && adapter.artifacts.length" class="mb-3 flex flex-wrap gap-1.5">
-          <span
-            v-for="artifact in adapter.artifacts"
-            :key="artifact"
-            class="rounded-sm border border-border bg-app-muted px-2 py-[3px] font-mono text-[11px] text-fg-secondary"
-          >
-            {{ artifact }}
-          </span>
-        </div>
-        <div v-if="adapter.notes" class="mb-3 flex-1 text-[13px] leading-normal text-fg-secondary">{{ adapter.notes }}</div>
-        <div class="mt-auto flex flex-wrap items-center justify-between gap-2">
-          <div v-if="adapter.docs && adapter.docs.length" class="flex flex-wrap gap-2.5">
-            <a
-              v-for="doc in adapter.docs"
-              :key="doc"
-              :href="doc"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1 text-xs font-medium text-accent transition duration-160 ease-[var(--ease-out-soft)] hover:text-accent-hover hover:underline hover:underline-offset-2"
-            >
-              <PhArrowSquareOut :size="14" weight="bold" />
-              Docs
-            </a>
-          </div>
-          <span :class="['status-pill', adapter.enabled ? 'status-pill--ok' : 'status-pill--muted']">
-            {{ adapter.enabled ? "Enabled" : "Disabled" }}
-          </span>
-        </div>
-      </article>
+        </li>
+      </ul>
     </div>
   </div>
 </template>

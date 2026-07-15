@@ -187,8 +187,59 @@ func FormatCommentedObjectMap(enabled, disabled map[string]any, order []string) 
 	return []byte(b.String()), nil
 }
 
+// MCPDisabledPath is the overlay path for portal-disabled MCP servers.
+// Shape matches the enabled file: { "mcpServers": { "name": { ... } } }.
+const MCPDisabledPath = "presets/mcp/servers.disabled.json"
+
+// MCPEnabledPath is the enabled MCP servers preset path.
+const MCPEnabledPath = "presets/mcp/servers.json"
+
+// FormatMCPServersJSON writes pure JSON for the enabled MCP servers file.
+func FormatMCPServersJSON(enabled map[string]any, order []string) ([]byte, error) {
+	if enabled == nil {
+		enabled = map[string]any{}
+	}
+	// Preserve key order when provided by building via ordered marshal.
+	keys := orderedKeys(enabled, order)
+	ordered := make(map[string]any, len(keys))
+	for _, k := range keys {
+		ordered[k] = enabled[k]
+	}
+	// Re-insert any keys missing from orderedKeys (should not happen).
+	for k, v := range enabled {
+		if _, ok := ordered[k]; !ok {
+			ordered[k] = v
+		}
+	}
+	return encodeJSONIndent(MCPManifest{MCPServers: ordered})
+}
+
+// FormatMCPDisabledJSON writes pure JSON for MCPDisabledPath.
+func FormatMCPDisabledJSON(disabled map[string]any) ([]byte, error) {
+	if disabled == nil {
+		disabled = map[string]any{}
+	}
+	return encodeJSONIndent(MCPManifest{MCPServers: disabled})
+}
+
+// ParseMCPDisabledJSON parses servers.disabled.json.
+func ParseMCPDisabledJSON(data []byte) (map[string]any, error) {
+	var wrap struct {
+		MCPServers map[string]any `json:"mcpServers"`
+	}
+	if err := UnmarshalJSONC(data, &wrap); err != nil {
+		return nil, fmt.Errorf("parse mcp disabled json: %w", err)
+	}
+	if wrap.MCPServers == nil {
+		wrap.MCPServers = map[string]any{}
+	}
+	return wrap.MCPServers, nil
+}
+
 // FormatMCPServersJSONC writes the shared MCP servers manifest as JSONC with
 // disabled servers preserved as // comments under mcpServers.
+// Deprecated for new writes: prefer FormatMCPServersJSON + FormatMCPDisabledJSON.
+// Still used when migrating legacy overlays that only exist as JSONC comments.
 func FormatMCPServersJSONC(enabled, disabled map[string]any, order []string) ([]byte, error) {
 	if enabled == nil {
 		enabled = map[string]any{}

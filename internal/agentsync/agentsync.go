@@ -42,9 +42,11 @@ func (op InstallPresetFile) Apply(ctx Context) error {
 	if err != nil {
 		return err
 	}
-	// Materialize MCP servers as pure JSON (enabled only). Portal overlays
-	// may store disabled servers as // comments in JSONC form.
-	if filepath.ToSlash(op.Src) == "presets/mcp/servers.json" {
+	// Materialize MCP servers as pure JSON (enabled only). Legacy portal
+	// overlays may still store disabled servers as // comments; strip them.
+	// Disabled entries now live in presets/mcp/servers.disabled.json and are
+	// never written to ~/.agents/mcp/servers.json.
+	if filepath.ToSlash(op.Src) == MCPEnabledPath {
 		enabled, _, _, err := ParseMCPServersJSONC(data)
 		if err != nil {
 			return err

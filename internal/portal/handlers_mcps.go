@@ -23,10 +23,15 @@ func (s *portalServer) handleMCPs(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		// Prefer raw JSONC content (keeps // commented disabled servers).
+		// Single catalog source:
+		//   { "content": "<unified JSON>" }
+		//   { "mcpServers": {...}, "disabled": ["a"] }
+		//   { "mcpServers": {...}, "disabledServers": {...} }
 		var contentBody struct {
-			Content    string         `json:"content"`
-			MCPServers map[string]any `json:"mcpServers"`
+			Content         string         `json:"content"`
+			MCPServers      map[string]any `json:"mcpServers"`
+			Disabled        []string       `json:"disabled"`
+			DisabledServers map[string]any `json:"disabledServers"`
 		}
 		if err := json.Unmarshal(body, &contentBody); err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -34,6 +39,35 @@ func (s *portalServer) handleMCPs(w http.ResponseWriter, r *http.Request) {
 		}
 		if strings.TrimSpace(contentBody.Content) != "" {
 			if err := s.store.WriteMCPsContent([]byte(contentBody.Content)); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+		} else if contentBody.DisabledServers != nil || len(contentBody.Disabled) > 0 {
+			// Rebuild unified content from structured fields so one write path
+			// applies full-catalog replace semantics.
+			raw, err := formatUnifiedMCPContent(
+				contentBody.MCPServers,
+				contentBody.DisabledServers,
+				nil,
+			)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			// If only disabled name list (not map), inject names after format
+			// via content document with disabled array.
+			if contentBody.DisabledServers == nil && len(contentBody.Disabled) > 0 {
+				doc := map[string]any{
+					"mcpServers": contentBody.MCPServers,
+					"disabled":   contentBody.Disabled,
+				}
+				raw, err = json.Marshal(doc)
+				if err != nil {
+					writeError(w, http.StatusBadRequest, err)
+					return
+				}
+			}
+			if err := s.store.WriteMCPsContent(raw); err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}

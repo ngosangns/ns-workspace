@@ -9,63 +9,76 @@ import (
 	"strings"
 )
 
-// PortalTogglesPath is the preset key for portal enable/disable state.
-// Disabled skills and providers are stored as // comments so the file
-// remains human-readable JSONC.
-const PortalTogglesPath = "presets/portal/toggles.jsonc"
-
-// PortalToggles models presets/portal/toggles.jsonc.
-//
-// Shape:
+// PortalDisabledPath is the preset key for portal-disabled skill and
+// provider ids. Disabled entries live in this JSON file (not as //
+// comments). Shape:
 //
 //	{
-//	  "skills": {
-//	    "commit": true,
-//	    // "spawn-kimi": true
-//	  },
-//	  "providers": {
-//	    "claude": true
-//	    // "gemini": true
-//	  }
+//	  "skills": ["spawn-kimi"],
+//	  "providers": ["gemini"]
 //	}
 //
-// Presence of a live key means enabled. Commented keys are disabled.
-// Skills/providers absent from both maps default to enabled.
+// Missing file → everything enabled by default.
+const PortalDisabledPath = "presets/portal/disabled.json"
+
+// PortalTogglesPath is the legacy JSONC toggles file (// comments).
+// Still read for migration when PortalDisabledPath is absent.
+const PortalTogglesPath = "presets/portal/toggles.jsonc"
+
+// PortalToggles holds enable/disable state for skills and providers.
+// Only Disabled* maps are authoritative for sync/portal; Enabled* and
+// order fields remain for legacy parse compatibility.
 type PortalToggles struct {
-	// EnabledSkills maps skill id → true for currently enabled skills
-	// that appear as live keys. Empty map means "no explicit list".
-	EnabledSkills map[string]bool
-	// DisabledSkills maps skill id → true for portal-disabled skills.
-	DisabledSkills map[string]bool
-	// EnabledProviders / DisabledProviders mirror the same for adapters.
+	EnabledSkills     map[string]bool
+	DisabledSkills    map[string]bool
 	EnabledProviders  map[string]bool
 	DisabledProviders map[string]bool
-	// SkillOrder / ProviderOrder preserve file order for rewrites.
-	SkillOrder    []string
-	ProviderOrder []string
+	SkillOrder        []string
+	ProviderOrder     []string
 }
 
-// loadPortalToggles reads toggles from the user overlay or embedded
-// preset. Missing file → empty toggles (everything enabled by default).
+// portalDisabledFile is the on-disk shape of PortalDisabledPath.
+type portalDisabledFile struct {
+	Skills    []string `json:"skills,omitempty"`
+	Providers []string `json:"providers,omitempty"`
+}
+
+// loadPortalToggles reads disabled skills/providers from the overlay or
+// embedded preset. Prefers disabled.json; falls back to legacy
+// toggles.jsonc comments when the new file is missing.
 func loadPortalToggles(ctx Context) (PortalToggles, error) {
-	data, err := readPresetFile(ctx, PortalTogglesPath)
+	data, err := readPresetFile(ctx, PortalDisabledPath)
+	if err == nil {
+		return ParsePortalDisabled(data)
+	}
+	if !isMissingPreset(err) {
+		return PortalToggles{}, err
+	}
+
+	// Legacy: toggles.jsonc with // commented keys.
+	legacy, err := readPresetFile(ctx, PortalTogglesPath)
 	if err != nil {
-		// Optional file: treat missing as empty toggles.
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
-			return PortalToggles{}, nil
-		}
-		// readPresetFile wraps errors as "preset path: %w"
-		if strings.Contains(err.Error(), "file does not exist") ||
-			strings.Contains(err.Error(), "no such file") {
+		if isMissingPreset(err) {
 			return PortalToggles{}, nil
 		}
 		return PortalToggles{}, err
 	}
-	return ParsePortalToggles(data)
+	return ParsePortalToggles(legacy)
+}
+
+func isMissingPreset(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "file does not exist") || strings.Contains(msg, "no such file")
 }
 
 // loadDisabledSkills returns the set of skill top-level names disabled
-// via portal toggles. Used by InstallPresetTree.
+// via portal disabled.json. Used by InstallPresetTree.
 func loadDisabledSkills(ctx Context) map[string]bool {
 	if ctx.DisabledSkills != nil {
 		return ctx.DisabledSkills
@@ -78,7 +91,7 @@ func loadDisabledSkills(ctx Context) map[string]bool {
 }
 
 // applyPortalToggles fills Options.DisabledProviders / DisabledSkills
-// from the toggles preset when not already set by the caller.
+// from the disabled preset when not already set by the caller.
 func applyPortalToggles(ctx *Context) {
 	if ctx.DisabledProviders != nil && ctx.DisabledSkills != nil {
 		return
@@ -95,9 +108,59 @@ func applyPortalToggles(ctx *Context) {
 	}
 }
 
-// ParsePortalToggles parses JSONC toggles content.
+// ParsePortalDisabled parses presets/portal/disabled.json.
+func ParsePortalDisabled(data []byte) (PortalToggles, error) {
+	var raw portalDisabledFile
+	if err := UnmarshalJSONC(data, &raw); err != nil {
+		return PortalToggles{}, fmt.Errorf("parse portal disabled: %w", err)
+	}
+	out := PortalToggles{
+		EnabledSkills:     map[string]bool{},
+		DisabledSkills:    map[string]bool{},
+		EnabledProviders:  map[string]bool{},
+		DisabledProviders: map[string]bool{},
+	}
+	for _, id := range raw.Skills {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		out.DisabledSkills[id] = true
+	}
+	for _, id := range raw.Providers {
+		id = strings.TrimSpace(strings.ToLower(id))
+		if id == "" {
+			continue
+		}
+		out.DisabledProviders[id] = true
+	}
+	return out, nil
+}
+
+// FormatPortalDisabled renders pure JSON for PortalDisabledPath.
+func FormatPortalDisabled(disabledSkills, disabledProviders map[string]bool) ([]byte, error) {
+	file := portalDisabledFile{
+		Skills:    SortedIDs(disabledSkills),
+		Providers: SortedIDs(disabledProviders),
+	}
+	// Normalize providers to lower-case in output.
+	for i, id := range file.Providers {
+		file.Providers[i] = strings.ToLower(id)
+	}
+	sort.Strings(file.Providers)
+	// Drop empty slices so {} is valid when nothing is disabled.
+	if len(file.Skills) == 0 {
+		file.Skills = nil
+	}
+	if len(file.Providers) == 0 {
+		file.Providers = nil
+	}
+	return encodeJSONIndent(file)
+}
+
+// ParsePortalToggles parses legacy JSONC toggles content (// comments).
+// Kept for migration of existing overlays.
 func ParsePortalToggles(data []byte) (PortalToggles, error) {
-	// Structure after strip: { "skills": {...}, "providers": {...} }
 	var raw map[string]any
 	if err := UnmarshalJSONC(data, &raw); err != nil {
 		return PortalToggles{}, fmt.Errorf("parse portal toggles: %w", err)
@@ -136,7 +199,6 @@ func ParsePortalToggles(data []byte) (PortalToggles, error) {
 		}
 	}
 
-	// Normalize provider keys to lower-case.
 	norm := map[string]bool{}
 	for k, v := range out.DisabledProviders {
 		norm[strings.ToLower(k)] = v
@@ -151,7 +213,6 @@ func ParsePortalToggles(data []byte) (PortalToggles, error) {
 }
 
 func fillBoolMapFromBody(body string, enabled, disabled map[string]bool, order *[]string) {
-	// Active keys via strip+unmarshal of body as object.
 	var active map[string]any
 	_ = UnmarshalJSONC([]byte(body), &active)
 	if active == nil {
@@ -164,7 +225,6 @@ func fillBoolMapFromBody(body string, enabled, disabled map[string]bool, order *
 			disabled[k] = true
 		}
 	}
-	// Commented keys = disabled
 	for k := range extractCommentedProperties(body) {
 		if !enabled[k] {
 			disabled[k] = true
@@ -188,9 +248,8 @@ func boolish(v any) bool {
 	}
 }
 
-// FormatPortalToggles renders toggles JSONC with disabled entries commented.
-// knownSkills / knownProviders are the full catalogs; only those listed
-// will appear (enabled as live keys, disabled as comments).
+// FormatPortalToggles is kept for tests that still exercise legacy JSONC.
+// Prefer FormatPortalDisabled for new writes.
 func FormatPortalToggles(knownSkills, knownProviders []string, disabledSkills, disabledProviders map[string]bool) ([]byte, error) {
 	if disabledSkills == nil {
 		disabledSkills = map[string]bool{}
@@ -207,7 +266,6 @@ func FormatPortalToggles(knownSkills, knownProviders []string, disabledSkills, d
 			skillEnabled[id] = true
 		}
 	}
-	// Keep orphan disabled skills that are no longer in known list.
 	for id := range disabledSkills {
 		if _, ok := skillEnabled[id]; !ok {
 			if _, ok2 := skillDisabled[id]; !ok2 {
@@ -244,7 +302,6 @@ func FormatPortalToggles(knownSkills, knownProviders []string, disabledSkills, d
 		return nil, err
 	}
 
-	// Nest under top-level object with 2-space indent for children.
 	var b strings.Builder
 	b.WriteString("{\n")
 	b.WriteString("  \"skills\": ")
@@ -307,12 +364,15 @@ func (t PortalToggles) IsProviderEnabled(id string) bool {
 	return true
 }
 
-// SortedIDs returns sorted keys of a bool map.
+// SortedIDs returns sorted keys of a bool map (only true values).
 func SortedIDs(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
+	for k, v := range m {
+		if v {
+			out = append(out, k)
+		}
 	}
 	sort.Strings(out)
 	return out
 }
+

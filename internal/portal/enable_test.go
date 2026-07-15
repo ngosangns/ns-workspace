@@ -72,7 +72,8 @@ func TestEnableDisableSkillAndMCPAndAdapter(t *testing.T) {
 	if _, ok := manifest.DisabledServers["demo"]; !ok {
 		t.Fatalf("demo should be in disabledServers: %#v", manifest.DisabledServers)
 	}
-	// Disabled must still appear in items + as // comments in content (not deleted).
+	// Disabled must still appear in items; content is the full catalog
+	// (mcpServers + disabled[]) so demo remains editable in one document.
 	foundItem := false
 	for _, it := range manifest.Items {
 		if it.Name == "demo" {
@@ -85,8 +86,14 @@ func TestEnableDisableSkillAndMCPAndAdapter(t *testing.T) {
 	if !foundItem {
 		t.Fatal("demo must remain in items list when disabled")
 	}
-	if !strings.Contains(manifest.Content, "demo") || !strings.Contains(manifest.Content, "//") {
-		t.Fatalf("content should keep demo as // comment:\n%s", manifest.Content)
+	if !strings.Contains(manifest.Content, "demo") {
+		t.Fatalf("unified content should include disabled demo:\n%s", manifest.Content)
+	}
+	if !strings.Contains(manifest.Content, `"disabled"`) {
+		t.Fatalf("unified content should list disabled names:\n%s", manifest.Content)
+	}
+	if strings.Contains(manifest.Content, "//") {
+		t.Fatalf("content should be pure JSON without comments:\n%s", manifest.Content)
 	}
 
 	// Re-enable MCP
@@ -109,5 +116,43 @@ func TestEnableDisableSkillAndMCPAndAdapter(t *testing.T) {
 	srv.router().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("disable adapter: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Disable a registry skill → skills.disabled.json (not delete).
+	req = httptest.NewRequest(http.MethodGet, "/api/registry", nil)
+	rr = httptest.NewRecorder()
+	srv.router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get registry: %d %s", rr.Code, rr.Body.String())
+	}
+	var reg RegistrySkills
+	if err := json.Unmarshal(rr.Body.Bytes(), &reg); err != nil {
+		t.Fatal(err)
+	}
+	if len(reg.Skills) == 0 {
+		t.Fatal("expected at least one registry skill in test fixtures")
+	}
+	regName := reg.Skills[0].Name
+	req = httptest.NewRequest(http.MethodPost, "/api/registry/"+regName+"/enabled", strings.NewReader(`{"enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	srv.router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("disable registry skill: %d %s", rr.Code, rr.Body.String())
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &reg)
+	for _, sk := range reg.Skills {
+		if sk.Name == regName {
+			t.Fatalf("registry skill %q should not remain in enabled list", regName)
+		}
+	}
+	foundDis := false
+	for _, sk := range reg.DisabledSkills {
+		if sk.Name == regName {
+			foundDis = true
+		}
+	}
+	if !foundDis {
+		t.Fatalf("registry skill %q should be in disabledSkills: %#v", regName, reg.DisabledSkills)
 	}
 }

@@ -30,7 +30,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 
 | Trigger | Skill              | Khi Dùng                                                                                                                                  |
 | ------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `//c`   | `commit`           | Chuẩn bị và tạo git commit an toàn cho thay đổi hiện tại, với phạm vi staged rõ ràng và message súc tích.                                 |
+| `//c`   | `git-commit`       | Commit workflow (registry): analyze diff, Conventional Commits, stage có chủ đích, an toàn — skill `github/awesome-copilot@git-commit`.   |
 | `//d`   | `cleanup`          | Quét diff/work đã triển khai/branch/commit, đọc docs và lập plan cleanup (developer/specs/planning) cho dead code, dead flows, dead docs. |
 | `//e`   | `execution`        | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo.                                                   |
 | `//f`   | `fix`              | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể.                                                 |
@@ -46,14 +46,21 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | `/s`    | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ.                              |
 | `/k`    | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song.                           |
 
+## Commit Skill (Registry)
+
+Preset local `commit` đã được gỡ. Commit dùng skill registry `git-commit`
+(`github/awesome-copilot`, cài qua `npx skills` khi sync registry): analyze
+diff, Conventional Commits, stage có chủ đích, an toàn. Trigger `//c` map
+tới skill này.
+
 ## Trigger Ghép
 
 Các trigger ghép thường dùng:
 
 | Trigger | Pipeline                                                                                                          |
 | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `//ec`  | Execution thay đổi code, rồi commit nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ.         |
-| `//uc`  | Update docs/specs, rồi commit nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ.               |
+| `//ec`  | Execution thay đổi code, rồi `git-commit` (registry) nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ. |
+| `//uc`  | Update docs/specs, rồi `git-commit` (registry) nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ. |
 | `//rf`  | Search docs/specs liên quan, rồi fix theo nguồn tham chiếu hiện có.                                               |
 | `//sf`  | Spawn OpenCode sub-agent, rồi fix khi đã đủ bối cảnh.                                                             |
 | `//fu`  | Fix lỗi, rồi update docs nếu behavior, architecture, business rules hoặc quan hệ module thay đổi.                 |

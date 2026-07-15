@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -146,6 +147,51 @@ func TestReadWriteMCPs(t *testing.T) {
 	}
 	if manifest.Overridden {
 		t.Fatal("expected MCP manifest not overridden after reset")
+	}
+}
+
+func TestWriteUnifiedMCPContent(t *testing.T) {
+	store, _, _ := newTestStore(t)
+
+	raw := `{
+  "mcpServers": {
+    "alpha": {"command": "a"},
+    "beta": {"command": "b"}
+  },
+  "disabled": ["beta"]
+}`
+	if err := store.WriteMCPsContent([]byte(raw)); err != nil {
+		t.Fatalf("WriteMCPsContent: %v", err)
+	}
+	manifest, err := store.ReadMCPs()
+	if err != nil {
+		t.Fatalf("ReadMCPs: %v", err)
+	}
+	if _, ok := manifest.Servers()["alpha"]; !ok {
+		t.Fatal("alpha should be enabled")
+	}
+	if _, ok := manifest.Servers()["beta"]; ok {
+		t.Fatal("beta should not be in enabled map")
+	}
+	if _, ok := manifest.DisabledServers["beta"]; !ok {
+		t.Fatal("beta should be disabled")
+	}
+	if !strings.Contains(manifest.Content, `"disabled"`) || !strings.Contains(manifest.Content, "beta") {
+		t.Fatalf("content should be unified catalog:\n%s", manifest.Content)
+	}
+	// Full replace: omitting alpha deletes it.
+	if err := store.WriteMCPsContent([]byte(`{"mcpServers":{"beta":{"command":"b2"}},"disabled":["beta"]}`)); err != nil {
+		t.Fatalf("replace content: %v", err)
+	}
+	manifest, err = store.ReadMCPs()
+	if err != nil {
+		t.Fatalf("ReadMCPs after replace: %v", err)
+	}
+	if _, ok := manifest.Servers()["alpha"]; ok {
+		t.Fatal("alpha should be hard-deleted on full replace")
+	}
+	if _, ok := manifest.DisabledServers["beta"]; !ok {
+		t.Fatal("beta should remain disabled")
 	}
 }
 

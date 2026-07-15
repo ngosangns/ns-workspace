@@ -6,6 +6,11 @@
       "skill": "find-skills"
     },
     {
+      "name": "git-commit",
+      "source": "github/awesome-copilot",
+      "skill": "git-commit"
+    },
+    {
       "name": "dispatching-parallel-agents",
       "source": "obra/superpowers",
       "skill": "dispatching-parallel-agents"

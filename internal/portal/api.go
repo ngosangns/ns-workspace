@@ -2,12 +2,13 @@ package portal
 
 // Skill is a preset skill exposed through the portal API.
 type Skill struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Source     string `json:"source"` // "embedded" or overlay path
-	Overridden bool   `json:"overridden"`
-	Enabled    bool   `json:"enabled"`
-	Content    string `json:"content,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Source      string `json:"source"` // "embedded" or overlay path
+	Overridden  bool   `json:"overridden"`
+	Enabled     bool   `json:"enabled"`
+	Content     string `json:"content,omitempty"`
 }
 
 // SkillUpdate is the request body for updating a skill.
@@ -35,14 +36,21 @@ type MCPServerItem struct {
 // MCPManifest combines the effective MCP servers with provenance metadata.
 type MCPManifest struct {
 	MCPServers `json:",inline"`
-	// DisabledServers are portal-disabled entries preserved as // comments
-	// in the JSONC overlay (not deleted from the file).
+	// DisabledServers are portal-disabled entries (full config retained).
+	// Storage may still split to servers.disabled.json for sync; the portal
+	// presents a single editable Content document.
 	DisabledServers map[string]any `json:"disabledServers,omitempty"`
 	// Items is the flat list used by the UI (enabled + disabled; never drops entries).
 	Items []MCPServerItem `json:"items,omitempty"`
-	// Content is the full JSONC file text (live keys + // commented disabled
-	// servers). Portal file editor should show this so disable is visible as
-	// comment-out, not as deletion.
+	// Content is the single portal source document (pure JSON):
+	//
+	//	{
+	//	  "mcpServers": { "<name>": { ...config }, ... },  // all servers
+	//	  "disabled": ["name-a", "name-b"]                 // optional
+	//	}
+	//
+	// Edit and save this document to replace the full catalog. Sync still
+	// materializes only non-disabled servers to ~/.agents/mcp/servers.json.
 	Content    string `json:"content,omitempty"`
 	Overridden bool   `json:"overridden"`
 	Source     string `json:"source"`
@@ -56,13 +64,26 @@ func (m *MCPManifest) Servers() map[string]any {
 // RegistrySkills is the registry skills manifest exposed through the portal API.
 type RegistrySkills struct {
 	Skills []RegistrySkill `json:"skills"`
+	// DisabledSkills are portal-disabled entries in skills.disabled.json.
+	DisabledSkills []RegistrySkill `json:"disabledSkills,omitempty"`
+	// Items is the flat list used by the UI (enabled + disabled).
+	Items      []RegistrySkillItem `json:"items,omitempty"`
+	Overridden bool               `json:"overridden,omitempty"`
+	Source     string             `json:"source,omitempty"`
 }
 
 // RegistrySkill is one entry inside RegistrySkills.
 type RegistrySkill struct {
-	Name   string `json:"name"`
-	Source string `json:"source"`
-	Skill  string `json:"skill"`
+	Name      string `json:"name"`
+	Source    string `json:"source,omitempty"`
+	Skill     string `json:"skill"`
+	Installer string `json:"installer,omitempty"`
+}
+
+// RegistrySkillItem is one registry skill with enable state for the portal UI.
+type RegistrySkillItem struct {
+	RegistrySkill
+	Enabled bool `json:"enabled"`
 }
 
 // Adapter is the public description of an agent adapter.

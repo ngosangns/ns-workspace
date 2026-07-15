@@ -2,8 +2,10 @@ package portal
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 func (s *portalServer) handleRegistry(w http.ResponseWriter, r *http.Request) {
@@ -30,8 +32,67 @@ func (s *portalServer) handleRegistry(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, reg)
+		out, err := s.store.ReadRegistry()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, out)
+	case http.MethodDelete:
+		if err := s.store.ResetRegistry(); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		out, err := s.store.ReadRegistry()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, out)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, errMethodNotAllowed)
 	}
+}
+
+// handleRegistrySkill routes /api/registry/{name}/enabled.
+func (s *portalServer) handleRegistrySkill(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/registry/")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, errMissingID)
+		return
+	}
+	if !strings.HasSuffix(path, "/enabled") {
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown registry path %q", path))
+		return
+	}
+	name := strings.TrimSuffix(path, "/enabled")
+	name = strings.TrimSuffix(name, "/")
+	if name == "" {
+		writeError(w, http.StatusBadRequest, errMissingID)
+		return
+	}
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, errMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req EnableRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.store.SetRegistrySkillEnabled(name, req.Enabled); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	out, err := s.store.ReadRegistry()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, out)
 }

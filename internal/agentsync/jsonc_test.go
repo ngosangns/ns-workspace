@@ -107,7 +107,40 @@ func TestExtractMultipleCommentedMCPServers(t *testing.T) {
 	}
 }
 
-func TestPortalTogglesRoundTrip(t *testing.T) {
+func TestPortalDisabledRoundTrip(t *testing.T) {
+	data, err := FormatPortalDisabled(
+		map[string]bool{"spawn-kimi": true},
+		map[string]bool{"gemini": true},
+	)
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	if strings.Contains(string(data), "//") {
+		t.Fatalf("disabled.json must be pure JSON without comments:\n%s", data)
+	}
+	if !strings.Contains(string(data), "spawn-kimi") || !strings.Contains(string(data), "gemini") {
+		t.Fatalf("expected disabled ids in file:\n%s", data)
+	}
+	toggles, err := ParsePortalDisabled(data)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if toggles.IsSkillEnabled("commit") != true {
+		t.Fatal("commit should be enabled by default")
+	}
+	if toggles.IsSkillEnabled("spawn-kimi") != false {
+		t.Fatalf("spawn-kimi should be disabled: %#v", toggles.DisabledSkills)
+	}
+	if toggles.IsProviderEnabled("claude") != true {
+		t.Fatal("claude should be enabled by default")
+	}
+	if toggles.IsProviderEnabled("gemini") != false {
+		t.Fatalf("gemini should be disabled: %#v", toggles.DisabledProviders)
+	}
+}
+
+func TestPortalTogglesLegacyRoundTrip(t *testing.T) {
+	// Legacy JSONC format still parses for migration.
 	data, err := FormatPortalToggles(
 		[]string{"commit", "spawn-kimi"},
 		[]string{"claude", "gemini"},
@@ -124,16 +157,50 @@ func TestPortalTogglesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if toggles.IsSkillEnabled("commit") != true {
-		t.Fatal("commit should be enabled")
-	}
 	if toggles.IsSkillEnabled("spawn-kimi") != false {
 		t.Fatalf("spawn-kimi should be disabled: %#v", toggles.DisabledSkills)
 	}
-	if toggles.IsProviderEnabled("claude") != true {
-		t.Fatal("claude should be enabled")
-	}
 	if toggles.IsProviderEnabled("gemini") != false {
 		t.Fatalf("gemini should be disabled: %#v", toggles.DisabledProviders)
+	}
+}
+
+func TestMCPDisabledJSONRoundTrip(t *testing.T) {
+	enabled := map[string]any{
+		"context7": map[string]any{"type": "http", "url": "https://example.com"},
+	}
+	disabled := map[string]any{
+		"kimi": map[string]any{"command": "npx", "args": []any{"-y", "kimi-for-claude"}},
+	}
+	enData, err := FormatMCPServersJSON(enabled, nil)
+	if err != nil {
+		t.Fatalf("format enabled: %v", err)
+	}
+	disData, err := FormatMCPDisabledJSON(disabled)
+	if err != nil {
+		t.Fatalf("format disabled: %v", err)
+	}
+	// Pure JSON: no comment lines (URLs may contain "//" inside strings).
+	for _, line := range strings.Split(string(enData)+"\n"+string(disData), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "//") {
+			t.Fatalf("split files must not use // comments:\n%s", line)
+		}
+	}
+	en2, _, _, err := ParseMCPServersJSONC(enData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dis2, err := ParseMCPDisabledJSON(disData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := en2["context7"]; !ok {
+		t.Fatal("context7 missing")
+	}
+	if _, ok := dis2["kimi"]; !ok {
+		t.Fatal("kimi missing from disabled file")
+	}
+	if _, ok := en2["kimi"]; ok {
+		t.Fatal("kimi must not be in enabled file")
 	}
 }

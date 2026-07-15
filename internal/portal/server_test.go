@@ -17,7 +17,7 @@ func newTestServer(t *testing.T) *portalServer {
 	fsys := fstest.MapFS{
 		"presets/skills/commit/SKILL.md": &fstest.MapFile{Data: []byte("# commit\n")},
 		"presets/mcp/servers.json":       &fstest.MapFile{Data: []byte(`{"mcpServers":{}}`)},
-		"presets/registry/skills.json":   &fstest.MapFile{Data: []byte(`{"skills":[]}`)},
+		"presets/registry/skills.json":   &fstest.MapFile{Data: []byte(`{"skills":[{"name":"find-skills","skill":"find-skills","source":"test"}]}`)},
 	}
 	srv, err := newPortalServer(fsys, tmp)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ngosangns/ns-workspace/internal/agentsync"
+	"gopkg.in/yaml.v3"
 )
 
 // Store reads and writes effective presets by combining the embedded preset
@@ -162,12 +163,14 @@ func (s *Store) ListSkills() ([]Skill, error) {
 			continue
 		}
 		seen[id] = true
+		name, desc := s.skillMeta(id)
 		skills = append(skills, Skill{
-			ID:         id,
-			Name:       id,
-			Source:     "embedded",
-			Overridden: s.isOverridden(skillPath(id)),
-			Enabled:    toggles.IsSkillEnabled(id),
+			ID:          id,
+			Name:        name,
+			Description: desc,
+			Source:      "embedded",
+			Overridden:  s.isOverridden(skillPath(id)),
+			Enabled:     toggles.IsSkillEnabled(id),
 		})
 	}
 
@@ -179,17 +182,60 @@ func (s *Store) ListSkills() ([]Skill, error) {
 			continue
 		}
 		seen[id] = true
+		name, desc := s.skillMeta(id)
 		skills = append(skills, Skill{
-			ID:         id,
-			Name:       id,
-			Source:     "overlay",
-			Overridden: true,
-			Enabled:    toggles.IsSkillEnabled(id),
+			ID:          id,
+			Name:        name,
+			Description: desc,
+			Source:      "overlay",
+			Overridden:  true,
+			Enabled:     toggles.IsSkillEnabled(id),
 		})
 	}
 
 	sort.Slice(skills, func(i, j int) bool { return skills[i].ID < skills[j].ID })
 	return skills, nil
+}
+
+// skillMeta reads name/description from SKILL.md frontmatter when present.
+func (s *Store) skillMeta(id string) (name, description string) {
+	name = id
+	data, err := s.readEffective(skillPath(id))
+	if err != nil {
+		return name, ""
+	}
+	n, d := parseSkillFrontmatter(data)
+	if n != "" {
+		name = n
+	}
+	return name, d
+}
+
+// parseSkillFrontmatter extracts name and description from YAML frontmatter.
+func parseSkillFrontmatter(content []byte) (name, description string) {
+	text := string(content)
+	if !strings.HasPrefix(strings.TrimSpace(text), "---") {
+		return "", ""
+	}
+	// Find opening --- (allow leading whitespace/BOM-less).
+	start := strings.Index(text, "---")
+	if start < 0 {
+		return "", ""
+	}
+	rest := text[start+3:]
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return "", ""
+	}
+	block := strings.TrimSpace(rest[:end])
+	var meta struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
+	}
+	if err := yaml.Unmarshal([]byte(block), &meta); err != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(meta.Name), strings.TrimSpace(meta.Description)
 }
 
 // ReadSkill returns a skill with its content.
@@ -210,13 +256,18 @@ func (s *Store) ReadSkill(id string) (*Skill, error) {
 	if err != nil {
 		return nil, err
 	}
+	name, desc := parseSkillFrontmatter(content)
+	if name == "" {
+		name = id
+	}
 	return &Skill{
-		ID:         id,
-		Name:       id,
-		Source:     source,
-		Overridden: source == "overlay",
-		Enabled:    toggles.IsSkillEnabled(id),
-		Content:    string(content),
+		ID:          id,
+		Name:        name,
+		Description: desc,
+		Source:      source,
+		Overridden:  source == "overlay",
+		Enabled:     toggles.IsSkillEnabled(id),
+		Content:     string(content),
 	}, nil
 }
 
@@ -230,10 +281,10 @@ func (s *Store) ResetSkill(id string) error {
 	return s.removeOverlay(skillPath(id))
 }
 
-// SetSkillEnabled enables or disables a skill by rewriting portal toggles
-// JSONC (disabled skills are // commented in the toggles preset).
+// SetSkillEnabled enables or disables a skill by rewriting
+// presets/portal/disabled.json (skill id list).
 func (s *Store) SetSkillEnabled(id string, enabled bool) error {
-	return s.setToggle(func(disabledSkills, disabledProviders map[string]bool) {
+	return s.setDisabled(func(disabledSkills, disabledProviders map[string]bool) {
 		if enabled {
 			delete(disabledSkills, id)
 		} else {
@@ -243,38 +294,32 @@ func (s *Store) SetSkillEnabled(id string, enabled bool) error {
 }
 
 // ReadMCPs returns the shared MCP servers manifest with provenance metadata.
-// Disabled servers stay in the file as // comments (never deleted) and appear
-// in Items with Enabled=false for the portal list.
+// Portal exposes one editable Content document (all servers + disabled list).
+// On disk, enabled/disabled may still be split for agentsync materialize.
 func (s *Store) ReadMCPs() (*MCPManifest, error) {
-	key := "presets/mcp/servers.json"
-	data, err := s.readEffective(key)
+	enabled, disabled, order, err := s.loadMCPSplit()
 	if err != nil {
 		return nil, err
 	}
-	enabled, disabled, order, err := agentsync.ParseMCPServersJSONC(data)
+	content, err := formatUnifiedMCPContent(enabled, disabled, order)
 	if err != nil {
-		return nil, fmt.Errorf("invalid MCP servers JSONC: %w", err)
-	}
-	// Normalize file text so portal always shows commented disabled entries
-	// even when the embedded source was pure JSON (no comments yet).
-	content, err := agentsync.FormatMCPServersJSONC(enabled, disabled, order)
-	if err != nil {
-		content = data
+		return nil, err
 	}
 	items := buildMCPItems(enabled, disabled)
+	overridden := s.isOverridden(agentsync.MCPEnabledPath) || s.isOverridden(agentsync.MCPDisabledPath)
 	return &MCPManifest{
 		MCPServers:      MCPServers{MCPServers: enabled},
 		DisabledServers: disabled,
 		Items:           items,
 		Content:         string(content),
-		Overridden:      s.isOverridden(key),
-		Source:          sourceLabel(s.isOverridden(key)),
+		Overridden:      overridden,
+		Source:          sourceLabel(overridden),
 	}, nil
 }
 
 // ReadMCPPreset returns the embedded MCP servers preset (enabled only).
 func (s *Store) ReadMCPPreset() (*MCPServers, error) {
-	key := "presets/mcp/servers.json"
+	key := agentsync.MCPEnabledPath
 	data, err := s.readEmbedded(key)
 	if err != nil {
 		return nil, err
@@ -286,96 +331,59 @@ func (s *Store) ReadMCPPreset() (*MCPServers, error) {
 	return &MCPServers{MCPServers: enabled}, nil
 }
 
-// WriteMCPs updates the shared MCP servers manifest via overlay.
-// Existing disabled (commented) servers are preserved unless the caller
-// re-introduces them as live keys (then they become enabled). Entries are
-// never hard-deleted from the overlay by this path — only commented out.
+// WriteMCPs replaces the full MCP catalog: every entry in servers is enabled.
+// Omitted names are removed (not moved to disabled). Prefer WriteMCPsContent
+// or WriteMCPCatalog when the caller also needs disabled entries.
 func (s *Store) WriteMCPs(servers *MCPServers) error {
-	key := "presets/mcp/servers.json"
-	var disabled map[string]any
-	var order []string
-	if prev, err := s.readEffective(key); err == nil {
-		prevEnabled, prevDisabled, prevOrder, _ := agentsync.ParseMCPServersJSONC(prev)
-		disabled = prevDisabled
-		order = prevOrder
-		// Anything that was previously active but missing from the new
-		// payload is treated as disable (comment-out), not delete.
-		if disabled == nil {
-			disabled = map[string]any{}
-		}
-		for name, cfg := range prevEnabled {
-			if _, keep := servers.MCPServers[name]; !keep {
-				if _, already := disabled[name]; !already {
-					disabled[name] = cfg
-				}
-			}
-		}
+	next := map[string]any{}
+	order := make([]string, 0)
+	if servers != nil && servers.MCPServers != nil {
+		next = servers.MCPServers
+		order = sortedMapKeys(next)
 	}
-	if disabled == nil {
-		disabled = map[string]any{}
-	}
-	enabled := servers.MCPServers
+	return s.writeMCPSplit(next, map[string]any{}, order)
+}
+
+// WriteMCPCatalog replaces the full catalog (enabled + disabled maps).
+// Names may only appear in one map; enabled wins if duplicated.
+func (s *Store) WriteMCPCatalog(enabled, disabled map[string]any, order []string) error {
 	if enabled == nil {
 		enabled = map[string]any{}
 	}
-	// Keys present in the write payload leave the disabled set (re-enabled).
-	for name := range enabled {
-		delete(disabled, name)
-	}
-	data, err := agentsync.FormatMCPServersJSONC(enabled, disabled, order)
-	if err != nil {
-		return err
-	}
-	return s.writeOverlay(key, data)
-}
-
-// WriteMCPsContent writes a full JSONC body for mcp/servers.json (supports
-// // comments for disabled servers). Prefer this when the portal file editor
-// shows the raw overlay text.
-//
-// Safety: if the previous overlay had disabled servers that are missing from
-// both enabled and disabled sets in the new parse (parser loss / bad edit),
-// those previous disabled entries are merged back so disable never silently
-// hard-deletes config.
-func (s *Store) WriteMCPsContent(content []byte) error {
-	enabled, disabled, order, err := agentsync.ParseMCPServersJSONC(content)
-	if err != nil {
-		return fmt.Errorf("invalid MCP servers JSONC: %w", err)
-	}
 	if disabled == nil {
 		disabled = map[string]any{}
 	}
-	// Merge any previously disabled entries that vanished from the payload.
-	if prev, err := s.readEffective("presets/mcp/servers.json"); err == nil {
-		_, prevDisabled, _, _ := agentsync.ParseMCPServersJSONC(prev)
-		for name, cfg := range prevDisabled {
-			if _, inEn := enabled[name]; inEn {
-				continue
-			}
-			if _, inDis := disabled[name]; inDis {
-				continue
-			}
-			disabled[name] = cfg
-		}
+	for name := range enabled {
+		delete(disabled, name)
 	}
-	// Re-format so disabled always render as // comments consistently.
-	data, err := agentsync.FormatMCPServersJSONC(enabled, disabled, order)
-	if err != nil {
-		return err
+	if len(order) == 0 {
+		order = append(sortedMapKeys(enabled), sortedMapKeys(disabled)...)
 	}
-	return s.writeOverlay("presets/mcp/servers.json", data)
+	return s.writeMCPSplit(enabled, disabled, order)
 }
 
-// SetMCPEnabled enables or disables one MCP server in the JSONC overlay.
-// Disable comments the entry out (keeps config in file); enable uncomments it.
-// Entries are never removed from the overlay by this method.
-func (s *Store) SetMCPEnabled(name string, enabled bool) error {
-	key := "presets/mcp/servers.json"
-	data, err := s.readEffective(key)
+// WriteMCPsContent writes the single portal MCP source document.
+// Accepted shapes (pure JSON or JSONC):
+//
+//	{ "mcpServers": { ...all... }, "disabled": ["name"] }
+//	{ "mcpServers": { ...all... }, "disabledServers": { "name": {...} } }
+//	{ "mcpServers": { ...all enabled... } }  // full replace; nothing disabled
+//
+// Legacy // commented properties inside mcpServers are treated as disabled.
+// The document is authoritative: names not present are hard-deleted.
+func (s *Store) WriteMCPsContent(content []byte) error {
+	enabled, disabled, order, err := parseUnifiedMCPContent(content)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid MCP servers JSON: %w", err)
 	}
-	active, disabled, order, err := agentsync.ParseMCPServersJSONC(data)
+	return s.WriteMCPCatalog(enabled, disabled, order)
+}
+
+// SetMCPEnabled enables or disables one MCP server.
+// Disable moves the entry into servers.disabled.json; enable moves it back
+// into servers.json. Entries are never hard-deleted by this method.
+func (s *Store) SetMCPEnabled(name string, enabled bool) error {
+	active, disabled, order, err := s.loadMCPSplit()
 	if err != nil {
 		return err
 	}
@@ -399,29 +407,28 @@ func (s *Store) SetMCPEnabled(name string, enabled bool) error {
 		cfg, ok := active[name]
 		if !ok {
 			if _, already := disabled[name]; already {
-				return nil // already commented out — not deleted
+				return nil
 			}
 			return fmt.Errorf("mcp server %q not found", name)
 		}
 		disabled[name] = cfg
 		delete(active, name)
 	}
-	out, err := agentsync.FormatMCPServersJSONC(active, disabled, order)
-	if err != nil {
+	return s.writeMCPSplit(active, disabled, order)
+}
+
+// ResetMCPs removes the user overlays for enabled and disabled MCP files.
+func (s *Store) ResetMCPs() error {
+	if err := s.removeOverlay(agentsync.MCPEnabledPath); err != nil {
 		return err
 	}
-	return s.writeOverlay(key, out)
+	return s.removeOverlay(agentsync.MCPDisabledPath)
 }
 
-// ResetMCPs removes the user overlay for the MCP servers manifest.
-func (s *Store) ResetMCPs() error {
-	return s.removeOverlay("presets/mcp/servers.json")
-}
-
-// SetProviderEnabled enables or disables a provider adapter via toggles JSONC.
+// SetProviderEnabled enables or disables a provider adapter via disabled.json.
 func (s *Store) SetProviderEnabled(id string, enabled bool) error {
 	id = strings.ToLower(id)
-	return s.setToggle(func(disabledSkills, disabledProviders map[string]bool) {
+	return s.setDisabled(func(disabledSkills, disabledProviders map[string]bool) {
 		if enabled {
 			delete(disabledProviders, id)
 		} else {
@@ -446,28 +453,94 @@ func sourceLabel(overridden bool) string {
 	return "embedded"
 }
 
-// ReadRegistry returns the registry skills manifest.
+// ReadRegistry returns the registry skills manifest with disabled entries
+// from skills.disabled.json included for the portal list.
 func (s *Store) ReadRegistry() (*RegistrySkills, error) {
-	key := "presets/registry/skills.json"
-	data, err := s.readEffective(key)
+	enabled, disabled, err := s.loadRegistrySplit()
 	if err != nil {
 		return nil, err
 	}
-	var reg RegistrySkills
-	if err := agentsync.UnmarshalJSONC(data, &reg); err != nil {
-		return nil, fmt.Errorf("invalid registry skills JSON: %w", err)
-	}
-	return &reg, nil
+	overridden := s.isOverridden(agentsync.RegistryEnabledPath) ||
+		s.isOverridden(agentsync.RegistryDisabledPath)
+	items := buildRegistryItems(enabled, disabled)
+	return &RegistrySkills{
+		Skills:         enabled,
+		DisabledSkills: disabled,
+		Items:          items,
+		Overridden:     overridden,
+		Source:         sourceLabel(overridden),
+	}, nil
 }
 
-// WriteRegistry updates the registry skills manifest via overlay.
+// WriteRegistry updates the enabled registry skills via overlay.
+// Skills that were previously enabled but are missing from reg are moved
+// into skills.disabled.json (not hard-deleted). Skills re-listed leave the
+// disabled file.
 func (s *Store) WriteRegistry(reg *RegistrySkills) error {
-	data, err := json.MarshalIndent(reg, "", "  ")
+	prevEnabled, disabled, err := s.loadRegistrySplit()
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	return s.writeOverlay("presets/registry/skills.json", data)
+	disabledByName := registryByName(disabled)
+	next := reg.Skills
+	if next == nil {
+		next = []RegistrySkill{}
+	}
+	nextNames := map[string]bool{}
+	for _, sk := range next {
+		nextNames[sk.Name] = true
+		delete(disabledByName, sk.Name)
+	}
+	for _, sk := range prevEnabled {
+		if nextNames[sk.Name] {
+			continue
+		}
+		if _, already := disabledByName[sk.Name]; !already {
+			disabledByName[sk.Name] = sk
+		}
+	}
+	return s.writeRegistrySplit(next, registryValues(disabledByName))
+}
+
+// SetRegistrySkillEnabled moves a registry skill between skills.json and
+// skills.disabled.json by name.
+func (s *Store) SetRegistrySkillEnabled(name string, enabled bool) error {
+	active, disabled, err := s.loadRegistrySplit()
+	if err != nil {
+		return err
+	}
+	activeBy := registryByName(active)
+	disabledBy := registryByName(disabled)
+	if enabled {
+		sk, ok := disabledBy[name]
+		if !ok {
+			if _, already := activeBy[name]; already {
+				return nil
+			}
+			return fmt.Errorf("registry skill %q not found among disabled entries", name)
+		}
+		activeBy[name] = sk
+		delete(disabledBy, name)
+	} else {
+		sk, ok := activeBy[name]
+		if !ok {
+			if _, already := disabledBy[name]; already {
+				return nil
+			}
+			return fmt.Errorf("registry skill %q not found", name)
+		}
+		disabledBy[name] = sk
+		delete(activeBy, name)
+	}
+	return s.writeRegistrySplit(registryValues(activeBy), registryValues(disabledBy))
+}
+
+// ResetRegistry removes enabled and disabled registry overlays.
+func (s *Store) ResetRegistry() error {
+	if err := s.removeOverlay(agentsync.RegistryEnabledPath); err != nil {
+		return err
+	}
+	return s.removeOverlay(agentsync.RegistryDisabledPath)
 }
 
 // UserOverlay returns the current overlay entries.
@@ -508,24 +581,271 @@ func buildMCPItems(enabled, disabled map[string]any) []MCPServerItem {
 	return items
 }
 
-func (s *Store) readToggles() (agentsync.PortalToggles, error) {
-	data, err := s.readEffective(agentsync.PortalTogglesPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
-			return agentsync.PortalToggles{}, nil
+func sortedMapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// formatUnifiedMCPContent builds the single portal MCP source document.
+func formatUnifiedMCPContent(enabled, disabled map[string]any, order []string) ([]byte, error) {
+	if enabled == nil {
+		enabled = map[string]any{}
+	}
+	if disabled == nil {
+		disabled = map[string]any{}
+	}
+	all := make(map[string]any, len(enabled)+len(disabled))
+	seen := map[string]bool{}
+	orderedNames := make([]string, 0, len(enabled)+len(disabled))
+	for _, name := range order {
+		if cfg, ok := enabled[name]; ok {
+			all[name] = cfg
+			if !seen[name] {
+				orderedNames = append(orderedNames, name)
+				seen[name] = true
+			}
+			continue
 		}
-		// Missing optional file from embedded FS.
-		if strings.Contains(err.Error(), "file does not exist") ||
-			strings.Contains(err.Error(), "no such file") {
+		if cfg, ok := disabled[name]; ok {
+			all[name] = cfg
+			if !seen[name] {
+				orderedNames = append(orderedNames, name)
+				seen[name] = true
+			}
+		}
+	}
+	for _, name := range sortedMapKeys(enabled) {
+		if seen[name] {
+			continue
+		}
+		all[name] = enabled[name]
+		orderedNames = append(orderedNames, name)
+		seen[name] = true
+	}
+	for _, name := range sortedMapKeys(disabled) {
+		if seen[name] {
+			continue
+		}
+		all[name] = disabled[name]
+		orderedNames = append(orderedNames, name)
+		seen[name] = true
+	}
+
+	// Build ordered mcpServers object via intermediate JSON for stable key order.
+	type doc struct {
+		MCPServers map[string]any `json:"mcpServers"`
+		Disabled   []string       `json:"disabled,omitempty"`
+	}
+	// json.Marshal map is random order; rebuild with ordered keys by
+	// marshaling manually for mcpServers.
+	disabledNames := sortedMapKeys(disabled)
+	var b strings.Builder
+	b.WriteString("{\n  \"mcpServers\": {\n")
+	for i, name := range orderedNames {
+		raw, err := json.MarshalIndent(all[name], "    ", "  ")
+		if err != nil {
+			return nil, err
+		}
+		b.WriteString("    ")
+		key, _ := json.Marshal(name)
+		b.Write(key)
+		b.WriteString(": ")
+		b.Write(raw)
+		if i < len(orderedNames)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("  }")
+	if len(disabledNames) > 0 {
+		b.WriteString(",\n  \"disabled\": [\n")
+		for i, name := range disabledNames {
+			key, _ := json.Marshal(name)
+			b.WriteString("    ")
+			b.Write(key)
+			if i < len(disabledNames)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("  ]")
+	}
+	b.WriteString("\n}\n")
+	_ = doc{} // keep type for clarity of schema
+	return []byte(b.String()), nil
+}
+
+// parseUnifiedMCPContent parses the single portal MCP source document.
+func parseUnifiedMCPContent(data []byte) (enabled, disabled map[string]any, order []string, err error) {
+	// First recover // commented server props as disabled (legacy JSONC).
+	// Then parse the top-level object for disabled / disabledServers.
+	var top struct {
+		MCPServers      map[string]any `json:"mcpServers"`
+		Disabled        []string       `json:"disabled"`
+		DisabledServers map[string]any `json:"disabledServers"`
+	}
+	// Use JSONC so comments are stripped from structure parse, but also
+	// collect commented keys under mcpServers via ParseMCPServersJSONC.
+	activeFromJSONC, commented, order, err := agentsync.ParseMCPServersJSONC(data)
+	if err != nil {
+		// Fallback: allow documents that only use disabledServers without
+		// a classic mcpServers-only shape — try plain UnmarshalJSONC.
+		if uerr := agentsync.UnmarshalJSONC(data, &top); uerr != nil {
+			return nil, nil, nil, err
+		}
+	} else {
+		if uerr := agentsync.UnmarshalJSONC(data, &top); uerr != nil {
+			return nil, nil, nil, uerr
+		}
+		if top.MCPServers == nil {
+			top.MCPServers = activeFromJSONC
+		}
+	}
+	if top.MCPServers == nil {
+		top.MCPServers = map[string]any{}
+	}
+
+	// Catalog starts as every key under mcpServers + disabledServers + comments.
+	all := make(map[string]any, len(top.MCPServers)+len(top.DisabledServers)+len(commented))
+	for name, cfg := range top.MCPServers {
+		all[name] = cfg
+	}
+	for name, cfg := range top.DisabledServers {
+		if _, ok := all[name]; !ok {
+			all[name] = cfg
+		}
+	}
+	for name, cfg := range commented {
+		if _, ok := all[name]; !ok {
+			all[name] = cfg
+		}
+	}
+
+	disabledSet := map[string]bool{}
+	for _, name := range top.Disabled {
+		disabledSet[name] = true
+	}
+	for name := range top.DisabledServers {
+		disabledSet[name] = true
+	}
+	for name := range commented {
+		// Only mark commented as disabled if not actively present in mcpServers.
+		if _, active := top.MCPServers[name]; !active {
+			disabledSet[name] = true
+		}
+	}
+
+	enabled = map[string]any{}
+	disabled = map[string]any{}
+	if len(order) == 0 {
+		order = sortedMapKeys(all)
+	} else {
+		// Ensure order covers all keys.
+		seen := map[string]bool{}
+		for _, n := range order {
+			seen[n] = true
+		}
+		for _, n := range sortedMapKeys(all) {
+			if !seen[n] {
+				order = append(order, n)
+			}
+		}
+	}
+	for name, cfg := range all {
+		if disabledSet[name] {
+			disabled[name] = cfg
+		} else {
+			enabled[name] = cfg
+		}
+	}
+	// Disabled names listed but missing config → error for clarity.
+	for name := range disabledSet {
+		if _, ok := all[name]; !ok {
+			return nil, nil, nil, fmt.Errorf("disabled server %q has no config in mcpServers", name)
+		}
+	}
+	return enabled, disabled, order, nil
+}
+
+func buildRegistryItems(enabled, disabled []RegistrySkill) []RegistrySkillItem {
+	items := make([]RegistrySkillItem, 0, len(enabled)+len(disabled))
+	for _, sk := range enabled {
+		items = append(items, RegistrySkillItem{RegistrySkill: sk, Enabled: true})
+	}
+	enabledNames := map[string]bool{}
+	for _, sk := range enabled {
+		enabledNames[sk.Name] = true
+	}
+	for _, sk := range disabled {
+		if enabledNames[sk.Name] {
+			continue
+		}
+		items = append(items, RegistrySkillItem{RegistrySkill: sk, Enabled: false})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return items
+}
+
+func registryByName(skills []RegistrySkill) map[string]RegistrySkill {
+	out := map[string]RegistrySkill{}
+	for _, sk := range skills {
+		if sk.Name == "" {
+			continue
+		}
+		out[sk.Name] = sk
+	}
+	return out
+}
+
+func registryValues(m map[string]RegistrySkill) []RegistrySkill {
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]RegistrySkill, 0, len(names))
+	for _, n := range names {
+		out = append(out, m[n])
+	}
+	return out
+}
+
+func (s *Store) readToggles() (agentsync.PortalToggles, error) {
+	// Prefer disabled.json; fall back to legacy toggles.jsonc.
+	data, err := s.readEffective(agentsync.PortalDisabledPath)
+	if err == nil {
+		return agentsync.ParsePortalDisabled(data)
+	}
+	if !isMissingFile(err) {
+		return agentsync.PortalToggles{}, err
+	}
+	legacy, err := s.readEffective(agentsync.PortalTogglesPath)
+	if err != nil {
+		if isMissingFile(err) {
 			return agentsync.PortalToggles{}, nil
 		}
 		return agentsync.PortalToggles{}, err
 	}
-	return agentsync.ParsePortalToggles(data)
+	return agentsync.ParsePortalToggles(legacy)
 }
 
-// setToggle mutates disabled skill/provider maps and rewrites the toggles overlay.
-func (s *Store) setToggle(mutate func(disabledSkills, disabledProviders map[string]bool)) error {
+func isMissingFile(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "file does not exist") || strings.Contains(msg, "no such file")
+}
+
+// setDisabled mutates disabled skill/provider maps and rewrites disabled.json.
+func (s *Store) setDisabled(mutate func(disabledSkills, disabledProviders map[string]bool)) error {
 	t, err := s.readToggles()
 	if err != nil {
 		return err
@@ -544,66 +864,144 @@ func (s *Store) setToggle(mutate func(disabledSkills, disabledProviders map[stri
 	}
 	mutate(disabledSkills, disabledProviders)
 
-	knownSkills, err := s.knownSkillIDs()
+	data, err := agentsync.FormatPortalDisabled(disabledSkills, disabledProviders)
 	if err != nil {
 		return err
 	}
-	knownProviders := s.knownProviderIDs()
-	data, err := agentsync.FormatPortalToggles(knownSkills, knownProviders, disabledSkills, disabledProviders)
-	if err != nil {
-		return err
-	}
-	return s.writeOverlay(agentsync.PortalTogglesPath, data)
+	// Drop legacy toggles overlay so the new file is the single source of truth.
+	_ = s.removeOverlay(agentsync.PortalTogglesPath)
+	return s.writeOverlay(agentsync.PortalDisabledPath, data)
 }
 
-func (s *Store) knownSkillIDs() ([]string, error) {
-	skills, err := s.ListSkillsWithoutToggle()
+func (s *Store) readMCPDisabled() (map[string]any, error) {
+	data, err := s.readEffective(agentsync.MCPDisabledPath)
 	if err != nil {
+		if isMissingFile(err) {
+			return map[string]any{}, nil
+		}
 		return nil, err
 	}
-	ids := make([]string, 0, len(skills))
-	for _, sk := range skills {
-		ids = append(ids, sk.ID)
-	}
-	return ids, nil
+	return agentsync.ParseMCPDisabledJSON(data)
 }
 
-// ListSkillsWithoutToggle enumerates skill ids without loading toggles
-// (avoids recursion from setToggle → knownSkillIDs → ListSkills).
-func (s *Store) ListSkillsWithoutToggle() ([]Skill, error) {
-	seen := map[string]bool{}
-	var skills []Skill
-	entries, err := fs.ReadDir(s.presets, "presets/skills")
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read embedded skills: %w", err)
+func (s *Store) loadMCPSplit() (enabled, disabled map[string]any, order []string, err error) {
+	data, err := s.readEffective(agentsync.MCPEnabledPath)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
+	enabled, legacyDisabled, order, err := agentsync.ParseMCPServersJSONC(data)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	disabled, err = s.readMCPDisabled()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for name, cfg := range legacyDisabled {
+		if _, ok := enabled[name]; ok {
 			continue
 		}
-		id := e.Name()
-		if id == "_shared" || strings.HasPrefix(id, ".") {
-			continue
+		if _, ok := disabled[name]; !ok {
+			disabled[name] = cfg
 		}
-		seen[id] = true
-		skills = append(skills, Skill{ID: id, Name: id})
 	}
-	for _, rel := range s.config.EntriesUnder("presets/skills") {
-		parts := strings.SplitN(rel, "/", 2)
-		id := parts[0]
-		if seen[id] || id == "_shared" || strings.HasPrefix(id, ".") {
-			continue
-		}
-		seen[id] = true
-		skills = append(skills, Skill{ID: id, Name: id})
-	}
-	sort.Slice(skills, func(i, j int) bool { return skills[i].ID < skills[j].ID })
-	return skills, nil
+	return enabled, disabled, order, nil
 }
 
-func (s *Store) knownProviderIDs() []string {
-	// Keep in sync with agentsync adapter registry ids.
-	return []string{
-		"claude", "opencode", "grok", "kimi", "kiro", "qwen", "gemini", "codex", "cline", "zcode",
+func (s *Store) writeMCPSplit(enabled, disabled map[string]any, order []string) error {
+	if enabled == nil {
+		enabled = map[string]any{}
 	}
+	if disabled == nil {
+		disabled = map[string]any{}
+	}
+	// Enabled keys must not remain in the disabled file.
+	for name := range enabled {
+		delete(disabled, name)
+	}
+	enData, err := agentsync.FormatMCPServersJSON(enabled, order)
+	if err != nil {
+		return err
+	}
+	if err := s.writeOverlay(agentsync.MCPEnabledPath, enData); err != nil {
+		return err
+	}
+	if len(disabled) == 0 {
+		return s.removeOverlay(agentsync.MCPDisabledPath)
+	}
+	disData, err := agentsync.FormatMCPDisabledJSON(disabled)
+	if err != nil {
+		return err
+	}
+	return s.writeOverlay(agentsync.MCPDisabledPath, disData)
+}
+
+func (s *Store) loadRegistrySplit() (enabled, disabled []RegistrySkill, err error) {
+	data, err := s.readEffective(agentsync.RegistryEnabledPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	var reg RegistrySkills
+	if err := agentsync.UnmarshalJSONC(data, &reg); err != nil {
+		return nil, nil, fmt.Errorf("invalid registry skills JSON: %w", err)
+	}
+	enabled = reg.Skills
+	if enabled == nil {
+		enabled = []RegistrySkill{}
+	}
+
+	disData, err := s.readEffective(agentsync.RegistryDisabledPath)
+	if err != nil {
+		if isMissingFile(err) {
+			return enabled, []RegistrySkill{}, nil
+		}
+		return nil, nil, err
+	}
+	var dis RegistrySkills
+	if err := agentsync.UnmarshalJSONC(disData, &dis); err != nil {
+		return nil, nil, fmt.Errorf("invalid registry disabled JSON: %w", err)
+	}
+	disabled = dis.Skills
+	if disabled == nil {
+		disabled = []RegistrySkill{}
+	}
+	// Enabled names win if present in both.
+	enNames := map[string]bool{}
+	for _, sk := range enabled {
+		enNames[sk.Name] = true
+	}
+	filtered := disabled[:0]
+	for _, sk := range disabled {
+		if enNames[sk.Name] {
+			continue
+		}
+		filtered = append(filtered, sk)
+	}
+	return enabled, filtered, nil
+}
+
+func (s *Store) writeRegistrySplit(enabled, disabled []RegistrySkill) error {
+	if enabled == nil {
+		enabled = []RegistrySkill{}
+	}
+	if disabled == nil {
+		disabled = []RegistrySkill{}
+	}
+	enData, err := json.MarshalIndent(RegistrySkills{Skills: enabled}, "", "  ")
+	if err != nil {
+		return err
+	}
+	enData = append(enData, '\n')
+	if err := s.writeOverlay(agentsync.RegistryEnabledPath, enData); err != nil {
+		return err
+	}
+	if len(disabled) == 0 {
+		return s.removeOverlay(agentsync.RegistryDisabledPath)
+	}
+	disData, err := json.MarshalIndent(RegistrySkills{Skills: disabled}, "", "  ")
+	if err != nil {
+		return err
+	}
+	disData = append(disData, '\n')
+	return s.writeOverlay(agentsync.RegistryDisabledPath, disData)
 }

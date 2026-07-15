@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { PhFloppyDisk, PhArrowCounterClockwise } from "@phosphor-icons/vue";
-import { api, type MCPManifest, type MCPServers, type MCPServerItem } from "../api";
+import { api, type MCPManifest, type MCPServerItem } from "../api";
 import AppAlert from "../components/AppAlert.vue";
 import CodeEditor from "../components/CodeEditor.vue";
 import UiButton from "../components/UiButton.vue";
 import { useFlashMessage } from "../composables/useFlashMessage";
 
 const manifest = ref<MCPManifest | null>(null);
-const preset = ref<MCPServers | null>(null);
-/** Full JSONC file text — disabled servers appear as // comments, never deleted. */
+/** Single catalog source: all servers + disabled name list. */
 const fileRaw = ref("");
-const tab = ref<"list" | "file" | "preset">("list");
+const tab = ref<"list" | "edit">("list");
 const loading = ref(true);
 const saving = ref(false);
 const resetting = ref(false);
@@ -20,8 +19,6 @@ const toggling = ref<Record<string, boolean>>({});
 const { message: success, flash, clear: clearSuccess } = useFlashMessage();
 
 const isOverridden = computed(() => manifest.value?.overridden ?? false);
-
-const presetRaw = computed(() => JSON.stringify(preset.value?.mcpServers ?? {}, null, 2));
 
 const items = computed<MCPServerItem[]>(() => {
   if (manifest.value?.items?.length) {
@@ -38,9 +35,30 @@ const items = computed<MCPServerItem[]>(() => {
 const enabledCount = computed(() => items.value.filter((i) => i.enabled).length);
 const disabledCount = computed(() => items.value.filter((i) => !i.enabled).length);
 
+const isValidJSON = computed(() => {
+  try {
+    JSON.parse(fileRaw.value);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 function applyManifest(m: MCPManifest) {
   manifest.value = m;
-  fileRaw.value = m.content || JSON.stringify({ mcpServers: m.mcpServers ?? {} }, null, 2);
+  fileRaw.value =
+    m.content ||
+    JSON.stringify(
+      {
+        mcpServers: {
+          ...(m.mcpServers ?? {}),
+          ...(m.disabledServers ?? {}),
+        },
+        disabled: Object.keys(m.disabledServers ?? {}).sort(),
+      },
+      null,
+      2,
+    );
 }
 
 async function load() {
@@ -48,9 +66,7 @@ async function load() {
   error.value = "";
   clearSuccess();
   try {
-    const [m, p] = await Promise.all([api.getMCPs(), api.getMCPPreset()]);
-    applyManifest(m);
-    preset.value = p;
+    applyManifest(await api.getMCPs());
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
@@ -59,13 +75,16 @@ async function load() {
 }
 
 async function save() {
+  if (!isValidJSON.value) {
+    error.value = "Invalid JSON";
+    return;
+  }
   saving.value = true;
   error.value = "";
   clearSuccess();
   try {
-    // Save full JSONC so // commented (disabled) servers stay in the file.
     applyManifest(await api.updateMCPsContent(fileRaw.value));
-    flash("Saved — disabled servers stay as // comments in the file");
+    flash("Saved catalog");
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
@@ -79,7 +98,7 @@ async function reset() {
   clearSuccess();
   try {
     applyManifest(await api.resetMCPs());
-    flash("Reset to preset");
+    flash("Reset to embedded default");
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
@@ -93,12 +112,23 @@ async function toggleEnabled(item: MCPServerItem, next: boolean) {
   clearSuccess();
   try {
     applyManifest(await api.setMCPEnabled(item.name, next));
-    flash(next ? `Enabled ${item.name}` : `Disabled ${item.name} — still in file as // comment, not deleted`);
+    flash(next ? `Enabled ${item.name}` : `Disabled ${item.name}`);
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
     toggling.value = { ...toggling.value, [item.name]: false };
   }
+}
+
+function summarize(config: unknown): string {
+  if (!config || typeof config !== "object") return "";
+  const c = config as Record<string, unknown>;
+  if (typeof c.url === "string") return c.url;
+  if (typeof c.command === "string") {
+    const args = Array.isArray(c.args) ? c.args.map(String).join(" ") : "";
+    return args ? `${c.command} ${args}` : c.command;
+  }
+  return JSON.stringify(config);
 }
 
 onMounted(load);
@@ -109,8 +139,11 @@ onMounted(load);
     <header class="page-header fade-in-up">
       <h1 class="page-title">MCP Servers</h1>
       <p class="page-subtitle">
-        Disable = comment out in the preset file (not delete). Portal always lists every server; disabled ones show as
-        <strong class="font-medium text-fg-secondary">Disabled</strong>.
+        {{
+          loading
+            ? "Loading MCP catalog..."
+            : `${items.length} servers · ${enabledCount} enabled · ${disabledCount} disabled. One catalog for edit; disable keeps config (sync only ships enabled).`
+        }}
       </p>
     </header>
 
@@ -128,25 +161,21 @@ onMounted(load);
           <button
             type="button"
             class="rounded-[5px] px-3 py-1.5 text-[13px] font-semibold transition duration-160 ease-[var(--ease-out-soft)]"
-            :class="tab === 'file' ? 'bg-surface text-fg shadow-sm' : 'text-fg-secondary hover:text-fg'"
-            @click="tab = 'file'"
+            :class="tab === 'edit' ? 'bg-surface text-fg shadow-sm' : 'text-fg-secondary hover:text-fg'"
+            @click="tab = 'edit'"
           >
-            File (JSONC)
-          </button>
-          <button
-            type="button"
-            class="rounded-[5px] px-3 py-1.5 text-[13px] font-semibold transition duration-160 ease-[var(--ease-out-soft)]"
-            :class="tab === 'preset' ? 'bg-surface text-fg shadow-sm' : 'text-fg-secondary hover:text-fg'"
-            @click="tab = 'preset'"
-          >
-            Embedded preset
+            Edit JSON
           </button>
         </div>
         <div class="flex-1" />
         <span v-if="!loading" class="status-pill status-pill--ok">{{ enabledCount }} enabled</span>
         <span v-if="!loading && disabledCount" class="status-pill status-pill--muted">{{ disabledCount }} disabled</span>
-        <span v-if="isOverridden" class="status-pill status-pill--warn">Overridden</span>
-        <span v-else class="status-pill status-pill--ok">Embedded</span>
+        <span v-if="isOverridden" class="status-pill status-pill--warn">Custom</span>
+        <span v-else class="status-pill status-pill--ok">Default</span>
+        <UiButton variant="warning" size="sm" :disabled="!isOverridden || loading" :loading="resetting" @click="reset">
+          <PhArrowCounterClockwise :size="14" weight="bold" />
+          Reset
+        </UiButton>
       </div>
 
       <div v-if="error || success" class="space-y-2 px-4 pt-3">
@@ -159,21 +188,22 @@ onMounted(load);
       </div>
 
       <template v-else>
-        <div v-if="tab === 'list'" class="p-4">
-          <div v-if="items.length === 0" class="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center">
-            <p class="m-0 text-[14px] text-fg-muted">No MCP servers defined.</p>
+        <div v-if="tab === 'list'">
+          <div v-if="items.length === 0" class="px-5 py-10 text-center">
+            <p class="m-0 mb-1.5 text-[15px] font-semibold text-fg">No MCP servers</p>
+            <p class="m-0 text-[13px] text-fg-muted">Add servers in the Edit JSON tab, then save.</p>
           </div>
-          <ul v-else class="m-0 list-none space-y-2 p-0">
+          <ul v-else class="m-0 list-none divide-y divide-border p-0">
             <li
               v-for="item in items"
               :key="item.name"
-              class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-elevated px-4 py-3"
-              :class="item.enabled ? '' : 'opacity-75'"
+              class="flex flex-wrap items-center gap-3 px-4 py-3 transition duration-160 ease-[var(--ease-out-soft)] hover:bg-elevated"
+              :class="item.enabled ? '' : 'opacity-60'"
             >
               <div class="min-w-0 flex-1">
                 <div class="font-mono text-[14px] font-semibold text-fg">{{ item.name }}</div>
                 <div class="mt-0.5 truncate font-mono text-[11.5px] text-fg-muted">
-                  {{ JSON.stringify(item.config) }}
+                  {{ summarize(item.config) }}
                 </div>
               </div>
               <span :class="['status-pill', item.enabled ? 'status-pill--ok' : 'status-pill--muted']">
@@ -196,30 +226,22 @@ onMounted(load);
           </ul>
         </div>
 
-        <div v-else-if="tab === 'file'">
+        <div v-else>
           <div class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-            <UiButton variant="primary" :loading="saving" @click="save">
+            <UiButton variant="primary" :loading="saving" :disabled="!isValidJSON" @click="save">
               <PhFloppyDisk :size="16" weight="bold" />
-              Save file
+              Save catalog
             </UiButton>
-            <UiButton variant="warning" :disabled="!isOverridden" :loading="resetting" @click="reset">
-              <PhArrowCounterClockwise :size="16" weight="bold" />
-              Reset to preset
-            </UiButton>
+            <span v-if="!isValidJSON" class="text-[12.5px] text-negative">Invalid JSON</span>
             <div class="flex-1" />
             <span class="text-[12.5px] text-fg-muted">
-              Disabled servers are <code class="font-mono text-[12px]">// commented</code> below — not removed.
+              Shape:
+              <code class="font-mono text-[12px]">mcpServers</code>
+              + optional
+              <code class="font-mono text-[12px]">disabled[]</code>
             </span>
           </div>
           <CodeEditor v-model="fileRaw" lang="json" />
-        </div>
-        <div v-else>
-          <div class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-            <span class="status-pill status-pill--muted">Read-only embedded preset</span>
-            <div class="flex-1" />
-            <span class="text-[12.5px] text-fg-muted">Overrides live in the File tab (JSONC overlay).</span>
-          </div>
-          <CodeEditor :model-value="presetRaw" lang="json" readonly />
         </div>
       </template>
     </div>

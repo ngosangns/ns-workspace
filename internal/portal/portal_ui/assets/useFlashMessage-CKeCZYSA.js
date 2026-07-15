@@ -1,0 +1,1 @@
+import{A as s,C as o}from"./vue-DZSmG5yJ.js";function i(n=3200){const u=o("");let e=null;function l(){u.value="",e&&(clearTimeout(e),e=null)}function t(a){l(),u.value=a,e=setTimeout(()=>{u.value="",e=null},n)}return s(l),{message:u,flash:t,clear:l}}export{i as u};

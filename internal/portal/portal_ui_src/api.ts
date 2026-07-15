@@ -3,6 +3,7 @@ const API_BASE = "/api";
 export interface Skill {
   id: string;
   name: string;
+  description?: string;
   source: string;
   overridden: boolean;
   enabled: boolean;
@@ -32,18 +33,30 @@ export interface MCPManifest extends MCPServers {
   overridden: boolean;
   disabledServers?: Record<string, any>;
   items?: MCPServerItem[];
-  /** Full JSONC file (live keys + // commented disabled servers). */
+  /**
+   * Single catalog document:
+   * `{ "mcpServers": { ...all... }, "disabled": ["name"] }`.
+   */
   content?: string;
 }
 
 export interface RegistrySkill {
   name: string;
-  source: string;
+  source?: string;
   skill: string;
+  installer?: string;
+}
+
+export interface RegistrySkillItem extends RegistrySkill {
+  enabled: boolean;
 }
 
 export interface RegistrySkills {
   skills: RegistrySkill[];
+  disabledSkills?: RegistrySkill[];
+  items?: RegistrySkillItem[];
+  overridden?: boolean;
+  source?: string;
 }
 
 export interface Adapter {
@@ -141,8 +154,14 @@ export const api = {
   updateRegistry: (registry: RegistrySkills) =>
     fetchJSON<RegistrySkills>("/registry", {
       method: "PUT",
-      body: JSON.stringify(registry),
+      body: JSON.stringify({ skills: registry.skills }),
     }),
+  setRegistrySkillEnabled: (name: string, enabled: boolean) =>
+    fetchJSON<RegistrySkills>(`/registry/${encodeURIComponent(name)}/enabled`, {
+      method: "POST",
+      body: JSON.stringify({ enabled } satisfies EnableRequest),
+    }),
+  resetRegistry: () => fetchJSON<RegistrySkills>("/registry", { method: "DELETE" }),
 
   getAdapters: () => fetchJSON<Adapter[]>("/adapters"),
   setAdapterEnabled: (id: string, enabled: boolean) =>

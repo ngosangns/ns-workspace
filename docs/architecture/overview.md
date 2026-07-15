@@ -29,7 +29,7 @@ compliance: current-state
 - Lệnh `update` rewrite artifact do `internal/agentsync` quản lý từ preset hiện tại. File, tree và JSON key managed được backup trước khi ghi; entry hoặc key đã bị xóa khỏi preset sẽ không được giữ lại trong output hiện tại.
 - Package `internal/preview` scan docs, parse metadata (YAML frontmatter OKF + `## Meta` prose), dựng graph, phục vụ API cho `search`/`graph`, xuất static HTML (`export`), chạy `preview` bằng Quartz digital garden, và query LSP Code Graph. Package `internal/kbmcp` cung cấp command-line truy cập `docs/` qua `Knowledge` façade của preview; mỗi lệnh chạy một lần và trả JSON. Package `internal/graphquery` sở hữu registry/setup/cache LSP cho Code Graph, chạy CLI `lsp`, và được `graph --query` dùng lại khi cần chuẩn bị language server; `graph --no-ensure-lsp` bỏ qua bước cài tự động.
 - Lệnh `preview` dùng Quartz để build và serve docs; không còn custom frontend preview SPA. Portal frontend dùng TypeScript source trong `internal/portal/portal_ui_src/`, build ra static assets trong `internal/portal/portal_ui/`, gồm SPA `index.html` duy nhất.
-- Preset agent instruction trong `presets/agents/AGENTS.md` nhận trigger skill dạng `//<tag>` cho pipeline research, search docs, init knowledge base, plan, execution, fix, cleanup audit, update-docs và commit. Trigger riêng `/s` gọi skill `spawn-opencode` để spawn OpenCode process như sub-agent.
+- Preset agent instruction trong `presets/agents/AGENTS.md` nhận trigger skill dạng `//<tag>` cho pipeline research, search docs, init knowledge base, plan, execution, fix, cleanup audit, update-docs và commit (`//c` → registry skill `git-commit`). Trigger riêng `/s` gọi skill `spawn-opencode` để spawn OpenCode process như sub-agent.
 
 ## Quan Hệ
 

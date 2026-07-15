@@ -21,11 +21,11 @@ type Options struct {
 	NoMCP      bool
 	NoRegistry bool
 	ToolFilter map[string]bool
-	// DisabledProviders is filled from presets/portal/toggles.jsonc during
+	// DisabledProviders is filled from presets/portal/disabled.json during
 	// context setup. Keys are lower-case adapter ids. When set, selected()
 	// returns false even if --tools would otherwise include the adapter.
 	DisabledProviders map[string]bool
-	// DisabledSkills is filled from presets/portal/toggles.jsonc. Top-level
+	// DisabledSkills is filled from presets/portal/disabled.json. Top-level
 	// skill directory names that should be skipped by InstallPresetTree.
 	DisabledSkills map[string]bool
 }
@@ -53,6 +53,13 @@ type MCPManifest struct {
 type SettingsManifest struct {
 	Hooks map[string]any `json:"hooks"`
 }
+
+// RegistryEnabledPath is the enabled registry skills preset.
+const RegistryEnabledPath = "presets/registry/skills.json"
+
+// RegistryDisabledPath is the portal-disabled registry skills overlay.
+// Same shape as the enabled file: { "skills": [ ... ] }.
+const RegistryDisabledPath = "presets/registry/skills.disabled.json"
 
 // RegistryManifest models `presets/registry/skills.json` — third-party
 // skills installed during update/registry. Default installer is

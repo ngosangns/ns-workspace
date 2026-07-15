@@ -81,11 +81,12 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 			return manifest, err
 		}
 	}
-	data, err := readPresetFile(ctx, "presets/mcp/servers.json")
+	data, err := readPresetFile(ctx, MCPEnabledPath)
 	if err != nil {
 		return manifest, err
 	}
-	// Honor JSONC (// comments for portal-disabled servers).
+	// Enabled file may still be legacy JSONC with // commented disabled
+	// servers; UnmarshalJSONC strips comments so only live keys remain.
 	if err := UnmarshalJSONC(data, &manifest); err != nil {
 		return manifest, err
 	}

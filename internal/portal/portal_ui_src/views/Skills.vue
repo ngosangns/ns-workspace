@@ -44,7 +44,9 @@ async function toggleEnabled(skill: Skill, next: boolean) {
   error.value = "";
   try {
     const updated = await api.setSkillEnabled(skill.id, next);
-    skills.value = skills.value.map((s) => (s.id === skill.id ? { ...s, enabled: updated.enabled } : s));
+    skills.value = skills.value.map((s) =>
+      s.id === skill.id ? { ...s, enabled: updated.enabled, description: updated.description ?? s.description } : s,
+    );
   } catch (e: any) {
     error.value = e.message || String(e);
   } finally {
@@ -61,6 +63,7 @@ async function open(skill: Skill) {
   try {
     const s = await api.getSkill(skill.id);
     content.value = s.content || "";
+    selected.value = { ...skill, ...s };
   } catch (e: any) {
     dialogError.value = e.message || String(e);
   } finally {
@@ -75,8 +78,10 @@ function closeDialog() {
   dialogError.value = "";
 }
 
-function preview(skill: Skill) {
-  return skill.content?.slice(0, 140).replace(/\s+/g, " ").trim() || "No preview available.";
+function description(skill: Skill): string {
+  const d = skill.description?.trim();
+  if (d) return d;
+  return "No description in skill frontmatter.";
 }
 
 onMounted(load);
@@ -90,16 +95,18 @@ onMounted(load);
         {{
           loading
             ? "Loading skills..."
-            : `${skills.length} skills · ${skills.filter((s) => s.enabled).length} enabled · ${skills.filter((s) => !s.enabled).length} disabled. Disable comments them out in toggles — skills are not deleted.`
+            : `${skills.length} skills · ${skills.filter((s) => s.enabled).length} enabled · ${skills.filter((s) => !s.enabled).length} disabled. Disable keeps skills listed; they are skipped during sync.`
         }}
       </p>
     </header>
 
     <AppAlert v-if="error" kind="error">{{ error }}</AppAlert>
 
-    <div v-else-if="loading" class="fade-in-up is-visible" aria-busy="true" aria-label="Loading skills">
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="n in 6" :key="n" class="skeleton h-[168px]" />
+    <div v-else-if="loading" class="surface overflow-hidden fade-in-up is-visible" aria-busy="true" aria-label="Loading skills">
+      <div class="space-y-0 divide-y divide-border p-0">
+        <div v-for="n in 6" :key="n" class="px-4 py-3">
+          <div class="skeleton h-14 rounded-md" />
+        </div>
       </div>
     </div>
 
@@ -111,56 +118,54 @@ onMounted(load);
       <p class="m-0 text-[13px] text-fg-muted">Sync or install skills to see them listed here.</p>
     </div>
 
-    <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <div
-        v-for="(skill, index) in skills"
-        :key="skill.id"
-        class="surface flex min-h-[168px] w-full flex-col p-4 transition duration-160 ease-[var(--ease-out-soft)] hover:border-border-strong hover:bg-elevated fade-in-up"
-        :class="skill.enabled ? '' : 'opacity-60'"
-        :style="{ transitionDelay: `${Math.min(index, 8) * 30}ms` }"
-      >
-        <div class="mb-2.5 flex items-start justify-between gap-3">
-          <button type="button" class="min-w-0 text-left" @click="open(skill)">
-            <div class="text-[15px] font-semibold leading-snug tracking-tight text-fg">{{ skill.name }}</div>
+    <div v-else class="surface overflow-hidden fade-in-up">
+      <ul class="m-0 list-none divide-y divide-border p-0">
+        <li
+          v-for="skill in skills"
+          :key="skill.id"
+          class="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3 transition duration-160 ease-[var(--ease-out-soft)] hover:bg-elevated"
+          :class="skill.enabled ? '' : 'opacity-60'"
+        >
+          <button type="button" class="min-w-0 flex-1 text-left" @click="open(skill)">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-[14px] font-semibold tracking-tight text-fg">{{ skill.name }}</span>
+              <span v-if="skill.name !== skill.id" class="font-mono text-[11.5px] text-fg-muted">{{ skill.id }}</span>
+            </div>
+            <p class="m-0 mt-1 line-clamp-2 text-[13px] leading-normal text-fg-secondary">
+              {{ description(skill) }}
+            </p>
+            <div class="mt-1.5 font-mono text-[11.5px] text-fg-muted">{{ skill.source }}</div>
           </button>
-          <label class="flex shrink-0 items-center gap-2" @click.stop>
-            <span class="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
-              {{ skill.enabled ? "On" : "Off" }}
-            </span>
-            <input
-              type="checkbox"
-              class="h-4 w-4 accent-[var(--color-accent)]"
-              :checked="skill.enabled"
-              :disabled="toggling[skill.id]"
-              :aria-label="`Enable skill ${skill.name}`"
-              @change="toggleEnabled(skill, ($event.target as HTMLInputElement).checked)"
-            />
-          </label>
-        </div>
-        <button type="button" class="line-clamp-3 flex-1 text-left text-[13px] leading-normal text-fg-secondary" @click="open(skill)">
-          {{ preview(skill) }}
-        </button>
-        <div class="mt-3.5 flex items-center justify-between gap-2 border-t border-border pt-3">
-          <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11.5px] text-fg-muted">
-            {{ skill.source }}
-          </span>
-          <div class="flex shrink-0 items-center gap-1">
+          <div class="flex shrink-0 flex-wrap items-center gap-2 self-center">
             <span :class="['status-pill', skill.enabled ? 'status-pill--ok' : 'status-pill--muted']">
               {{ skill.enabled ? "Enabled" : "Disabled" }}
             </span>
             <span :class="['status-pill', skill.overridden ? 'status-pill--accent' : 'status-pill--muted']">
-              {{ skill.overridden ? "Overridden" : "Embedded" }}
+              {{ skill.overridden ? "Custom" : "Default" }}
             </span>
-            <UiButton v-if="skill.overridden" size="sm" variant="danger" @click.stop="reset(skill.id)">
+            <UiButton v-if="skill.overridden" size="sm" variant="danger" @click="reset(skill.id)">
               <PhArrowCounterClockwise :size="14" weight="bold" />
               Reset
             </UiButton>
+            <label class="flex items-center gap-2" @click.stop>
+              <span class="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                {{ skill.enabled ? "On" : "Off" }}
+              </span>
+              <input
+                type="checkbox"
+                class="h-4 w-4 accent-[var(--color-accent)]"
+                :checked="skill.enabled"
+                :disabled="toggling[skill.id]"
+                :aria-label="`Enable skill ${skill.name}`"
+                @change="toggleEnabled(skill, ($event.target as HTMLInputElement).checked)"
+              />
+            </label>
           </div>
-        </div>
-      </div>
+        </li>
+      </ul>
     </div>
 
-    <UiDialog :open="dialog" :title="selected?.name || 'Skill'" :subtitle="selected?.source" @close="closeDialog">
+    <UiDialog :open="dialog" :title="selected?.name || 'Skill'" :subtitle="selected?.description || selected?.source" @close="closeDialog">
       <AppAlert v-if="dialogError" kind="error">{{ dialogError }}</AppAlert>
       <div v-else-if="dialogLoading" aria-busy="true">
         <div class="skeleton h-[420px]" />
