@@ -1,10 +1,10 @@
 import { defineConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
+import solid from "vite-plugin-solid";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss()],
+  plugins: [solid(), tailwindcss()],
   base: "/",
   root: "internal/portal/portal_ui_src",
   publicDir: "public",
@@ -20,14 +20,11 @@ export default defineConfig({
             if (id.includes("@codemirror") || id.includes("/codemirror/")) {
               return "codemirror";
             }
-            if (id.includes("vue") || id.includes("vue-router")) {
-              return "vue";
+            if (id.includes("solid-js") || id.includes("@solidjs")) {
+              return "solid";
             }
             if (id.includes("@fontsource")) {
               return "fonts";
-            }
-            if (id.includes("@phosphor-icons")) {
-              return "icons";
             }
           }
         },

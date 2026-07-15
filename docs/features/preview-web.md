@@ -1,9 +1,9 @@
 ---
 type: feature
 title: "Preview Web"
-description: "Lệnh `preview` dùng Quartz để build và serve docs dưới dạng digital garden local."
+description: "Lệnh `preview` serve SolidJS SPA local để đọc docs, search hybrid và graph qua PreviewHandler."
 tags: ["feature", "preview-web"]
-timestamp: 2026-06-23T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -13,15 +13,18 @@ compliance: current-state
 ## Meta
 
 - **Status**: active
-- **Description**: Lệnh `preview` dùng Quartz để build và serve docs dưới dạng digital garden local.
+- **Description**: Lệnh `preview` serve SolidJS SPA local để đọc docs, search hybrid và graph qua PreviewHandler.
 - **Compliance**: current-state
 - **Links**: [Chỉ mục](../_index.md), [Module preview](../modules/preview.md), [Kiến trúc tổng quan](../architecture/overview.md)
 
 ## Tổng Quan
 
-Lệnh `preview` chạy một Quartz dev server local để đọc thư mục `docs/` của project. Quartz biến Markdown content thành một website đầy đủ với search, graph/backlinks và routing nội bộ.
+Lệnh `preview` chạy HTTP server local (Go) với:
 
-Lệnh `search` và `graph` vẫn dùng backend Go riêng (xem [Module preview](../modules/preview.md)); chúng không phụ thuộc Quartz.
+1. **SolidJS SPA** embed (`internal/preview/preview_ui/`) — browse docs, search, graph.
+2. **PreviewHandler API** dưới `/api/` — project, docs, files, graph, search, SSE events.
+
+Lệnh `search` mở launcher trỏ tới `#/search` trên cùng stack server. Lệnh `graph` vẫn là terminal query.
 
 ## Chạy
 
@@ -30,14 +33,12 @@ go run . preview --project .
 go run . preview --project . --open
 ```
 
-Lần chạy đầu tiên sẽ clone Quartz vào `~/.cache/ns-workspace/quartz/repo` và chạy `npm install`; cần có Node.js ≥ 22 và npm.
-
 ## Hành Vi Chính
 
-- Quartz workspace được tạo trong `~/.cache/ns-workspace/quartz/workspaces/<hash>/`.
-- Thư mục `docs/` được symlink/copy vào `content/` của workspace.
-- Quartz dev server tự động hot-reload khi file Markdown thay đổi.
-- Preview UI, search, graph/backlinks do Quartz cung cấp.
+- SPA routes (hash): `/` docs list/detail, `/search`, `/graph`.
+- Hot reload docs qua SSE `/api/events` (client có thể soft-reload project).
+- Không clone Quartz; flag `--quartz-dir` bị deprecate (warn + ignore).
+- Frontend source: `internal/preview/preview_ui_src/` (SolidJS + TypeScript 7 + Tailwind); build: `npm run build:preview`.
 
 ## Quan Hệ
 

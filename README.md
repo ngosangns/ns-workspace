@@ -4,7 +4,7 @@
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent nhận cùng workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
-Repo cũng có các lệnh đọc knowledge base: `preview` chạy Quartz dev server cho `docs/`, `search` mở Search/Code Graph standalone, `graph` chạy query terminal dạng text/JSON, `export` dump docs + graph thành một file HTML tĩnh self-contained, `mcp` cung cấp command-line truy cập `docs/` dưới dạng JSON (list/lookup/search), còn `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
+Repo cũng có các lệnh đọc knowledge base: `preview` serve SolidJS SPA + PreviewHandler cho `docs/`, `search` mở Search/Code Graph standalone, `graph` chạy query terminal dạng text/JSON, `export` dump docs + graph thành một file HTML tĩnh self-contained (viewer SolidJS), `mcp` cung cấp command-line truy cập `docs/` dưới dạng JSON (list/lookup/search), còn `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
 
 ## Trạng Thái
 
@@ -75,7 +75,7 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 | `agents`   | Liệt kê adapter được hỗ trợ, support tier và artifact support.                                                                                 |
 | `catalog`  | Alias của `agents`.                                                                                                                            |
 | `harness`  | Chạy harness task: list, run, eval, status, resume, stop. Hỗ trợ self-correct loop, multi-agent routing và memory persistence.                 |
-| `preview`  | Chạy Quartz dev server cho thư mục `docs/` của một project.                                                                                    |
+| `preview`  | Serve SolidJS docs SPA + PreviewHandler cho thư mục `docs/` của một project.                                                                   |
 | `search`   | Mở Search/Code Graph standalone bằng HTML launcher và local API server.                                                                        |
 | `graph`    | Chạy query terminal bằng cùng backend Search/LSP Code Graph.                                                                                   |
 | `export`   | Xuất toàn bộ docs + graph thành một file HTML tĩnh self-contained, mở offline qua `file://`.                                                   |
@@ -233,7 +233,7 @@ Export flags:
 task ns:mcp -- list-docs --type module
 ```
 
-`preview` chạy Quartz dev server để xem docs dưới dạng digital garden. Lần chạy đầu tiên cần mạng để clone Quartz và cài npm dependencies.
+`preview` serve SolidJS SPA local (docs list/detail, search, graph) qua PreviewHandler API. Build frontend: `npm run build:preview` (TypeScript 7 + Solid).
 
 ```bash
 task ns:preview

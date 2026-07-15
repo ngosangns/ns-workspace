@@ -182,8 +182,15 @@ Hello **docs**.
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("preview API server root should return 404, got %s", res.Status)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("preview server root should serve SPA shell, got %s", res.Status)
+	}
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "app") {
+		t.Fatalf("preview SPA shell should mount #app, got: %q", string(body)[:min(len(body), 200)])
 	}
 }
 

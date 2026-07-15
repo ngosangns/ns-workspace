@@ -16,10 +16,11 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 | `internal/cli/`                    | Parse flags và dispatch nhóm lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`/`catalog`, `harness`.                                       |
 | `internal/agentsync/`              | Logic adapter sync, `SyncPlan`, path native của từng agent, backup và operation apply/status/doctor.                                                   |
 | `internal/harness/`                | Engine, task registry, evaluator, loop controller, subagent dispatcher, memory store và enrichment task `enrich-docs` (`enrich.go`) cho lệnh `harness`. |
-| `internal/preview/`                | Backend scan docs, search/graph API, static export (`export.go` + `export_ui/`), knowledge façade (`knowledge.go`), lệnh `kb` validate/index OKF (`kb.go`), và lệnh `preview` dùng Quartz. |
+| `internal/preview/`                | Backend scan docs, search/graph API, static export (`export.go` + `export_ui/` Solid viewer), knowledge façade, `kb`, và `preview` SPA + PreviewHandler. |
+| `internal/preview/preview_ui_src/` | Source SolidJS/TypeScript 7/Tailwind của docs preview SPA.                                                                                             |
 | `internal/kbmcp/`                  | Command-line truy cập `docs/`: dispatcher (`server.go`) và tool handlers list/lookup/search/modify (`tools.go`).                                       |
 | `internal/graphquery/`             | Registry/setup/cache LSP cho Search/LSP Code Graph, CLI `lsp`, installer npm/go/archive và warning dùng chung.                                         |
-| `internal/portal/portal_ui_src/`   | Source Vue 3/TypeScript/Tailwind của portal UI.                                                                                                        |
+| `internal/portal/portal_ui_src/`   | Source SolidJS/TypeScript 7/Tailwind của portal UI.                                                                                                    |
 | `internal/portal/portal_ui/`       | Static build output được Go embed cho portal.                                                                                                          |
 | `presets/`                         | Preset embedded cho agents, skills, settings, subagents, registry, OpenCode và MCP servers.                                                            |
 | `docs/`                            | Knowledge base hiện trạng của repo, gồm index, sync snapshot, architecture, modules, features, specs.                                                  |
@@ -40,9 +41,9 @@ go run . harness list
 go run . harness run --task <id> --project . --dry-run
 ```
 
-Lệnh `preview` dùng Quartz để build và serve docs dưới dạng digital garden. Lần chạy đầu tiên sẽ clone Quartz vào `~/.cache/ns-workspace/quartz/repo` và chạy `npm install`; cần Node.js ≥ 22 và npm. Các lần sau dùng cache. Quartz dev server có hot-reload riêng; `--no-reload` không còn tác dụng với preview nhưng vẫn được chấp nhận để tương thích.
+Lệnh `preview` serve SolidJS SPA embed + PreviewHandler REST/SSE (docs list/detail, search, graph). Không clone Quartz; `--quartz-dir` bị deprecate. Build UI: `npm run build:preview` (TypeScript 7 + Solid).
 
-Lệnh `search` sinh HTML launcher vào current working directory, start local API server và mở Search standalone từ static entry `search.html`. Dùng `--no-open` khi kiểm tra command trong script hoặc test thủ công mà không muốn mở browser. Lệnh `graph --query <text> --json` chạy cùng Search/LSP Code Graph pipeline ở chế độ terminal non-interactive; chế độ này không sinh launcher, tự ensure LSP theo mặc định và phải giữ JSON sạch trên stdout. Lệnh `export` ghi một file HTML tĩnh self-contained (docs + graph nhúng client-side) qua knowledge core dùng chung, validate docs dir trước khi ghi và fail-open khi một doc render lỗi. Lệnh `mcp` chạy các command một lần để truy vấn `docs/` và trả JSON ra stdout, không còn là server persistent. Các command hiện có: `list-docs`, `lookup-doc`, `search-docs`. Lệnh `lsp list/install` đi qua `internal/graphquery` để quản lý language server cache dùng cho Code Graph.
+Lệnh `search` sinh HTML launcher, start cùng stack SPA+API và mở `#/search`. Dùng `--no-open` trong script. Lệnh `graph --query <text> --json` chạy Search/LSP Code Graph terminal (JSON sạch stdout). Lệnh `export` ghi HTML self-contained với viewer SolidJS (`npm run build:export`). Lệnh `mcp` / `lsp` như trước.
 
 ## Test Và Validation
 
@@ -90,14 +91,14 @@ Không cần chạy full build chỉ để sửa docs thuần. Với thay đổi
 5. Khi sửa harness trong `internal/harness/`, chạy `go test ./internal/harness/...` và thử `go run . harness run --task <id> --project . --dry-run`.
 6. Sau khi chỉnh preset trong `presets/`, kiểm tra command tương ứng bằng `--dry-run` trước khi apply thật.
 
-## Workflow Sửa Preview Web
+## Workflow Sửa Preview / Portal Frontend
 
-1. Lệnh `preview` dùng [Quartz](https://quartz.jzhao.xyz/) để build và serve docs. Cấu hình Quartz nằm trong `internal/preview/quartz/`. Nếu đổi giao diện/docs layout, sửa `quartz.config.ts`, `quartz.layout.ts` hoặc theme trong template.
-2. Nếu đổi behavior API/search/graph, cập nhật backend trong `internal/preview/` và test tương ứng.
-3. Nếu đổi setup/cache/installer LSP, cập nhật `internal/graphquery/`, adapter trong `internal/preview/preview_lsp_setup.go` và test CLI `lsp`/`graph`.
-4. Chạy `go run . preview --project .` để kiểm tra Quartz dev server.
-5. Chạy test Go liên quan, thường là `go test ./internal/preview`; với LSP setup chạy thêm `go test ./internal/graphquery`.
-6. Nếu behavior user-facing đổi, cập nhật docs trong `docs/features/`, `docs/modules/` hoặc `docs/specs/planning/`.
+1. Sửa Solid source trong `internal/portal/portal_ui_src/` hoặc `internal/preview/preview_ui_src/` (export: `export_ui_src/`).
+2. `npm run check:portal` / `check:preview` / `check:export` rồi `npm run build:portal` / `build:preview` / `build:export`.
+3. Nếu đổi API/search/graph backend, cập nhật `internal/preview/` + `go test ./internal/preview`.
+4. Nếu đổi LSP setup, cập nhật `internal/graphquery/` + test.
+5. Smoke: `go run . portal --open`, `go run . preview --project . --open`, `go run . export --project . --out ./kb.html`.
+6. Cập nhật docs `docs/features/`, `docs/modules/`, conventions khi stack/behavior đổi.
 
 ## Quy Ước Docs
 

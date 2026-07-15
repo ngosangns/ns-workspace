@@ -2,8 +2,8 @@
 <!--
   ns-workspace static knowledge-base export.
 
-  The viewer is the Open Knowledge Format (OKF) bundle viewer, ported from
-  GoogleCloudPlatform/knowledge-catalog (Apache 2.0; see COPYRIGHT.md). It is
+  The viewer is the Open Knowledge Format (OKF) bundle viewer (SolidJS port of
+  GoogleCloudPlatform/knowledge-catalog, Apache 2.0; see COPYRIGHT.md). It is
   self-contained when generated with --inline-assets=true (default): the vendor
   libraries (Cytoscape.js, marked) and the knowledge bundle are embedded inline,
   so this file renders fully over file:// with no network requests.
@@ -25,51 +25,7 @@
     <style>{{.StyleCSS}}</style>
   </head>
   <body>
-    <header>
-      <div class="title">
-        <strong id="bundle-name"></strong>
-        <span class="muted">OKF bundle</span>
-      </div>
-      <div class="controls">
-        <input id="search" type="search" placeholder="Search title / id / tag" />
-        <select id="filter-type">
-          <option value="">All types</option>
-        </select>
-        <select id="layout">
-          <option value="cose">cose (force)</option>
-          <option value="concentric">concentric</option>
-          <option value="breadthfirst">breadth-first</option>
-          <option value="circle">circle</option>
-          <option value="grid">grid</option>
-        </select>
-        <button id="reset">Reset view</button>
-      </div>
-    </header>
-
-    <main>
-      <section id="graph"></section>
-      <section id="detail">
-        <div id="detail-empty" class="muted">Click a node to see its details.</div>
-        <article id="detail-content" hidden>
-          <header class="detail-header">
-            <span class="type-chip" id="detail-type"></span>
-            <h1 id="detail-title"></h1>
-            <div class="muted" id="detail-id"></div>
-          </header>
-          <dl class="frontmatter">
-            <dt>Description</dt><dd id="detail-description"></dd>
-            <dt>Resource</dt><dd id="detail-resource"></dd>
-            <dt>Tags</dt><dd id="detail-tags"></dd>
-          </dl>
-          <hr />
-          <div id="detail-body"></div>
-          <section id="detail-backlinks" hidden>
-            <h2>Cited by</h2>
-            <ul id="backlinks-list"></ul>
-          </section>
-        </article>
-      </section>
-    </main>
+    <div id="export-root"></div>
 
     <!-- Vendor libraries: inline (offline) or CDN reference. -->
     {{.VendorHead}}
@@ -80,7 +36,7 @@
       window.BUNDLE = {{.BundleJSON}};
     </script>
 
-    <!-- Export UI (OKF viewer, vanilla, no build step). -->
+    <!-- Export UI (OKF viewer, SolidJS build). -->
     <script>{{.AppJS}}</script>
   </body>
 </html>

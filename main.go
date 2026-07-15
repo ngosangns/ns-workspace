@@ -129,9 +129,9 @@ Harness flags:
 Preview flags:
   --project PATH      project root to inspect, default current directory
   --docs-dir PATH     docs directory, default docs
-  --addr HOST:PORT    local server address (only the port is used; Quartz binds to 127.0.0.1)
+  --addr HOST:PORT    local server address, default 127.0.0.1:0 (auto-pick port)
   --open              open browser after the server starts
-  --quartz-dir PATH   local Quartz checkout (with package.json); default clones to user cache
+  --quartz-dir PATH   deprecated; ignored (preview no longer uses Quartz)
 
 Search flags:
   --project PATH      project root to inspect, default current directory

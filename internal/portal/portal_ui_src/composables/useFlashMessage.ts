@@ -1,12 +1,12 @@
-import { onUnmounted, ref } from "vue";
+import { createSignal, onCleanup } from "solid-js";
 
 /** Short-lived success/info flash with automatic clear. */
 export function useFlashMessage(ttlMs = 3200) {
-  const message = ref("");
+  const [message, setMessage] = createSignal("");
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   function clear() {
-    message.value = "";
+    setMessage("");
     if (timer) {
       clearTimeout(timer);
       timer = null;
@@ -15,14 +15,14 @@ export function useFlashMessage(ttlMs = 3200) {
 
   function flash(text: string) {
     clear();
-    message.value = text;
+    setMessage(text);
     timer = setTimeout(() => {
-      message.value = "";
+      setMessage("");
       timer = null;
     }, ttlMs);
   }
 
-  onUnmounted(clear);
+  onCleanup(clear);
 
   return { message, flash, clear };
 }

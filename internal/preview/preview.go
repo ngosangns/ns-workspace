@@ -2,10 +2,12 @@ package preview
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -19,6 +21,9 @@ import (
 	"github.com/ngosangns/ns-workspace/internal/internalutil"
 )
 
+//go:embed preview_ui
+var previewUIFS embed.FS
+
 const defaultPreviewAddr = "127.0.0.1:0"
 
 type previewOptions struct {
@@ -27,11 +32,11 @@ type previewOptions struct {
 	addr        string
 	openBrowser bool
 	noReload    bool
-	quartzDir   string
+	quartzDir   string // deprecated; accepted for CLI compatibility and ignored
 }
 
-// Run starts the docs preview as a Quartz dev server. It builds the docs and
-// serves them locally, blocking until the server process exits.
+// Run starts the docs preview SolidJS SPA with the Go PreviewHandler API.
+// It binds a local HTTP server and blocks until the server exits.
 func Run(args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -41,10 +46,10 @@ func Run(args []string) error {
 	fs := flag.NewFlagSet("preview", flag.ContinueOnError)
 	fs.StringVar(&opt.projectRoot, "project", opt.projectRoot, "project root to inspect")
 	fs.StringVar(&opt.docsDir, "docs-dir", opt.docsDir, "docs directory relative to project root, or absolute path")
-	fs.StringVar(&opt.addr, "addr", opt.addr, "local server address (host is ignored; Quartz binds to 127.0.0.1)")
+	fs.StringVar(&opt.addr, "addr", opt.addr, "local server address")
 	fs.BoolVar(&opt.openBrowser, "open", false, "open browser after the server starts")
-	fs.BoolVar(&opt.noReload, "no-reload", false, "deprecated: Quartz dev server has its own hot reload")
-	fs.StringVar(&opt.quartzDir, "quartz-dir", opt.quartzDir, "path to a local Quartz checkout (with package.json); if unset, Quartz is cloned to the user cache")
+	fs.BoolVar(&opt.noReload, "no-reload", false, "disable source hot reload supervisor when running from a checkout")
+	fs.StringVar(&opt.quartzDir, "quartz-dir", opt.quartzDir, "deprecated: Quartz is no longer used; flag is ignored")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -52,37 +57,27 @@ func Run(args []string) error {
 		return err
 	}
 	opt.projectRoot = normalizePreviewProjectRoot(opt.projectRoot)
+	if strings.TrimSpace(opt.quartzDir) != "" {
+		fmt.Fprintf(os.Stderr, "preview: --quartz-dir is deprecated and ignored (Solid SPA preview)\n")
+	}
 
-	port, err := previewPort(opt.addr)
+	server := newPreviewServer(opt)
+	listener, err := net.Listen("tcp", opt.addr)
 	if err != nil {
 		return err
 	}
-	wsPort, err := pickPreviewAddrForTest()
-	if err != nil {
-		return fmt.Errorf("allocate websocket port: %w", err)
+	addr := listener.Addr().String()
+	displayURL := "http://" + addr
+	if strings.HasPrefix(addr, "127.0.0.1:") || strings.HasPrefix(addr, "[::1]:") {
+		displayURL = "http://localhost:" + portOf(addr)
 	}
-
-	repoDir, err := resolveQuartzRepoForTest(opt.quartzDir)
-	if err != nil {
-		return err
-	}
-
-	workspace, cleanup, err := prepareQuartzWorkspaceForTest(opt.projectRoot, opt.docsDir)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
 
 	docsAbs := docsRoot(opt.projectRoot, opt.docsDir)
-	displayURL := "http://localhost:" + port
-	fmt.Printf("docs preview (Quartz): %s\n", displayURL)
+	fmt.Printf("docs preview: %s\n", displayURL)
 	fmt.Printf("project: %s\n", opt.projectRoot)
 	fmt.Printf("docs: %s\n", docsAbs)
 
 	if opt.openBrowser {
-		// Wait until Quartz is serving before opening the browser so the tab
-		// does not land on a "refused to connect" page. The first build can
-		// take several seconds, so the timeout is generous.
 		go func() {
 			if err := waitForServerAndOpen(displayURL); err != nil {
 				fmt.Printf("open browser failed: %v\n", err)
@@ -90,12 +85,15 @@ func Run(args []string) error {
 		}()
 	}
 
-	return runQuartzServeForTest(repoDir, workspace, port, portOf(wsPort), os.Stdout, os.Stderr)
+	if err := servePreviewForTest(server.srv, listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // waitForServerAndOpen polls the display URL until it responds, then opens it
 // in the system browser. It gives up after a timeout so the preview command
-// does not hang indefinitely if Quartz fails to start.
+// does not hang indefinitely if the server fails to start.
 func waitForServerAndOpen(url string) error {
 	if err := waitForServerForTest(url, 30*time.Second); err != nil {
 		return err
@@ -110,8 +108,6 @@ var waitForServerForTest = func(url string, timeout time.Duration) error {
 		resp, err := http.Get(url)
 		if err == nil {
 			_ = resp.Body.Close()
-			// Quartz may return 404 at root until it finishes indexing, so any
-			// HTTP response means the server is up and accepting connections.
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -120,7 +116,6 @@ var waitForServerForTest = func(url string, timeout time.Duration) error {
 }
 
 // previewPort extracts or allocates a TCP port from the address string.
-// Quartz always binds to 127.0.0.1, so only the port number is returned.
 func previewPort(addr string) (string, error) {
 	_, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -424,14 +419,21 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-// newPreviewServer creates a reusable docs preview API server. It is used by
-// the search and graph commands; the interactive preview command now uses
-// Quartz instead.
+// newPreviewServer creates a docs preview server that serves the embedded
+// SolidJS SPA and the PreviewHandler REST/SSE API under /api/.
 func newPreviewServer(opt previewOptions) *previewServer {
 	ps := &previewServer{opt: opt}
 	ps.handler = NewPreviewHandler(opt.projectRoot, opt.docsDir, nil)
 	mux := http.NewServeMux()
 	ps.handler.Register(mux, "/api/")
+	static, err := fs.Sub(previewUIFS, "preview_ui")
+	if err == nil {
+		mux.Handle("/", previewSpaFileServer(static))
+	} else {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "preview UI not embedded", http.StatusInternalServerError)
+		})
+	}
 	ps.addr = opt.addr
 	ps.srv = &http.Server{
 		Addr:              opt.addr,
@@ -439,6 +441,32 @@ func newPreviewServer(opt previewOptions) *previewServer {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	return ps
+}
+
+// previewSpaFileServer serves the embedded SPA: real files when present, otherwise index.html.
+func previewSpaFileServer(static fs.FS) http.Handler {
+	files := http.FileServer(http.FS(static))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			files.ServeHTTP(w, r)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		if _, err := fs.Stat(static, path); err == nil {
+			files.ServeHTTP(w, r)
+			return
+		}
+		if path == "favicon.svg" || path == "style.css" || strings.HasPrefix(path, "assets/") {
+			http.NotFound(w, r)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/"
+		files.ServeHTTP(w, r2)
+	})
 }
 
 type previewServer struct {

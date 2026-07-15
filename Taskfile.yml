@@ -23,11 +23,11 @@ tasks:
     lint:portal:
         cmds:
             - npm run lint:portal
-        desc: Lint TypeScript + Vue trong portal UI
+        desc: Lint TypeScript/Solid frontend (portal, preview, export sources)
     lint:portal:fix:
         cmds:
             - npm run lint:portal:fix
-        desc: Auto-fix TypeScript + Vue lint issues
+        desc: Auto-fix TypeScript/Solid frontend lint issues
     lint:preview:
         cmds:
             - npm run lint:preview
@@ -87,7 +87,7 @@ tasks:
     ns:preview:
         cmds:
             - ${NS_WORKSPACE:-go run github.com/ngosangns/ns-workspace@latest} preview --project . --open
-        desc: Chạy Quartz dev server cho docs/ của project hiện tại
+        desc: Chạy SolidJS docs preview SPA + PreviewHandler cho docs/
     ns:search:
         cmds:
             - ${NS_WORKSPACE:-go run github.com/ngosangns/ns-workspace@latest} search --project .

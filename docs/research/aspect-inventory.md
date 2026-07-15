@@ -62,7 +62,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 ### Preview, Search Và Docs Graph
 
 - **Lý do**: Preview web là workflow đọc knowledge base, search docs/code, mở graph và validate metadata docs.
-- **Source paths**: `internal/preview/preview.go`, `internal/preview/quartz.go`, `internal/preview/preview_api.go`, `internal/preview/spec_project.go`, `internal/preview/preview_search.go`, `package.json`.
+- **Source paths**: `internal/preview/preview.go`, `internal/preview/preview_ui_src/`, `internal/preview/preview_api.go`, `internal/preview/spec_project.go`, `internal/preview/preview_search.go`, `package.json`.
 - **Docs hiện có**: [Preview web](../features/preview-web.md), [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md).
 - **Khoảng trống**: Planning docs còn mô tả một số context lịch sử; shipped behavior đã nằm trong feature/module docs.
 - **Doc target**: [Preview web](../features/preview-web.md), [Module preview](../modules/preview.md).
@@ -144,8 +144,8 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 ### Dev, Test Và Build Workflow
 
-- **Lý do**: Repo kết hợp Go CLI, Vue/Vite preview, generated static assets, markdown/html lint và docs sync; validation phải chọn đúng phạm vi.
-- **Source paths**: `DEVELOPER.md`, `package.json`, `go.mod`, `vite.portal.config.ts`, `internal/portal/portal_ui_src/`, `internal/portal/portal_ui/`.
+- **Lý do**: Repo kết hợp Go CLI, SolidJS/Vite portal+preview, generated static assets, markdown/html lint và docs sync; validation phải chọn đúng phạm vi.
+- **Source paths**: `DEVELOPER.md`, `package.json`, `go.mod`, `vite.portal.config.ts`, `vite.preview.config.ts`, `internal/portal/portal_ui_src/`, `internal/preview/preview_ui_src/`.
 - **Docs hiện có**: `DEVELOPER.md`, [Quy ước frontend preview](../development/conventions/preview-frontend.md), [Module preview](../modules/preview.md).
 - **Khoảng trống**: Không cần doc mới; developer guide là source vận hành chính.
 - **Doc target**: [Quy ước frontend preview](../development/conventions/preview-frontend.md), `DEVELOPER.md`.
@@ -153,8 +153,8 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 ### Generated Artifacts
 
-- **Lý do**: Lệnh `preview` giờ dùng Quartz dev server, không còn generated UI artifacts trong `internal/preview/preview_ui/`; graph/search vẫn cần bỏ generated artifacts khỏi LSP Code Graph index.
-- **Source paths**: `internal/preview/preview_lsp.go`, `internal/preview/preview_search.go`.
+- **Lý do**: Lệnh `preview` embed SolidJS SPA trong `internal/preview/preview_ui/`; graph/search cần bỏ generated artifacts khỏi LSP Code Graph index.
+- **Source paths**: `internal/preview/preview_lsp.go`, `internal/preview/preview_search.go`, `internal/preview/preview_ui/`.
 - **Docs hiện có**: [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md), [Preview web](../features/preview-web.md).
 - **Khoảng trống**: Search Semantic generated filtering còn là planning scope trong [Tối ưu và rút gọn Preview Web](../specs/planning/optimize-preview-web-surface.md); LSP Code Graph filtering đã shipped.
 - **Doc target**: [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md).

@@ -4,7 +4,14 @@
   "type": "module",
   "scripts": {
     "build:portal": "vite build --config vite.portal.config.ts",
-    "check:portal": "vue-tsc -p tsconfig.portal.json --noEmit",
+    "build:preview": "vite build --config vite.preview.config.ts",
+    "build:export": "vite build --config vite.export.config.ts",
+    "build:frontend": "npm run build:portal && npm run build:preview && npm run build:export",
+    "check:portal": "tsc -p tsconfig.portal.json --noEmit",
+    "check:preview": "tsc -p tsconfig.preview.json --noEmit",
+    "check:export": "tsc -p tsconfig.export.json --noEmit",
+    "check:frontend": "npm run check:portal && npm run check:preview && npm run check:export",
+    "test:preview-markdown": "node scripts/test-preview-markdown.mjs",
     "lint:doc": "npm run lint:doc:markdown && npm run lint:doc:html && npm run format:doc",
     "lint:doc:fix": "npm run lint:doc:markdown:fix && npm run lint:doc:html && npm run format:doc:fix",
     "lint:doc:markdown": "markdownlint-cli2 \"README.md\" \"docs/**/*.md\" \"presets/**/*.md\"",
@@ -17,52 +24,54 @@
     "lint:portal:fix": "npm run lint:portal:eslint:fix && npm run lint:portal:biome:fix && npm run format:portal:fix",
     "lint:portal:biome": "biome check --config-path=biome.json",
     "lint:portal:biome:fix": "biome check --write --config-path=biome.json",
-    "lint:portal:eslint": "eslint \"internal/portal/portal_ui_src/**/*.{ts,vue}\"",
-    "lint:portal:eslint:fix": "eslint \"internal/portal/portal_ui_src/**/*.{ts,vue}\" --fix",
+    "lint:portal:eslint": "eslint .",
+    "lint:portal:eslint:fix": "eslint . --fix",
     "lint:doc:html": "node scripts/lint-docs-html.cjs",
     "format:doc": "prettier --ignore-unknown --check README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\"",
     "format:doc:fix": "prettier --ignore-unknown --write README.md \"docs/**/*.{md,html}\" \"presets/**/*.md\"",
     "format:preview": "prettier --ignore-unknown --check \"docs/**/*.{md,html}\"",
     "format:preview:fix": "prettier --ignore-unknown --write \"docs/**/*.{md,html}\"",
-    "format:portal": "prettier --ignore-unknown --check package.json package-lock.json biome.json tsconfig.portal.json vite.portal.config.ts eslint.config.mjs .prettierrc.json .prettierignore \"internal/portal/portal_ui_src/**/*.{html,ts,vue}\" \"internal/portal/portal_ui/*.html\"",
-    "format:portal:fix": "prettier --ignore-unknown --write package.json package-lock.json biome.json tsconfig.portal.json vite.portal.config.ts eslint.config.mjs .prettierrc.json .prettierignore \"internal/portal/portal_ui_src/**/*.{html,ts,vue}\" \"internal/portal/portal_ui/*.html\"",
+    "format:portal": "prettier --ignore-unknown --check package.json package-lock.json biome.json tsconfig.portal.json tsconfig.preview.json tsconfig.export.json vite.portal.config.ts vite.preview.config.ts vite.export.config.ts eslint.config.mjs .prettierrc.json .prettierignore \"internal/portal/portal_ui_src/**/*.{html,ts,tsx}\" \"internal/portal/portal_ui/*.html\" \"internal/preview/preview_ui_src/**/*.{html,ts,tsx}\" \"internal/preview/export_ui_src/**/*.{ts,tsx}\"",
+    "format:portal:fix": "prettier --ignore-unknown --write package.json package-lock.json biome.json tsconfig.portal.json tsconfig.preview.json tsconfig.export.json vite.portal.config.ts vite.preview.config.ts vite.export.config.ts eslint.config.mjs .prettierrc.json .prettierignore \"internal/portal/portal_ui_src/**/*.{html,ts,tsx}\" \"internal/portal/portal_ui/*.html\" \"internal/preview/preview_ui_src/**/*.{html,ts,tsx}\" \"internal/preview/export_ui_src/**/*.{ts,tsx}\"",
     "prepare": "simple-git-hooks"
   },
   "simple-git-hooks": {
     "pre-commit": "npx lint-staged"
   },
   "lint-staged": {
-    "internal/portal/portal_ui_src/**/*.{ts,vue}": [
-      "eslint --fix",
+    "internal/portal/portal_ui_src/**/*.{ts,tsx}": [
+      "biome check --write",
+      "prettier --ignore-unknown --write"
+    ],
+    "internal/preview/preview_ui_src/**/*.{ts,tsx}": [
+      "biome check --write",
+      "prettier --ignore-unknown --write"
+    ],
+    "internal/preview/export_ui_src/**/*.{ts,tsx}": [
       "biome check --write",
       "prettier --ignore-unknown --write"
     ],
     "internal/portal/portal_ui_src/**/*.html": "prettier --ignore-unknown --write",
     "internal/portal/portal_ui/*.html": "prettier --ignore-unknown --write",
-    "{package.json,package-lock.json,biome.json,eslint.config.mjs,tsconfig.portal.json,vite.portal.config.ts,.prettierrc.json,.prettierignore}": "prettier --ignore-unknown --write"
+    "{package.json,package-lock.json,biome.json,eslint.config.mjs,tsconfig.portal.json,tsconfig.preview.json,tsconfig.export.json,vite.portal.config.ts,vite.preview.config.ts,vite.export.config.ts,.prettierrc.json,.prettierignore}": "prettier --ignore-unknown --write"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "@eslint/js": "^9.26.0",
+    "@biomejs/biome": "^2.5.4",
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.2",
-    "@typescript-eslint/eslint-plugin": "^8.32.0",
-    "@typescript-eslint/parser": "^8.32.0",
-    "@vitejs/plugin-vue": "^5.2.3",
-    "eslint": "^9.26.0",
-    "eslint-plugin-vue": "^10.9.2",
-    "html-validate": "^11.1.0",
-    "lint-staged": "^17.0.7",
-    "markdownlint-cli2": "^0.22.1",
-    "prettier": "^3.5.3",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "html-validate": "^11.5.6",
+    "lint-staged": "^17.0.8",
+    "markdownlint-cli2": "^0.23.0",
+    "prettier": "^3.9.5",
     "simple-git-hooks": "^2.13.1",
     "tailwindcss": "^4.3.2",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.32.0",
+    "typescript": "^7.0.2",
     "typescript-language-server": "^5.3.0",
-    "vite": "^5.4.14",
-    "vue-eslint-parser": "^10.4.1",
-    "vue-router": "^4.6.4",
-    "vue-tsc": "^3.2.9"
+    "vite": "^8.1.4",
+    "vite-plugin-solid": "^2.11.12"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -75,11 +84,12 @@
     "@codemirror/view": "^6.43.6",
     "@fontsource/geist-mono": "^5.2.8",
     "@fontsource/geist-sans": "^5.2.5",
-    "@phosphor-icons/vue": "^2.2.1",
+    "@solidjs/router": "^0.16.1",
     "codemirror": "^6.0.2",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
+    "marked": "^18.0.6",
     "sigma": "^3.0.3",
-    "vue": "^3.5.13"
+    "solid-js": "^1.9.14"
   }
 }

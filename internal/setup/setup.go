@@ -68,7 +68,7 @@ var defaultScripts = []scriptSpec{
 	},
 	{
 		Name:        "ns:preview",
-		Description: "Chạy Quartz dev server cho docs/ của project hiện tại",
+		Description: "Chạy SolidJS docs preview SPA + PreviewHandler cho docs/ của project hiện tại",
 		Commands:    []string{nsCLI + " preview --project . --open"},
 	},
 	{
@@ -130,12 +130,12 @@ var defaultScripts = []scriptSpec{
 	// Nhóm lint:* — kiểm tra code style theo module.
 	{
 		Name:        "lint:portal",
-		Description: "Lint TypeScript + Vue trong portal UI",
+		Description: "Lint TypeScript/Solid frontend (portal, preview, export sources)",
 		Commands:    []string{"npm run lint:portal"},
 	},
 	{
 		Name:        "lint:portal:fix",
-		Description: "Auto-fix TypeScript + Vue lint issues",
+		Description: "Auto-fix TypeScript/Solid frontend lint issues",
 		Commands:    []string{"npm run lint:portal:fix"},
 	},
 	{

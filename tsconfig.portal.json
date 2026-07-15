@@ -11,11 +11,12 @@
     "isolatedModules": true,
     "noEmit": true,
     "strict": false,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["internal/portal/portal_ui_src/*"]
+      "@/*": ["./internal/portal/portal_ui_src/*"]
     }
   },
-  "include": ["internal/portal/portal_ui_src/**/*.ts", "internal/portal/portal_ui_src/**/*.vue"]
+  "include": ["internal/portal/portal_ui_src/**/*.ts", "internal/portal/portal_ui_src/**/*.tsx"]
 }

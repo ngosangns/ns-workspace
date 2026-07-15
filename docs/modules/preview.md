@@ -1,9 +1,9 @@
 ---
 type: module
 title: "Module Preview"
-description: "Tài liệu module `internal/preview`: scan docs, search/graph, export, kb, và lệnh `preview` dùng Quartz để serve docs dưới dạng digital garden."
+description: "Tài liệu module `internal/preview`: scan docs, search/graph, export, kb, và lệnh `preview` serve SolidJS SPA + PreviewHandler."
 tags: ["module", "preview"]
-timestamp: 2026-06-23T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -13,64 +13,47 @@ compliance: current-state
 ## Meta
 
 - **Status**: active
-- **Description**: Tài liệu module `internal/preview`: scan docs, search/graph, export, kb, và lệnh `preview` dùng Quartz để serve docs dưới dạng digital garden.
+- **Description**: Tài liệu module `internal/preview`: scan docs, search/graph, export, kb, và lệnh `preview` serve SolidJS SPA + PreviewHandler.
 - **Compliance**: current-state
 - **Links**: [Chỉ mục](../_index.md), [Module graph query](./graphquery.md), [Kiến trúc tổng quan](../architecture/overview.md)
 
 ## Tổng Quan
 
-`internal/preview` là knowledge-base backend của `ns-workspace`. Nó scan docs, parse metadata Markdown/HTML, dựng graph, chạy search hybrid, query LSP Code Graph, validate/index OKF và export static bundle. Lệnh `preview` giờ dùng [Quartz](https://quartz.jzhao.xyz/) để build và serve docs như một digital garden static site, thay vì custom Vue SPA cũ.
+`internal/preview` là knowledge-base backend của `ns-workspace`. Nó scan docs, parse metadata Markdown/HTML, dựng graph, chạy search hybrid, query LSP Code Graph, validate/index OKF và export static bundle. Lệnh `preview` serve **SolidJS SPA** embed kèm REST/SSE API (`PreviewHandler`).
 
-Preview và portal đã được tách riêng:
+Preview và portal tách riêng:
 
-- `preview` — docs preview bằng Quartz.
-- `portal` — quản lý preset/skills/MCP/registry, không còn docs preview.
+- `preview` — docs SPA + API.
+- `portal` — quản lý preset/skills/MCP/registry (SolidJS).
 
 ## Thành Phần
 
-| File                | Vai trò                                                                            |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| `preview.go`        | Lệnh `preview`: chuẩn bị Quartz workspace và chạy `npx quartz build --serve`       |
-| `quartz.go`         | Quản lý Quartz repo cache, workspace per-project, symlink/copy docs vào `content/` |
-| `preview_api.go`    | `PreviewHandler` HTTP API cho `search`/`graph` commands                            |
-| `preview_search.go` | Search pipeline hybrid (docs semantic, docs graph, code semantic, code graph)      |
-| `spec_project.go`   | Scanner docs, parser metadata OKF, graph builder                                   |
-| `graph.go`          | Lệnh `graph` và `search` CLI                                                       |
-| `kb.go`             | Lệnh `kb validate` / `kb index`                                                    |
-| `export.go`         | Lệnh `export`: self-contained OKF HTML bundle                                      |
-| `knowledge.go`      | `Knowledge` façade cho `internal/kbmcp`                                            |
-| `preview_lsp*.go`   | LSP Code Graph provider và setup adapter                                           |
+| File / path              | Vai trò                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------- |
+| `preview.go`             | Lệnh `preview`: HTTP server SPA embed + API                                        |
+| `preview_ui_src/`        | Source SolidJS preview SPA                                                         |
+| `preview_ui/`            | Build artifact embed                                                               |
+| `preview_api.go`         | `PreviewHandler` HTTP API                                                          |
+| `preview_search.go`      | Search pipeline hybrid                                                             |
+| `export.go` + `export_ui/` | Export OKF HTML; viewer Solid build (`export_ui_src` → `viz.js`)                 |
+| `graph.go`               | Lệnh `graph` / `search` CLI                                                        |
+| `kb.go` / `knowledge.go` | OKF validate/index và façade kbmcp                                                 |
+| `quartz.go`              | Legacy helpers (không còn dùng bởi `preview` default)                              |
 
-## Lệnh `preview` Với Quartz
+## Lệnh `preview`
 
-`go run . preview --project .` thực hiện:
+`go run . preview --project .`:
 
-1. Clone Quartz vào `~/.cache/ns-workspace/quartz/repo` (nếu chưa có) và `npm install`.
-2. Tạo workspace per-project trong `~/.cache/ns-workspace/quartz/workspaces/<hash>/`.
-3. Symlink/copy thư mục `docs/` vào `content/` của workspace.
-4. Chạy `npx quartz build --serve --directory <workspace>/content --port <port>` từ repo cache.
-5. In URL và mở browser nếu `--open`.
+1. `NewPreviewHandler` + register `/api/*`.
+2. Serve embed `preview_ui` SPA tại `/`.
+3. In URL và mở browser nếu `--open`.
 
-Khi Quartz chưa được clone, lần chạy đầu tiên cần mạng để tải repo và npm dependencies. Các lần sau dùng cache.
+## Export
 
-Dùng `--quartz-dir <path>` để chỉ đến một Quartz checkout local (có `package.json`) thay vì clone tự động. Điều này hữu ích khi muốn custom theme/plugin hoặc chạy offline sau khi đã chuẩn bị sẵn Quartz.
-
-## Các Lệnh Khác
-
-- `search` — serve `PreviewHandler` API tại `/api/search` và ghi HTML launcher mở tab Search.
-- `graph` — query terminal, dùng `buildPreviewSearchResponse` với LSP Code Graph provider, in text/JSON.
-- `export` — build self-contained HTML bundle bằng OKF Viewer.
-- `kb` — validate/index OKF docs.
+`go run . export` ghi một file HTML self-contained. Viewer client là SolidJS IIFE (`viz.js`) + CSS; Cytoscape/marked vendor khi `--inline-assets`.
 
 ## Quy Tắc Nghiệp Vụ
 
-- `preview` yêu cầu Node.js và npm để chạy Quartz.
-- `search`/`graph` vẫn dùng backend Go; không phụ thuộc Quartz.
-- Portal không còn tab Docs; docs preview là command riêng biệt.
-- `Knowledge` façade tiếp tục cung cấp `OpenKnowledge`, `Documents`, `Document`, `Search` cho `internal/kbmcp`.
-
-## Quan Hệ
-
-- Module này consumes docs structure trong [Chỉ mục](../_index.md).
-- Tái sử dụng LSP setup/cache từ [Module graph query](./graphquery.md).
-- Cung cấp `Knowledge` façade cho [Module kbmcp](./kbmcp.md).
+- `search`/`graph` dùng backend Go; không phụ thuộc runtime ngoài trừ embeddings optional.
+- Portal không còn tab Docs; docs preview là command riêng.
+- `Knowledge` façade tiếp tục cung cấp API cho `internal/kbmcp`.

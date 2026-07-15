@@ -1,24 +1,42 @@
 ---
 type: development
-title: "Quy Ước Frontend Preview (Deprecated)"
-description: "Quy ước cũ cho custom preview frontend. Lệnh preview hiện dùng Quartz, convention này không còn áp dụng."
-tags: ["development", "preview-frontend", "deprecated"]
-timestamp: 2026-06-23T00:00:00Z
-status: deprecated
+title: "Quy Ước Frontend Preview & Portal"
+description: "SolidJS + TypeScript 7 conventions cho portal, preview SPA và export viewer."
+tags: ["development", "preview-frontend", "portal", "solidjs"]
+timestamp: 2026-07-15T00:00:00Z
+status: active
 compliance: current-state
 ---
 
-# Quy Ước Frontend Preview (Deprecated)
+# Quy Ước Frontend Preview & Portal
 
-## Meta
+## Stack
 
-- **Status**: deprecated
-- **Description**: Quy ước cũ cho custom preview frontend. Lệnh `preview` hiện dùng Quartz, convention này không còn áp dụng.
-- **Compliance**: current-state
-- **Links**: [Module preview](../../modules/preview.md), [Preview web](../../features/preview-web.md)
+| Surface | Source | Embed / output | Tooling |
+| ------- | ------ | -------------- | ------- |
+| Portal | `internal/portal/portal_ui_src/` | `internal/portal/portal_ui/` | Vite + `vite-plugin-solid` + Tailwind v4 |
+| Preview SPA | `internal/preview/preview_ui_src/` | `internal/preview/preview_ui/` | Cùng toolchain |
+| Export viewer | `internal/preview/export_ui_src/` | `export_ui/viz.js` + `viz.css` | Vite lib IIFE |
 
-## Ghi Chú
+- **Framework**: SolidJS (JSX), `@solidjs/router` (hash history cho portal/preview).
+- **Language**: TypeScript **7** (`tsc -p tsconfig.*.json --noEmit`).
+- **Styling**: Tailwind CSS v4 (`@tailwindcss/vite`), design tokens trong `style.css`.
 
-Custom Vue/TypeScript preview frontend trong `internal/preview/preview_ui_src/` đã bị xoá. Lệnh `preview` giờ dùng [Quartz](https://quartz.jzhao.xyz/) để build và serve docs.
+## Scripts
 
-Portal frontend vẫn tồn tại trong `internal/portal/portal_ui_src/` và dùng Vue 3 + Tailwind CSS v4. Dùng `task ns:portal` để serve, `task lint:portal` / `task lint:portal:fix` để lint (đã bao gồm format). Docs preview dùng `task ns:preview`; lint docs qua `task lint:preview` (chỉ `docs/`) hoặc `task lint:doc` (toàn bộ docs + README + presets).
+```bash
+npm run build:portal
+npm run build:preview
+npm run build:export
+npm run check:portal
+npm run check:preview
+npm run check:export
+npm run lint:portal
+```
+
+## Quy Tắc
+
+- Không thêm Vue/React runtime.
+- Embed artifact phải rebuild trước khi commit thay đổi UI.
+- Export viewer phải chạy offline (`file://`) khi `--inline-assets`; Cytoscape/marked là global vendor, không code-split remote.
+- API client typed trong `api.ts` / `lib/api.ts`; không hardcode side-effect sync ngoài Go backend.
