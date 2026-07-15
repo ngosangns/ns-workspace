@@ -103,7 +103,7 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 				AgentConfigDst: filepath.Join(kiro, "agents", "ns-full.json"),
 			},
 			Docs:  []string{"https://kiro.dev/docs/cli/chat/configuration/", "https://kiro.dev/docs/cli/mcp/", "https://kiro.dev/docs/cli/reference/settings/", "https://kiro.dev/docs/cli/skills/", "https://kiro.dev/docs/cli/custom-agents/creating/"},
-			Notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; skills sync to Kiro global skills; MCP presets sync to the shared Kiro settings path. A full-permissions custom agent (tools:* + permissions allow capability:all) is written to ~/.kiro/agents/ns-full.json so `kiro --agent ns-full` runs without per-tool approval prompts.",
+			Notes: "Kiro CLI alias: kiro-cli. Shared instructions sync to global steering; skills sync to Kiro global skills; MCP presets sync to the shared Kiro settings path. A full-permissions/yolo custom agent (tools:*, allowedTools:@builtin+@*, toolsSettings auto-allow shell/write/read/web/aws, model gpt-5.6-terra) is written to ~/.kiro/agents/ns-full.json so `kiro-cli chat --agent ns-full` (or --trust-all-tools) runs without per-tool approval prompts.",
 		},
 		Plugin: NoopPlugin{},
 	}})

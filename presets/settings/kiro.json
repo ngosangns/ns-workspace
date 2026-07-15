@@ -1,6 +1,6 @@
 {
   "name": "ns-full",
-  "description": "ns-workspace managed agent: every tool available and pre-approved (full permissions). Loads synced skills and steering from ~/.kiro.",
+  "description": "ns-workspace managed agent: full permissions / yolo (every tool available and pre-approved). Loads synced skills and steering from ~/.kiro. Default model: gpt-5.6-terra.",
   "prompt": null,
   "mcpServers": {},
   "tools": [
@@ -16,7 +16,57 @@
     "file://~/.kiro/steering/**/*.md"
   ],
   "hooks": {},
-  "toolsSettings": {},
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        ".*"
+      ],
+      "autoAllowReadonly": true
+    },
+    "write": {
+      "allowedPaths": [
+        "**",
+        "~/**",
+        "/**"
+      ]
+    },
+    "read": {
+      "allowedPaths": [
+        "**",
+        "~/**",
+        "/**"
+      ]
+    },
+    "glob": {
+      "allowReadOnly": true,
+      "allowedPaths": [
+        "**",
+        "~/**",
+        "/**"
+      ]
+    },
+    "grep": {
+      "allowReadOnly": true,
+      "allowedPaths": [
+        "**",
+        "~/**",
+        "/**"
+      ]
+    },
+    "web_fetch": {
+      "trusted": [
+        ".*"
+      ]
+    },
+    "aws": {
+      "autoAllowReadonly": true
+    },
+    "subagent": {
+      "trustedAgents": [
+        "*"
+      ]
+    }
+  },
   "includeMcpJson": true,
-  "model": null
+  "model": "gpt-5.6-terra"
 }

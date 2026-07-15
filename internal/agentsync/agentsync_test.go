@@ -447,9 +447,21 @@ func TestKiroAgentConfigLoadsSkillsAndSteering(t *testing.T) {
 	if !reflect.DeepEqual(agent["allowedTools"], []any{"@builtin", "@*"}) {
 		t.Fatalf("agent allowedTools = %v, want [@builtin @*]", agent["allowedTools"])
 	}
+	if agent["model"] != "gpt-5.6-terra" {
+		t.Fatalf("agent model = %v, want gpt-5.6-terra", agent["model"])
+	}
 	if agent["includeMcpJson"] != true {
 		t.Fatalf("agent includeMcpJson = %v, want true", agent["includeMcpJson"])
 	}
+	toolsSettings, ok := agent["toolsSettings"].(map[string]any)
+	if !ok || len(toolsSettings) == 0 {
+		t.Fatalf("agent toolsSettings missing or empty: %v", agent["toolsSettings"])
+	}
+	shellSettings, _ := toolsSettings["shell"].(map[string]any)
+	if shellSettings == nil {
+		t.Fatalf("agent toolsSettings.shell missing: %v", toolsSettings)
+	}
+
 	resources, ok := agent["resources"].([]any)
 	if !ok || len(resources) == 0 {
 		t.Fatalf("agent resources missing or empty: %v", agent["resources"])
