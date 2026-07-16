@@ -64,8 +64,29 @@ func readMCPManifest(ctx Context) (MCPManifest, error) {
 		return cached.(MCPManifest), nil
 	}
 	var manifest MCPManifest
-	path := filepath.Join(ctx.Options.AgentsDir, "mcp", "servers.json")
+	// In init mode the materialized file on disk (~/.agents/mcp/servers.json)
+	// is normally the source of truth so user edits outside the portal are
+	// preserved. However, when the portal has written an overlay for the
+	// enabled preset, that overlay must win so toggles made in the portal are
+	// reflected immediately, even before the materialized file is rewritten.
 	if !ctx.Update {
+		if ctx.UserConfig.HasOverlay() {
+			if _, hasMCPOoverlay := ctx.UserConfig.Lookup(MCPEnabledPath); hasMCPOoverlay {
+				data, err := readPresetFile(ctx, MCPEnabledPath)
+				if err != nil {
+					return manifest, err
+				}
+				if err := UnmarshalJSONC(data, &manifest); err != nil {
+					return manifest, err
+				}
+				if manifest.MCPServers == nil {
+					manifest.MCPServers = map[string]any{}
+				}
+				ctx.manifestCache[cacheKey] = manifest
+				return manifest, nil
+			}
+		}
+		path := filepath.Join(ctx.Options.AgentsDir, "mcp", "servers.json")
 		data, err := os.ReadFile(path)
 		if err == nil {
 			if err := UnmarshalJSONC(data, &manifest); err != nil {

@@ -1515,3 +1515,129 @@ func TestCleanupManagedLinksRemovesSharedSymlinksOnly(t *testing.T) {
 	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
 	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
 }
+
+// TestReadMCPManifestInitPrefersOverlayOverDisk asserts that when the portal
+// has written an MCP enabled overlay, init mode reads it instead of the stale
+// materialized ~/.agents/mcp/servers.json so toggles take effect immediately.
+func TestReadMCPManifestInitPrefersOverlayOverDisk(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	agentsDir := filepath.Join(home, ".agents")
+	if err := os.MkdirAll(filepath.Join(agentsDir, "mcp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Stale materialized file still lists chrome-devtools.
+	if err := os.WriteFile(
+		filepath.Join(agentsDir, "mcp", "servers.json"),
+		[]byte(`{"mcpServers":{"chrome-devtools":{"command":"npx","args":["-y","chrome-devtools-mcp@latest"]},"context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}`),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	// Portal overlay removed chrome-devtools after the user disabled it.
+	overlayPath := filepath.Join(t.TempDir(), "servers.json")
+	if err := os.WriteFile(
+		overlayPath,
+		[]byte(`{"mcpServers":{"context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}`),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	ctx, _ := newTestContextWithOverlay(t, map[string]string{
+		MCPEnabledPath: overlayPath,
+	})
+	ctx.Options.AgentsDir = agentsDir
+
+	got, err := readMCPManifest(ctx)
+	if err != nil {
+		t.Fatalf("readMCPManifest: %v", err)
+	}
+	if _, ok := got.MCPServers["chrome-devtools"]; ok {
+		t.Fatalf("overlay should win over disk; chrome-devtools still present: %#v", got.MCPServers)
+	}
+	if _, ok := got.MCPServers["context7"]; !ok {
+		t.Fatalf("overlay missing context7: %#v", got.MCPServers)
+	}
+}
+
+// TestInitOpenCodeMCPReflectsPortalOverlay verifies the full init pipeline
+// writes opencode.json MCP entries from the portal overlay, not stale disk.
+func TestInitOpenCodeMCPReflectsPortalOverlay(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	agentsDir := filepath.Join(home, ".agents")
+	if err := os.MkdirAll(filepath.Join(agentsDir, "mcp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(agentsDir, "mcp", "servers.json"),
+		[]byte(`{"mcpServers":{"chrome-devtools":{"command":"npx","args":["-y","chrome-devtools-mcp@latest"]},"context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}`),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	overlayPath := filepath.Join(t.TempDir(), "servers.json")
+	if err := os.WriteFile(
+		overlayPath,
+		[]byte(`{"mcpServers":{"context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}`),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(t.TempDir(), "cfg.json")
+	cfgBody, err := json.Marshal(map[string]string{MCPEnabledPath: overlayPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, cfgBody, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	if err := manager.Apply(Options{
+		Command:    "init",
+		AgentsDir:  agentsDir,
+		ConfigPath: cfgPath,
+		NoRegistry: true,
+		ToolFilter: ParseTools("opencode"),
+	}, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	opencode := readFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if strings.Contains(opencode, "chrome-devtools") {
+		t.Fatalf("opencode should not include portal-disabled chrome-devtools: %s", opencode)
+	}
+	if !strings.Contains(opencode, "context7") {
+		t.Fatalf("opencode should include context7 from overlay: %s", opencode)
+	}
+}
+
+// TestTransformOpenCodePreservesExplicitEnabledFalse asserts an explicit
+// enabled:false in the shared manifest is not forced back to true.
+func TestTransformOpenCodePreservesExplicitEnabledFalse(t *testing.T) {
+	remote := transformOpenCodeMCPServer(map[string]any{
+		"type":    "http",
+		"url":     "https://example.com/mcp",
+		"enabled": false,
+	})
+	if remote["enabled"] != false {
+		t.Fatalf("remote enabled=false should be preserved: %#v", remote)
+	}
+	local := transformOpenCodeMCPServer(map[string]any{
+		"command": "npx",
+		"args":    []any{"pkg"},
+		"enabled": false,
+	})
+	if local["enabled"] != false {
+		t.Fatalf("local enabled=false should be preserved: %#v", local)
+	}
+}

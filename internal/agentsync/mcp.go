@@ -38,12 +38,19 @@ func transformOpenCodeMCPServer(server map[string]any) map[string]any {
 	_, hasCmdString := server["command"].(string)
 	_, hasCmdArray := server["command"].([]any)
 
+	// Preserve an explicit enabled value from the shared manifest; default to
+	// true for entries that are selected for emission.
+	enabled := true
+	if v, ok := server["enabled"].(bool); ok {
+		enabled = v
+	}
+
 	// URL-backed transports (shared type http/sse, already-remote, or
 	// bare url without a local command) become type:"remote".
 	if typ == "http" || typ == "sse" || typ == "remote" || (hasURL && url != "" && !hasCmdString && !hasCmdArray) {
 		next := map[string]any{
 			"type":    "remote",
-			"enabled": true,
+			"enabled": enabled,
 		}
 		if hasURL && url != "" {
 			next["url"] = url
@@ -60,7 +67,7 @@ func transformOpenCodeMCPServer(server map[string]any) map[string]any {
 	// Local/stdio: OpenCode wants command as argv array + type local.
 	next := map[string]any{
 		"type":    "local",
-		"enabled": true,
+		"enabled": enabled,
 	}
 	switch cmd := server["command"].(type) {
 	case []any:

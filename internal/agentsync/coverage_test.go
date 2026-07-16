@@ -3237,6 +3237,18 @@ func TestOpenCodeMCPManifest(t *testing.T) {
 	if env["K"] != "V" {
 		t.Fatalf("env should map to environment: %+v", local)
 	}
+	// Explicit enabled:false must not be upgraded to true.
+	off := MCPManifest{MCPServers: map[string]any{
+		"remote-off": map[string]any{"type": "http", "url": "https://off.example", "enabled": false},
+		"local-off":  map[string]any{"command": "npx", "args": []any{"pkg"}, "enabled": false},
+	}}
+	gotOff := opencodeMCPManifest(off)
+	if remoteOff, _ := gotOff.MCPServers["remote-off"].(map[string]any); remoteOff["enabled"] != false {
+		t.Fatalf("remote enabled=false should be preserved: %+v", remoteOff)
+	}
+	if localOff, _ := gotOff.MCPServers["local-off"].(map[string]any); localOff["enabled"] != false {
+		t.Fatalf("local enabled=false should be preserved: %+v", localOff)
+	}
 	// Non-map value
 	in2 := MCPManifest{MCPServers: map[string]any{"x": "string"}}
 	if got := opencodeMCPManifest(in2); got.MCPServers["x"] != "string" {
