@@ -19,8 +19,8 @@ compliance: current-state
 
 ## Current Sync
 
-- **Last Synced Commit**: a80da145b7558181ae8ec2056d5f42524db6f468
+- **Last Synced Commit**: 26c97257058fe7e4eeff4a24cfd11d9c45ebcfa0
 - **Branch**: main
 - **Sync Date**: 2026-07-17T12:00:00Z
-- **Scope**: Full docs pass after public cleanup/privacy scrub and portal skills-catalog ship — README/DEVELOPER/architecture/modules/features/glossary/aspect-inventory aligned to HEAD (portal catalog/discover, agentsync replace-in-place, Solid preview without Quartz implementation, flat `docs/`, ZCode adapter, public-safe presets).
+- **Scope**: Docs pass aligned to published tip 26c97257058fe7e4eeff4a24cfd11d9c45ebcfa0. Full docs pass after public cleanup/privacy scrub and portal skills-catalog ship — README/DEVELOPER/architecture/modules/features/glossary/aspect-inventory aligned to HEAD (portal catalog/discover, agentsync replace-in-place, Solid preview without Quartz implementation, flat `docs/`, ZCode adapter, public-safe presets).
 - **Known Unsynced**: None for knowledge-base current-state docs. Local untracked `skills-lock.json` is machine install lock, not product docs.
