@@ -15,7 +15,7 @@ compliance: current-state
 - **Status**: active
 - **Description**: Tài liệu module `internal/graphquery`, mô tả registry/setup/cache LSP dùng cho Search/LSP Code Graph và CLI `lsp`.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Kiến trúc tổng quan](../architecture/overview.md), [Module preview](./preview.md), [Preview web](../features/preview-web.md), [Tự động cài LSP cho Graph Query](../specs/planning/auto-install-lsp-for-graph.md), [Mở rộng LSP coverage](../specs/planning/expand-lsp-language-coverage.md), [Tự động ensure LSP khi query graph](../specs/planning/auto-ensure-lsp-on-graph-query.md)
+- **Links**: [Chỉ mục](../_index.md), [Kiến trúc tổng quan](../architecture/overview.md), [Module preview](./preview.md), [Preview web](../features/preview-web.md)
 
 ## Tổng Quan
 

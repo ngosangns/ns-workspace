@@ -1432,6 +1432,43 @@ func TestLinkOrCopyCopyMode(t *testing.T) {
 	}
 }
 
+// TestLinkOrCopyCopyModeReplacesSymlink verifies copy mode replaces an
+// existing same-target symlink instead of treating it as already done.
+func TestLinkOrCopyCopyModeReplacesSymlink(t *testing.T) {
+	ctx, home := newTestContextWithOpts(t, func(o *Options) { o.CopyMode = true })
+	src := filepath.Join(home, "src-dir")
+	dst := filepath.Join(home, "dst-dir")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("---\nname: x\ndescription: y\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if err := linkOrCopy(ctx, src, dst, true); err != nil {
+		t.Fatalf("linkOrCopy copy over symlink: %v", err)
+	}
+	info, err := os.Lstat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("dst should no longer be a symlink")
+	}
+	if !info.IsDir() {
+		t.Fatalf("dst should be a real directory")
+	}
+	got, err := os.ReadFile(filepath.Join(dst, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "name: x") {
+		t.Fatalf("copied content missing: %q", got)
+	}
+}
+
 func TestLinkOrCopyDirectory(t *testing.T) {
 	ctx, home := newTestContextWithOpts(t, func(o *Options) { o.CopyMode = true })
 	src := filepath.Join(home, "srcdir")
@@ -3436,12 +3473,16 @@ func TestReadUserConfigFileErrors(t *testing.T) {
 	if _, err := readUserConfigFile(cfgPath); err == nil {
 		t.Fatalf("expected error for relative path")
 	}
-	// Source doesn't exist
+	// Source doesn't exist: skipped (dangling overlay), config loads empty/remaining keys
 	if err := os.WriteFile(cfgPath, []byte(`{"presets/a.json":"/no/such/path"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readUserConfigFile(cfgPath); err == nil {
-		t.Fatalf("expected error for non-existent source")
+	cfg, err := readUserConfigFile(cfgPath)
+	if err != nil {
+		t.Fatalf("dangling path should be skipped, not error: %v", err)
+	}
+	if _, ok := cfg.Lookup("presets/a.json"); ok {
+		t.Fatal("dangling path should be dropped from entries")
 	}
 	// Source is a directory
 	subDir := filepath.Join(dir, "src")
@@ -7949,7 +7990,8 @@ func TestInstallRegistrySkillsNoSkills(t *testing.T) {
 func TestInstallRegistrySkillsNpxMissing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	ctx, _ := newTestContext(t)
-	ctx.manifestCache["registry-manifest"] = RegistryManifest{Skills: []RegistrySkill{{Name: "x", Source: "y", Skill: "z"}}}
+	// Valid non-placeholder source so sanitize does not drop the entry.
+	ctx.manifestCache["registry-manifest"] = RegistryManifest{Skills: []RegistrySkill{{Name: "x", Source: "acme/valid-skills", Skill: "z"}}}
 	if err := installRegistrySkills(ctx); err == nil {
 		t.Fatalf("expected error when npx is missing")
 	}

@@ -15,7 +15,7 @@ compliance: current-state
 - **Status**: active
 - **Description**: Tài liệu module `internal/agentsync`, mô tả sync plan, adapter sync, preset materialization, managed operations, registry skills, native targets và safety rules.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Kiến trúc tổng quan](../architecture/overview.md), [Aspect inventory](../research/aspect-inventory.md), [Thuật ngữ](../shared/glossary.md), [Plan tối ưu Agentsync](../specs/planning/refactor-agentsync-preset-architecture.md), [Per-adapter settings polymorphism](../specs/planning/per-adapter-settings-preset-polymorphism.md)
+- **Links**: [Chỉ mục](../_index.md), [Kiến trúc tổng quan](../architecture/overview.md), [Aspect inventory](../research/aspect-inventory.md), [Thuật ngữ](../shared/glossary.md), [Portal](../features/portal.md)
 
 ## Tổng Quan
 
@@ -27,7 +27,7 @@ Các command `init`, `update`, `status`, `doctor`, `registry`, `agents` và alia
 
 - `Manager.BuildPlan(opt, update)` tạo `SyncPlan` inspectable gồm core phase, registry helper phase, registry install phase, MCP phase và adapter phase.
 - `Manager.Apply(opt, update=false)` phục vụ `init`: build plan, tạo shared layout và adapter native output nhưng mặc định bỏ qua file đã tồn tại, trừ khi dùng `--force`.
-- `Manager.Apply(opt, update=true)` phục vụ `update`: build plan, rewrite phần tool quản lý từ preset hiện tại, backup path cũ trước khi ghi, và không giữ key/entry managed đã bị xóa khỏi preset.
+- `Manager.Apply(opt, update=true)` phục vụ `update`: build plan, rewrite phần tool quản lý từ preset hiện tại (replace-in-place, không backup-before-write), và không giữ key/entry managed đã bị xóa khỏi preset.
 - `Manager.Status()` in trạng thái path shared và native theo adapter đang chọn.
 - `Manager.Doctor()` validate JSON shared/native, in OS/arch, path tồn tại và các agent CLI executable có trong `PATH`.
 - `Manager.Catalog()` liệt kê adapter support tier và artifact support.
@@ -59,13 +59,13 @@ Các command `init`, `update`, `status`, `doctor`, `registry`, `agents` và alia
 - `InstallPresetFile` ghi một file preset vào shared/native path.
 - `InstallPresetTree` ghi cả cây preset, dùng cho skills và subagents.
 - `LinkOrCopy` link hoặc copy file từ shared home sang native path tùy `--copy` hoặc Windows.
-- `LinkSkillDirs` link/copy từng skill/subagent dir; trong dry-run có thể đọc embedded preset names khi source shared chưa tồn tại. Mỗi entry preset luôn ghi đè entry cùng tên trong provider target (per-entry replace), kể cả khi `init` không `--force`, nên toàn bộ skill trong preset luôn override skill trong provider target; entry cũ được backup trước khi thay.
+- `LinkSkillDirs` link/copy từng skill/subagent dir; trong dry-run có thể đọc embedded preset names khi source shared chưa tồn tại. Mỗi entry preset luôn ghi đè entry cùng tên trong provider target (per-entry replace), kể cả khi `init` không `--force`, nên toàn bộ skill trong preset luôn override skill trong provider target; entry cũ bị thay tại chỗ, không tạo bản backup.
 - `MergeJSON` merge JSON vào key path cụ thể và có thể rewrite object managed khi update.
 - `AppendManagedBlock` thay managed block có label trong file text như Codex config.
 - `ManualStep` ghi guidance vào `~/.agents/generated/<agent>/README.md` cho adapter chưa có native write path chắc chắn.
 - `WriteRegistryHelpers`, `RegistryInstall` và `WriteMCPReadme` model hóa các phase đặc biệt thay vì để chúng ẩn trong core apply.
 
-Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `ok`; nếu path tồn tại và không replace thì `init` bỏ qua; nếu replace thì backup bằng suffix timestamp trước khi ghi.
+Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `ok`; nếu path tồn tại và không replace thì `init` bỏ qua; nếu replace thì ghi đè trực tiếp (không backup).
 
 ## Adapter Catalog
 
@@ -79,7 +79,7 @@ Plugin adapter hiện có:
 - Grok link `~/.agents/AGENTS.md` → `~/.grok/AGENTS.md` và dùng `GrokPlugin.ExtraOperations` để append managed TOML block MCP vào `~/.grok/config.toml` (`[mcp_servers.<name>]`). Trước khi ghi block, các `[mcp_servers.<name>]` trùng tên với preset bên ngoài block được dọn để tránh lỗi TOML duplicate key. Skills **không** mirror — Grok đọc `~/.agents/skills` native.
 - OpenCode / ZCode / Codex / Gemini / Kimi: skills chỉ qua `~/.agents/skills` (không mirror native skills dir). OpenCode vẫn link AGENTS.md + subagents + merge MCP; ZCode link AGENTS.md; stale symlink cũ dưới `~/.config/opencode/skill`, `~/.grok/skills`, `~/.zcode/skills` được cleanup nếu trỏ vào shared home.
 - Cline skills/agents: `~/.cline/skills` và `~/.cline/agents` (theo docs); cleanup path cũ `~/.cline/data/skills` và `data/agents`.
-- Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`. Ghi custom agent `~/.kiro/agents/ns-full.json` với `tools: ["*"]`, `allowedTools: ["@builtin", "@*"]`, `includeMcpJson: true` và `resources` trỏ đến synced skills/steering.
+- Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`. Ghi custom agent `~/.kiro/agents/ns-full.json` với `tools: ["*"]`, `allowedTools: ["@builtin", "@*"]`, `includeMcpJson: true` và `resources` trỏ đến synced skills/steering. MCP sync ghi `~/.kiro/settings/mcp.json` và **force `disabled: false`** trên mọi server còn trong catalog (portal enable) — tránh Kiro panel toggle (`disabled: true`) khiến MCP không load sau sync.
 
 ## Preset Và Registry Rules
 
@@ -247,10 +247,10 @@ Sau `ns-workspace init` hoặc `ns-workspace update`, `~/.config/opencode/openco
 ## Safety Rules
 
 - Luôn dùng `--dry-run` trước khi áp dụng lên môi trường quan trọng vì module này có thể ghi vào user-level config thật.
-- `init` không overwrite path có sẵn nếu không có `--force`; ngoại lệ: skill/subagent entry trong provider target luôn bị preset ghi đè (backup trước) để đảm bảo preset là source of truth cho skills. `update` dùng replace mode cho output managed.
-- Replace mode backup file/tree cũ trước khi ghi hoặc remove.
+- `init` không overwrite path có sẵn nếu không có `--force`; ngoại lệ: skill/subagent entry trong provider target luôn bị preset ghi đè tại chỗ để đảm bảo preset là source of truth cho skills. `update` dùng replace mode cho output managed.
+- Replace mode ghi đè hoặc xóa file/tree managed tại chỗ; không tạo bản backup trước khi ghi.
 - JSON native bị invalid làm command fail sớm để tránh ghi chồng lên config không parse được.
-- `--copy` tránh symlink khi người dùng muốn snapshot file hoặc khi platform không dùng symlink.
+- `--copy` (với `init`) tránh symlink khi người dùng muốn snapshot file hoặc khi platform không dùng symlink. Lệnh `update` luôn bật copy mode: materialize file/directory thật thay vì symlink, vì một số consumer (Kiro IDE) không follow skill-directory symlink.
 - Tool filter `--tools stable`, `--tools manual`, `--tools experimental` hoặc danh sách agent cụ thể giới hạn adapter plans được chạy.
 
 ## Failure Modes

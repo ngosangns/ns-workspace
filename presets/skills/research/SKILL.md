@@ -18,9 +18,9 @@ Dùng trước khi lập plan hoặc triển khai thay đổi. Đọc trước, 
 
 1. Search bằng `rg` và `rg --files`. Dùng `lsp-code-graph` khi cần symbol/caller/callee context.
 2. Dùng `read-search-docs` khi đọc/tìm kiếm trong docs/specs.
-3. Nếu ý định mơ hồ, đọc specs trước:
-   - `docs/business/specs/` để hiểu yêu cầu nghiệp vụ, user stories, acceptance criteria.
-   - `docs/developer/specs/` để hiểu thiết kế kỹ thuật, planning notes.
+3. Nếu ý định mơ hồ, đọc specs/docs trước:
+   - `docs/features/`, `docs/modules/` cho behavior và boundary hiện tại.
+   - `docs/specs/planning/` cho plan active / design notes.
      Suy luận từ requirements/planning notes.
 4. Xác định nguyên nhân gốc rễ bằng cách đối chiếu docs, code path, call site, data I/O.
 5. Tóm tắt bức tranh tổng quan + phạm vi tập trung + boundary + rủi ro + ngoài scope.

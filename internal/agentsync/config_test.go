@@ -63,8 +63,7 @@ func TestLoadUserConfigRejectsInvalidKeys(t *testing.T) {
 		{"/absolute/leading/slash": source},
 		{"presets/x/y": ""},
 		{"presets/x/y": "relative/path"},
-		{"presets/x/y": filepath.Join(dir, "missing-file.md")},
-		{"presets/x/y": dir},
+		{"presets/x/y": dir}, // directory, not a file
 	}
 	for i, body := range cases {
 		data, _ := json.Marshal(body)
@@ -75,6 +74,23 @@ func TestLoadUserConfigRejectsInvalidKeys(t *testing.T) {
 		if err == nil {
 			t.Fatalf("case %d: expected error for %v", i, body)
 		}
+	}
+	// Missing overlay file is skipped (dangling key), not a hard failure —
+	// portal must still start after a deleted skills.disabled.json, etc.
+	missing := filepath.Join(dir, "missing-file.md")
+	data, _ := json.Marshal(map[string]string{"presets/x/y": missing, "presets/ok.md": source})
+	if err := os.WriteFile(cfgPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadUserConfig(Options{ConfigPath: cfgPath})
+	if err != nil {
+		t.Fatalf("dangling overlay path should be skipped: %v", err)
+	}
+	if _, ok := cfg.Lookup("presets/x/y"); ok {
+		t.Fatal("missing overlay should not remain in config")
+	}
+	if _, ok := cfg.Lookup("presets/ok.md"); !ok {
+		t.Fatal("valid overlay should remain")
 	}
 }
 

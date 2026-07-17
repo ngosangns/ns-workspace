@@ -1,16 +1,13 @@
 # Mẫu Requirements
 
-Dùng cho requirements trong cả hai cây audience:
+Dùng cho requirements tùy chọn cạnh feature/module trong layout flat:
 
-- `docs/business/features/<feature>/requirements.md` — acceptance criteria, user impact, business rules.
-- `docs/developer/features/<feature>/requirements.md` — technical constraints, implementation requirements.
-- `docs/business/modules/<module>/requirements.md` — business view của module.
-- `docs/developer/modules/<module>/requirements.md` — technical view của module.
+- `docs/features/<feature>.md` hoặc section requirements trong feature/module doc.
+- `docs/modules/<module>.md` — technical + business rules trong cùng file khi phù hợp.
 
 ```markdown
 ---
 type: feature | module
-audience: business | developer
 title: "[Feature/Module] Requirements"
 description: "Critical requirements that must always be followed for [feature/module]."
 tags: ["requirements", "[domain]"]

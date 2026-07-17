@@ -184,7 +184,7 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 				// project .agents/skills) with default install there; do not mirror.
 				SkillsCleanupRoots: []string{filepath.Join(home, ".zcode", "skills")},
 			},
-			Docs:  []string{""},
+			Docs:  []string{},
 			Notes: "ZCode discovers skills from ~/.agents/skills (preferred) and optional ~/.zcode/skills; this adapter does not mirror skills. Shared ~/.agents/AGENTS.md is file-linked into ~/.zcode/AGENTS.md. There is no first-party user-level MCP config in this ZCode release (MCP lives per-plugin under the plugin cache), so the adapter does not write an MCP file yet.",
 		},
 		Plugin: ZCodePlugin{},

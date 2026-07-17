@@ -33,7 +33,7 @@ func RunAgentSync(cmd string, args []string, presets fs.FS) error {
 	flagSet.BoolVar(&opt.DryRun, "dry-run", false, "show planned writes without changing files")
 	flagSet.BoolVar(&opt.Yes, "yes", false, "skip interactive confirmations")
 	flagSet.BoolVar(&opt.Force, "force", false, "replace existing files during init")
-	flagSet.BoolVar(&opt.CopyMode, "copy", false, "copy files instead of creating symlinks")
+	flagSet.BoolVar(&opt.CopyMode, "copy", false, "copy files instead of creating symlinks (always on for update)")
 	flagSet.BoolVar(&opt.NoMCP, "no-mcp", false, "skip MCP configuration")
 	flagSet.BoolVar(&opt.NoRegistry, "no-registry", false, "skip skills registry installation")
 	if err := flagSet.Parse(args); err != nil {
@@ -46,6 +46,7 @@ func RunAgentSync(cmd string, args []string, presets fs.FS) error {
 	case "init":
 		return manager.Apply(opt, false)
 	case "update":
+		// update always copies (see Manager.apply); --copy is redundant but accepted
 		return manager.Apply(opt, true)
 	case "status":
 		return manager.Status(opt)

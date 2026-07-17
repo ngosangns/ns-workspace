@@ -38,7 +38,6 @@ Preview và portal tách riêng:
 | `export.go` + `export_ui/` | Export OKF HTML; viewer Solid build (`export_ui_src` → `viz.js`)                 |
 | `graph.go`               | Lệnh `graph` / `search` CLI                                                        |
 | `kb.go` / `knowledge.go` | OKF validate/index và façade kbmcp                                                 |
-| `quartz.go`              | Legacy helpers (không còn dùng bởi `preview` default)                              |
 
 ## Lệnh `preview`
 

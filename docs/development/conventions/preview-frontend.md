@@ -40,3 +40,34 @@ npm run lint:portal
 - Embed artifact phải rebuild trước khi commit thay đổi UI.
 - Export viewer phải chạy offline (`file://`) khi `--inline-assets`; Cytoscape/marked là global vendor, không code-split remote.
 - API client typed trong `api.ts` / `lib/api.ts`; không hardcode side-effect sync ngoài Go backend.
+
+## Portal Page Kit
+
+Portal resource pages compose shared components under `internal/portal/portal_ui_src/components/` và helpers `lib/`:
+
+| Piece | Vai trò |
+| ----- | ------- |
+| `PageHeader` | Title + subtitle |
+| `UiSegmented` | Tab / filter segmented control |
+| `EnableSwitch` | Enable/disable (không kèm pill Enabled/Disabled trùng) |
+| `ResourceRow` | Flat list row |
+| `EmptyState` / `ListSkeleton` | Empty + loading |
+| `StatusPill` / `PageFeedback` | Badges + error/success alerts |
+| `SearchInput` | Filter search field |
+| `lib/usePageFeedback` | Error + flash success |
+| `lib/errors` | `errMessage(unknown)` |
+| `lib/mcpConfig` | MCP transport/form helpers |
+
+**Page shell pattern:**
+
+```text
+PageHeader
+└─ surface panel (optional toolbar)
+   ├─ UiSegmented | SearchInput | actions | StatusPill counts
+   ├─ PageFeedback
+   ├─ loading / empty / body (ResourceRow list | card grid | CodeEditor)
+```
+
+- Prefer `EnableSwitch` + opacity for disabled rows; keep pills for tier/source/Custom/transport.
+- Prefer `lib/` over Vue-era `composables/` for new hooks.
+- Catch with `unknown` + `errMessage` / `usePageFeedback().fail`.

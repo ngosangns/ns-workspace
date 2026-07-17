@@ -257,17 +257,25 @@ func (b *BaseAdapter) profileAndMcpOps(ctx Context, replace bool) ([]Operation, 
 	return ops, nil
 }
 
-// transformMCP delegates to the plugin when one is set, otherwise
-// falls back to the global dispatcher.
+// transformMCP rewrites the shared MCP manifest into the shape the
+// adapter's native config expects.
+//
+// Plugins that own a provider-specific schema (OpenCode, Claude, Codex, …)
+// run TransformMCPServers. NoopPlugin is a placeholder and must not short-
+// circuit the global dispatcher — otherwise adapters like kiro never get
+// ID-specific fixes (e.g. forcing disabled=false so IDE panel toggles do
+// not leave managed servers unloaded after portal sync).
 func (b *BaseAdapter) transformMCP(manifest MCPManifest) (map[string]any, error) {
 	if b.Plugin != nil {
-		transformed, err := b.Plugin.TransformMCPServers(manifest)
-		if err != nil {
-			return nil, err
+		if _, isNoop := b.Plugin.(NoopPlugin); !isNoop {
+			transformed, err := b.Plugin.TransformMCPServers(manifest)
+			if err != nil {
+				return nil, err
+			}
+			return transformed.MCPServers, nil
 		}
-		return transformed.MCPServers, nil
 	}
-	return transformMCPServersForAdapter(b.Spec.ID, manifest)
+	return transformMCPServersForAdapterImpl(b.Spec.ID, manifest)
 }
 
 // adapterSettingsProfile looks up the profile path for this adapter

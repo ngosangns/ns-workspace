@@ -112,7 +112,7 @@ Flags:
   --tools LIST         all,stable,manual,experimental or comma-separated agent names
   --dry-run           print actions without writing
   --force             replace existing files during init
-  --copy              copy instead of symlink
+  --copy              copy instead of symlink (update always copies)
   --no-mcp            skip MCP config
   --no-registry       skip skills registry installation
 

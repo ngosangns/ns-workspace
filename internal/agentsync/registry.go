@@ -23,6 +23,13 @@ func writeRegistryHelpers(ctx Context, replace bool) error {
 	if err != nil {
 		return err
 	}
+	// Materialize only installable rows — never persist placeholder sources
+	// like org/repo into ~/.agents/registry/skills.json or install.sh.
+	rawCount := len(manifest.Skills)
+	manifest.Skills = SanitizeRegistrySkills(manifest.Skills)
+	if skipped := rawCount - len(manifest.Skills); skipped > 0 {
+		ctx.Report.Line("warning: omitted %d invalid/placeholder registry skill(s) from helpers", skipped)
+	}
 	registryDir := filepath.Join(ctx.Options.AgentsDir, "registry")
 	if err := ensureDir(ctx, registryDir); err != nil {
 		return err
@@ -41,6 +48,7 @@ func writeRegistryHelpers(ctx Context, replace bool) error {
 	script += "export GITHUB_TOKEN\n\n"
 	script += fmt.Sprintf("# Install registry-managed skills into %s.\n", filepath.Join(ctx.Options.AgentsDir, "skills"))
 	script += fmt.Sprintf("export AGENTS_HOME=%s\n\n", shellWord(ctx.Options.AgentsDir))
+	// Never emit install commands for placeholder / invalid sources (e.g. org/repo).
 	for _, skill := range manifest.Skills {
 		script += registryCommand(skill, true, ctx.CopyMode, ctx.Options.AgentsDir)
 		script += "\n"
@@ -73,6 +81,12 @@ func installRegistrySkills(ctx Context) error {
 	manifest, err := readRegistryManifest(ctx)
 	if err != nil {
 		return err
+	}
+	// Drop placeholder sources (org/repo, …) so they never reach npx/git clone.
+	raw := manifest.Skills
+	manifest.Skills = SanitizeRegistrySkills(raw)
+	if skipped := len(raw) - len(manifest.Skills); skipped > 0 {
+		ctx.Report.Line("warning: skipped %d registry skill(s) with invalid/placeholder source (e.g. org/repo)", skipped)
 	}
 	if len(manifest.Skills) == 0 {
 		return nil
@@ -122,6 +136,33 @@ func installRegistrySkills(ctx Context) error {
 	return nil
 }
 
+// InstallRegistrySkill installs one registry entry into agentsDir using the
+// same installers as update/registry (npx skills add or but skill install).
+// Intended for portal one-shot installs. Uses copy mode so agent skill dirs
+// that do not follow symlinks (e.g. Kiro IDE) still see the skill.
+func InstallRegistrySkill(agentsDir string, skill RegistrySkill) error {
+	if strings.TrimSpace(agentsDir) == "" {
+		return fmt.Errorf("agents home is required")
+	}
+	if strings.TrimSpace(skill.Skill) == "" && skill.installerKind() != installerButSkill {
+		return fmt.Errorf("skill id is required")
+	}
+	if skill.Name == "" {
+		skill.Name = skill.Skill
+	}
+	baseEnv := append(os.Environ(), "AGENTS_HOME="+agentsDir)
+	var ghToken string
+	if token, err := exec.Command("gh", "auth", "token").Output(); err == nil {
+		ghToken = strings.TrimSpace(string(token))
+		baseEnv = append(baseEnv, "GITHUB_TOKEN="+ghToken)
+	}
+	ctx := Context{
+		Options: Options{AgentsDir: agentsDir, CopyMode: true},
+		Report:  stdoutReporter{},
+	}
+	return installOneRegistrySkill(ctx, skill, baseEnv, ghToken)
+}
+
 // installOneRegistrySkill runs a single registry entry with a timeout.
 func installOneRegistrySkill(ctx Context, skill RegistrySkill, baseEnv []string, ghToken string) error {
 	cmdCtx, cancel := context.WithTimeout(context.Background(), registrySkillInstallTimeout)
@@ -141,6 +182,9 @@ func installOneRegistrySkill(ctx Context, skill RegistrySkill, baseEnv []string,
 	default:
 		if skill.Source == "" {
 			return fmt.Errorf("npx-skills entry %q missing source", skill.Name)
+		}
+		if err := validateRegistrySource(skill.Source); err != nil {
+			return fmt.Errorf("npx-skills entry %q: %w", skill.Name, err)
 		}
 		args := registryCommandArgs(skill, true, ctx.CopyMode)
 		c = exec.CommandContext(cmdCtx, "npx", args...)
@@ -172,6 +216,115 @@ func butSkillInstallPath(agentsDir string, skill RegistrySkill) string {
 		name = "but"
 	}
 	return filepath.Join(agentsDir, "skills", name)
+}
+
+// placeholderRegistrySources are documentation/test-only values that must
+// never be cloned or installed. Keep this list authoritative for install,
+// install.sh generation, and portal write validation.
+var placeholderRegistrySources = map[string]bool{
+	"org/repo":            true,
+	"owner/repo":          true,
+	"user/repo":           true,
+	"example/repo":        true,
+	"your-org/your-repo":  true,
+	"your-org/your-skill": true,
+	"foo/bar":             true,
+	"acme/example":        true,
+}
+
+// NormalizeGitHubSource strips common GitHub URL prefixes and .git suffix,
+// returning owner/repo form when possible.
+func NormalizeGitHubSource(source string) string {
+	s := strings.TrimSpace(source)
+	s = strings.TrimPrefix(s, "https://github.com/")
+	s = strings.TrimPrefix(s, "http://github.com/")
+	s = strings.TrimPrefix(s, "git@github.com:")
+	s = strings.TrimSuffix(s, ".git")
+	s = strings.Trim(s, "/")
+	return s
+}
+
+// IsPlaceholderRegistrySource reports whether source is a known docs/test
+// placeholder (e.g. org/repo) and must never be used for install or clone.
+func IsPlaceholderRegistrySource(source string) bool {
+	n := strings.ToLower(NormalizeGitHubSource(source))
+	if n == "" {
+		return false
+	}
+	if placeholderRegistrySources[n] {
+		return true
+	}
+	// Also reject obvious template patterns.
+	if strings.Contains(n, "your-") || strings.Contains(n, "example-org") {
+		return true
+	}
+	return false
+}
+
+// ValidateRegistrySource rejects empty or placeholder GitHub sources that
+// come from docs/tests (e.g. "org/repo") so update does not spend time
+// cloning a non-existent repo and flood the portal log with auth noise.
+func ValidateRegistrySource(source string) error {
+	return validateRegistrySource(source)
+}
+
+func validateRegistrySource(source string) error {
+	s := strings.TrimSpace(source)
+	if s == "" {
+		return fmt.Errorf("empty source")
+	}
+	normalized := NormalizeGitHubSource(s)
+	if IsPlaceholderRegistrySource(s) {
+		return fmt.Errorf("placeholder source %q is not a real repository; remove it from registry skills.json (portal Registry tab or reset overlay)", source)
+	}
+	if !strings.Contains(normalized, "/") {
+		return fmt.Errorf("source %q must look like owner/repo (got no '/')", source)
+	}
+	parts := strings.Split(normalized, "/")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("source %q must look like owner/repo", source)
+	}
+	return nil
+}
+
+// ValidateRegistrySkill validates one registry entry for installability.
+// but-skill entries do not require Source; npx-skills require a real source.
+func ValidateRegistrySkill(skill RegistrySkill) error {
+	name := strings.TrimSpace(skill.Name)
+	if name == "" {
+		name = strings.TrimSpace(skill.Skill)
+	}
+	switch skill.installerKind() {
+	case installerButSkill:
+		if strings.TrimSpace(skill.Skill) == "" && strings.TrimSpace(skill.Name) == "" {
+			return fmt.Errorf("but-skill entry missing skill id")
+		}
+		return nil
+	default:
+		if strings.TrimSpace(skill.Skill) == "" {
+			return fmt.Errorf("registry skill %q missing skill id", name)
+		}
+		if err := validateRegistrySource(skill.Source); err != nil {
+			return fmt.Errorf("registry skill %q: %w", name, err)
+		}
+		return nil
+	}
+}
+
+// SanitizeRegistrySkills returns only entries safe to install / write into
+// install.sh. Placeholder sources (org/repo, …) are dropped.
+func SanitizeRegistrySkills(skills []RegistrySkill) []RegistrySkill {
+	if len(skills) == 0 {
+		return skills
+	}
+	out := make([]RegistrySkill, 0, len(skills))
+	for _, sk := range skills {
+		if err := ValidateRegistrySkill(sk); err != nil {
+			continue
+		}
+		out = append(out, sk)
+	}
+	return out
 }
 
 // registryCommand renders a shell line for one skill (install.sh + dry-run).

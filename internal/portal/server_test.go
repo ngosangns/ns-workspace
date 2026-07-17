@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,12 +15,20 @@ import (
 func newTestServer(t *testing.T) *portalServer {
 	t.Helper()
 	tmp := t.TempDir()
+	// Isolate from the developer's real Application Support config so a
+	// dangling overlay path cannot fail NewStore / portal tests.
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+	t.Setenv("NS_WORKSPACE_CONFIG", "")
+	t.Setenv("AGENTS_HOME", "")
 	fsys := fstest.MapFS{
 		"presets/skills/commit/SKILL.md": &fstest.MapFile{Data: []byte("# commit\n")},
 		"presets/mcp/servers.json":       &fstest.MapFile{Data: []byte(`{"mcpServers":{}}`)},
-		"presets/registry/skills.json":   &fstest.MapFile{Data: []byte(`{"skills":[{"name":"find-skills","skill":"find-skills","source":"test"}]}`)},
+		// Valid non-placeholder source for registry tests.
+		"presets/registry/skills.json": &fstest.MapFile{Data: []byte(`{"skills":[{"name":"find-skills","skill":"find-skills","source":"vercel-labs/skills"}]}`)},
+		"presets/portal/disabled.json": &fstest.MapFile{Data: []byte(`{}`)},
 	}
-	srv, err := newPortalServer(fsys, tmp)
+	srv, err := newPortalServer(fsys, filepath.Join(tmp, ".agents"))
 	if err != nil {
 		t.Fatalf("newPortalServer: %v", err)
 	}
@@ -150,13 +159,25 @@ func TestHandleMCPs(t *testing.T) {
 
 func TestHandleRegistry(t *testing.T) {
 	srv := newTestServer(t)
-	body := `{"skills":[{"name":"new","source":"org/repo","skill":"new"}]}`
+	// Real-looking source (not org/repo placeholder).
+	body := `{"skills":[{"name":"demo-skill","source":"acme/demo-skills","skill":"demo-skill"}]}`
 	req := httptest.NewRequest(http.MethodPut, "/api/registry", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.router().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("put registry: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Placeholder org/repo must be rejected.
+	req = httptest.NewRequest(http.MethodPut, "/api/registry", strings.NewReader(
+		`{"skills":[{"name":"new","source":"org/repo","skill":"new"}]}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	srv.router().ServeHTTP(rr, req)
+	if rr.Code == http.StatusOK {
+		t.Fatal("put registry with org/repo placeholder must fail")
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/registry", nil)
@@ -169,7 +190,7 @@ func TestHandleRegistry(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &reg); err != nil {
 		t.Fatalf("unmarshal registry: %v", err)
 	}
-	if len(reg.Skills) != 1 || reg.Skills[0].Name != "new" {
+	if len(reg.Skills) != 1 || reg.Skills[0].Name != "demo-skill" {
 		t.Fatalf("unexpected registry: %+v", reg)
 	}
 }

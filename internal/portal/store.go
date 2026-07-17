@@ -21,6 +21,7 @@ type Store struct {
 	config     agentsync.UserConfig
 	overlayDir string
 	configPath string
+	agentsDir  string
 }
 
 // NewStore loads the user overlay config and prepares the overlay directory.
@@ -41,11 +42,18 @@ func NewStore(presets fs.FS, opt agentsync.Options) (*Store, error) {
 	if err := os.MkdirAll(overlayDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create portal overlay dir: %w", err)
 	}
+	agentsDir := opt.AgentsDir
+	if agentsDir == "" {
+		if home, err := agentsync.DefaultAgentsDir(); err == nil {
+			agentsDir = home
+		}
+	}
 	return &Store{
 		presets:    presets,
 		config:     cfg,
 		overlayDir: overlayDir,
 		configPath: configPath,
+		agentsDir:  agentsDir,
 	}, nil
 }
 
@@ -146,6 +154,7 @@ func (s *Store) ListSkills() ([]Skill, error) {
 	if err != nil {
 		return nil, err
 	}
+	regSources := s.skillRegistrySourceMap()
 	seen := map[string]bool{}
 	var skills []Skill
 
@@ -165,12 +174,13 @@ func (s *Store) ListSkills() ([]Skill, error) {
 		seen[id] = true
 		name, desc := s.skillMeta(id)
 		skills = append(skills, Skill{
-			ID:          id,
-			Name:        name,
-			Description: desc,
-			Source:      "embedded",
-			Overridden:  s.isOverridden(skillPath(id)),
-			Enabled:     toggles.IsSkillEnabled(id),
+			ID:             id,
+			Name:           name,
+			Description:    desc,
+			Source:         "embedded",
+			RegistrySource: lookupRegistrySource(regSources, id, name),
+			Overridden:     s.isOverridden(skillPath(id)),
+			Enabled:        toggles.IsSkillEnabled(id),
 		})
 	}
 
@@ -184,17 +194,112 @@ func (s *Store) ListSkills() ([]Skill, error) {
 		seen[id] = true
 		name, desc := s.skillMeta(id)
 		skills = append(skills, Skill{
-			ID:          id,
-			Name:        name,
-			Description: desc,
-			Source:      "overlay",
-			Overridden:  true,
-			Enabled:     toggles.IsSkillEnabled(id),
+			ID:             id,
+			Name:           name,
+			Description:    desc,
+			Source:         "overlay",
+			RegistrySource: lookupRegistrySource(regSources, id, name),
+			Overridden:     true,
+			Enabled:        toggles.IsSkillEnabled(id),
 		})
+	}
+
+	// Skills installed into the shared agents home (npx skills / registry).
+	for _, sk := range s.listInstalledHomeSkills(seen, toggles, regSources) {
+		skills = append(skills, sk)
 	}
 
 	sort.Slice(skills, func(i, j int) bool { return skills[i].ID < skills[j].ID })
 	return skills, nil
+}
+
+// listInstalledHomeSkills scans <agentsDir>/skills for SKILL.md packages that
+// are not already covered by embedded/overlay presets (real dirs or symlinks).
+func (s *Store) listInstalledHomeSkills(seen map[string]bool, toggles agentsync.PortalToggles, regSources map[string]string) []Skill {
+	if s.agentsDir == "" {
+		return nil
+	}
+	root := filepath.Join(s.agentsDir, "skills")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	out := make([]Skill, 0)
+	for _, e := range entries {
+		id := e.Name()
+		if seen[id] || id == "_shared" || strings.HasPrefix(id, ".") {
+			continue
+		}
+		// ReadFile follows symlinks; skip entries without SKILL.md.
+		data, err := os.ReadFile(filepath.Join(root, id, "SKILL.md"))
+		if err != nil {
+			continue
+		}
+		seen[id] = true
+		name, desc := parseSkillFrontmatter(data)
+		if name == "" {
+			name = id
+		}
+		out = append(out, Skill{
+			ID:             id,
+			Name:           name,
+			Description:    desc,
+			Source:         "installed",
+			RegistrySource: lookupRegistrySource(regSources, id, name),
+			Overridden:     false,
+			Enabled:        toggles.IsSkillEnabled(id),
+		})
+	}
+	return out
+}
+
+// skillRegistrySourceMap maps skill id/name → GitHub owner/repo from the
+// registry overlay (enabled + disabled). Used to filter Installed by registry.
+func (s *Store) skillRegistrySourceMap() map[string]string {
+	reg, err := s.ReadRegistry()
+	if err != nil || reg == nil {
+		return map[string]string{}
+	}
+	out := map[string]string{}
+	add := func(sk RegistrySkill) {
+		src := strings.TrimSpace(sk.Source)
+		if src == "" || agentsync.IsPlaceholderRegistrySource(src) {
+			return
+		}
+		if name := strings.TrimSpace(sk.Name); name != "" {
+			out[name] = src
+		}
+		if skill := strings.TrimSpace(sk.Skill); skill != "" {
+			out[skill] = src
+		}
+	}
+	for _, sk := range reg.Skills {
+		add(sk)
+	}
+	for _, sk := range reg.DisabledSkills {
+		add(sk)
+	}
+	if reg.Items != nil {
+		for _, it := range reg.Items {
+			add(it.RegistrySkill)
+		}
+	}
+	return out
+}
+
+func lookupRegistrySource(m map[string]string, id, name string) string {
+	if m == nil {
+		return ""
+	}
+	if src, ok := m[id]; ok {
+		return src
+	}
+	if name != "" && name != id {
+		if src, ok := m[name]; ok {
+			return src
+		}
+	}
+	return ""
 }
 
 // skillMeta reads name/description from SKILL.md frontmatter when present.
@@ -242,14 +347,20 @@ func parseSkillFrontmatter(content []byte) (name, description string) {
 func (s *Store) ReadSkill(id string) (*Skill, error) {
 	key := skillPath(id)
 	content, err := s.readEffective(key)
+	source := "embedded"
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
+		if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		// Fall back to shared agents home (registry / npx install).
+		homePath := filepath.Join(s.agentsDir, "skills", id, "SKILL.md")
+		data, homeErr := os.ReadFile(homePath)
+		if homeErr != nil {
 			return nil, fmt.Errorf("skill %q not found", id)
 		}
-		return nil, err
-	}
-	source := "embedded"
-	if s.isOverridden(key) {
+		content = data
+		source = "installed"
+	} else if s.isOverridden(key) {
 		source = "overlay"
 	}
 	toggles, err := s.readToggles()
@@ -261,13 +372,14 @@ func (s *Store) ReadSkill(id string) (*Skill, error) {
 		name = id
 	}
 	return &Skill{
-		ID:          id,
-		Name:        name,
-		Description: desc,
-		Source:      source,
-		Overridden:  source == "overlay",
-		Enabled:     toggles.IsSkillEnabled(id),
-		Content:     string(content),
+		ID:             id,
+		Name:           name,
+		Description:    desc,
+		Source:         source,
+		RegistrySource: lookupRegistrySource(s.skillRegistrySourceMap(), id, name),
+		Overridden:     source == "overlay",
+		Enabled:        toggles.IsSkillEnabled(id),
+		Content:        string(content),
 	}, nil
 }
 
@@ -279,6 +391,60 @@ func (s *Store) WriteSkill(id string, content []byte) error {
 // ResetSkill removes the user overlay for a skill.
 func (s *Store) ResetSkill(id string) error {
 	return s.removeOverlay(skillPath(id))
+}
+
+// UninstallInstalledSkill removes a skill package from agents home
+// (~/.agents/skills/<id>) and drops matching registry overlay rows so
+// future registry install will not re-pull it until re-added.
+// Embedded preset skills cannot be uninstalled this way.
+func (s *Store) UninstallInstalledSkill(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("skill id is required")
+	}
+	if s.agentsDir == "" {
+		return fmt.Errorf("agents home is not configured")
+	}
+	// Refuse to delete embedded-only packages (no agents-home install dir).
+	homePath := filepath.Join(s.agentsDir, "skills", id)
+	if _, err := os.Lstat(homePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("skill %q is not installed under agents home", id)
+		}
+		return err
+	}
+	if err := os.RemoveAll(homePath); err != nil {
+		return fmt.Errorf("remove skill package: %w", err)
+	}
+	// Drop registry entries that reference this skill id/name.
+	enabled, disabled, err := s.loadRegistrySplit()
+	if err != nil {
+		return err
+	}
+	filter := func(list []RegistrySkill) []RegistrySkill {
+		out := make([]RegistrySkill, 0, len(list))
+		for _, sk := range list {
+			name := strings.TrimSpace(sk.Name)
+			skill := strings.TrimSpace(sk.Skill)
+			if name == id || skill == id {
+				continue
+			}
+			out = append(out, sk)
+		}
+		return out
+	}
+	nextEnabled := filter(enabled)
+	nextDisabled := filter(disabled)
+	if len(nextEnabled) != len(enabled) || len(nextDisabled) != len(disabled) {
+		if err := s.writeRegistrySplit(nextEnabled, nextDisabled); err != nil {
+			return fmt.Errorf("update registry after uninstall: %w", err)
+		}
+	}
+	// Clear disabled toggle so a reinstall starts enabled.
+	_ = s.setDisabled(func(disabledSkills, _ map[string]bool) {
+		delete(disabledSkills, id)
+	})
+	return nil
 }
 
 // SetSkillEnabled enables or disables a skill by rewriting
@@ -417,6 +583,39 @@ func (s *Store) SetMCPEnabled(name string, enabled bool) error {
 	return s.writeMCPSplit(active, disabled, order)
 }
 
+// DeleteMCP removes one server from both enabled and disabled catalogs.
+// Unlike SetMCPEnabled, this hard-deletes the entry from the overlay.
+func (s *Store) DeleteMCP(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("mcp server name is required")
+	}
+	active, disabled, order, err := s.loadMCPSplit()
+	if err != nil {
+		return err
+	}
+	if active == nil {
+		active = map[string]any{}
+	}
+	if disabled == nil {
+		disabled = map[string]any{}
+	}
+	_, inActive := active[name]
+	_, inDisabled := disabled[name]
+	if !inActive && !inDisabled {
+		return fmt.Errorf("mcp server %q not found", name)
+	}
+	delete(active, name)
+	delete(disabled, name)
+	nextOrder := make([]string, 0, len(order))
+	for _, n := range order {
+		if n != name {
+			nextOrder = append(nextOrder, n)
+		}
+	}
+	return s.writeMCPSplit(active, disabled, nextOrder)
+}
+
 // ResetMCPs removes the user overlays for enabled and disabled MCP files.
 func (s *Store) ResetMCPs() error {
 	if err := s.removeOverlay(agentsync.MCPEnabledPath); err != nil {
@@ -455,10 +654,22 @@ func sourceLabel(overridden bool) string {
 
 // ReadRegistry returns the registry skills manifest with disabled entries
 // from skills.disabled.json included for the portal list.
+// Placeholder sources (org/repo, …) are stripped and, when an overlay is
+// active, rewritten so they cannot reappear on install/update.
 func (s *Store) ReadRegistry() (*RegistrySkills, error) {
 	enabled, disabled, err := s.loadRegistrySplit()
 	if err != nil {
 		return nil, err
+	}
+	cleanEnabled := filterOutPlaceholderRegistrySkills(enabled)
+	cleanDisabled := filterOutPlaceholderRegistrySkills(disabled)
+	if len(cleanEnabled) != len(enabled) || len(cleanDisabled) != len(disabled) {
+		// Persist scrub when user overlay owns the files (or create overlay
+		// so placeholders never reinstall via a dirty skills.json).
+		if err := s.writeRegistrySplit(cleanEnabled, cleanDisabled); err != nil {
+			return nil, fmt.Errorf("scrub placeholder registry sources: %w", err)
+		}
+		enabled, disabled = cleanEnabled, cleanDisabled
 	}
 	overridden := s.isOverridden(agentsync.RegistryEnabledPath) ||
 		s.isOverridden(agentsync.RegistryDisabledPath)
@@ -472,10 +683,56 @@ func (s *Store) ReadRegistry() (*RegistrySkills, error) {
 	}, nil
 }
 
+// ReadRegistryPresetSources returns registry skill rows from the embedded
+// presets only (ignores user overlay). Used to seed Discover when the
+// overlay has no listable GitHub sources.
+func (s *Store) ReadRegistryPresetSources() ([]RegistrySkill, error) {
+	data, err := s.readEmbedded(agentsync.RegistryEnabledPath)
+	if err != nil {
+		return nil, err
+	}
+	var reg RegistrySkills
+	if err := agentsync.UnmarshalJSONC(data, &reg); err != nil {
+		return nil, err
+	}
+	if reg.Skills == nil {
+		return []RegistrySkill{}, nil
+	}
+	return reg.Skills, nil
+}
+
+// UpsertRegistrySkill enables (or re-enables) one registry entry so future
+// update/registry runs reinstall it. Existing entries with the same name are
+// replaced; matching disabled entries are removed from the disabled list.
+// Placeholder sources (org/repo, …) are rejected.
+func (s *Store) UpsertRegistrySkill(entry RegistrySkill) error {
+	if strings.TrimSpace(entry.Name) == "" {
+		entry.Name = entry.Skill
+	}
+	if strings.TrimSpace(entry.Skill) == "" {
+		return fmt.Errorf("registry skill id is required")
+	}
+	if err := validatePortalRegistrySkill(entry); err != nil {
+		return err
+	}
+	active, disabled, err := s.loadRegistrySplit()
+	if err != nil {
+		return err
+	}
+	activeBy := registryByName(active)
+	disabledBy := registryByName(disabled)
+	// Drop any existing placeholder rows so they cannot reappear via merge.
+	scrubPlaceholderRegistryMap(activeBy)
+	scrubPlaceholderRegistryMap(disabledBy)
+	activeBy[entry.Name] = entry
+	delete(disabledBy, entry.Name)
+	return s.writeRegistrySplit(registryValues(activeBy), registryValues(disabledBy))
+}
+
 // WriteRegistry updates the enabled registry skills via overlay.
 // Skills that were previously enabled but are missing from reg are moved
 // into skills.disabled.json (not hard-deleted). Skills re-listed leave the
-// disabled file.
+// disabled file. Placeholder sources (org/repo, …) are rejected.
 func (s *Store) WriteRegistry(reg *RegistrySkills) error {
 	prevEnabled, disabled, err := s.loadRegistrySplit()
 	if err != nil {
@@ -486,6 +743,15 @@ func (s *Store) WriteRegistry(reg *RegistrySkills) error {
 	if next == nil {
 		next = []RegistrySkill{}
 	}
+	if err := validatePortalRegistrySkills(next); err != nil {
+		return err
+	}
+	// Defense in depth: never keep placeholders if validation is relaxed later.
+	next = filterOutPlaceholderRegistrySkills(next)
+	if len(next) == 0 && reg != nil && len(reg.Skills) > 0 {
+		return fmt.Errorf("all registry skills were invalid/placeholder (e.g. org/repo); nothing to save")
+	}
+	scrubPlaceholderRegistryMap(disabledByName)
 	nextNames := map[string]bool{}
 	for _, sk := range next {
 		nextNames[sk.Name] = true
@@ -495,11 +761,67 @@ func (s *Store) WriteRegistry(reg *RegistrySkills) error {
 		if nextNames[sk.Name] {
 			continue
 		}
+		if agentsync.IsPlaceholderRegistrySource(sk.Source) {
+			// Drop placeholders instead of moving them to disabled.
+			continue
+		}
 		if _, already := disabledByName[sk.Name]; !already {
 			disabledByName[sk.Name] = sk
 		}
 	}
 	return s.writeRegistrySplit(next, registryValues(disabledByName))
+}
+
+func validatePortalRegistrySkill(sk RegistrySkill) error {
+	as := agentsync.RegistrySkill{
+		Name:      sk.Name,
+		Source:    sk.Source,
+		Skill:     sk.Skill,
+		Installer: sk.Installer,
+	}
+	return agentsync.ValidateRegistrySkill(as)
+}
+
+func validatePortalRegistrySkills(skills []RegistrySkill) error {
+	var bad []string
+	for _, sk := range skills {
+		if err := validatePortalRegistrySkill(sk); err != nil {
+			name := sk.Name
+			if name == "" {
+				name = sk.Skill
+			}
+			bad = append(bad, fmt.Sprintf("%s (%v)", name, err))
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	return fmt.Errorf("invalid registry skill(s) — placeholder sources like org/repo are not allowed: %s", strings.Join(bad, "; "))
+}
+
+func filterOutPlaceholderRegistrySkills(skills []RegistrySkill) []RegistrySkill {
+	out := make([]RegistrySkill, 0, len(skills))
+	for _, sk := range skills {
+		if strings.TrimSpace(sk.Installer) != "but-skill" && agentsync.IsPlaceholderRegistrySource(sk.Source) {
+			continue
+		}
+		if err := validatePortalRegistrySkill(sk); err != nil {
+			continue
+		}
+		out = append(out, sk)
+	}
+	return out
+}
+
+func scrubPlaceholderRegistryMap(m map[string]RegistrySkill) {
+	for name, sk := range m {
+		if strings.TrimSpace(sk.Installer) == "but-skill" {
+			continue
+		}
+		if agentsync.IsPlaceholderRegistrySource(sk.Source) || validatePortalRegistrySkill(sk) != nil {
+			delete(m, name)
+		}
+	}
 }
 
 // SetRegistrySkillEnabled moves a registry skill between skills.json and

@@ -9,6 +9,7 @@ import (
 )
 
 func TestEnableDisableSkillAndMCPAndAdapter(t *testing.T) {
+	// newTestServer isolates HOME/XDG so real user config cannot fail this test.
 	srv := newTestServer(t)
 
 	// Disable skill

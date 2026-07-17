@@ -25,10 +25,7 @@ Skill này biến lịch sử git (một commit hoặc toàn bộ commits của 
 tài liệu giải thích dễ hiểu, đi qua từng bước thay đổi, nêu rõ nguyên nhân,
 lý do, cách thực hiện, và chỉ rõ vị trí của từng method/property/logic trong code.
 
-Khi thay đổi có tác động nghiệp vụ, skill tạo **hai phiên bản**:
-
-- **Developer version** tại `docs/developer/working-documents/`: walkthrough kỹ thuật chi tiết.
-- **Business version** tại `docs/business/working-documents/`: tóm tắt tác động nghiệp vụ, user impact, acceptance criteria liên quan.
+Mặc định ghi **một** working document kỹ thuật tại `docs/working-documents/`. Nếu thay đổi có business impact rõ và user muốn bản tóm tắt riêng, thêm section business trong cùng file hoặc file sibling cùng thư mục — không bắt buộc cây `docs/business` / `docs/developer`.
 
 ## Khi nào dùng skill này
 
@@ -45,8 +42,7 @@ Trước khi bắt đầu, xác định (hỏi ngườidùng nếu chưa rõ):
 2. **Mốc so sánh** (nếu là branch): so với branch nền nào? (mặc định thử
    `main`/`master`, hoặc merge-base giữa branch hiện tại và branch nền)
 3. **Nơi lưu tài liệu**:
-   - Developer version: mặc định `docs/developer/working-documents/<tên-mô-tả>.md`
-   - Business version (nếu có business impact): `docs/business/working-documents/<tên-mô-tả>.md`
+   - Mặc định: `docs/working-documents/<tên-mô-tả>.md`
    - Chỉ định khác nếu user yêu cầu.
 4. **Ngôn ngữ tài liệu**: viết theo ngôn ngữ ngườidùng đang dùng (mặc định tiếng Việt).
 
@@ -123,12 +119,11 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 
 ## Cấu trúc tài liệu đầu ra
 
-### Developer version (`docs/developer/working-documents/<name>.md`)
+### Working document (`docs/working-documents/<name>.md`)
 
 ````markdown
 ---
 type: working-document
-audience: developer
 title: "Working Document: <Tiêu đề / tên branch hoặc commit>"
 description: "Chi tiết kỹ thuật các thay đổi từ <commit/branch>."
 tags: [working-document]
@@ -175,44 +170,9 @@ timestamp: <ISO 8601>
 
 - Ảnh hưởng đến phần nào của hệ thống
 - Rủi ro, breaking changes, điểm cần kiểm thử
-- Link đến business version nếu có: [Tóm tắt nghiệp vụ](../business/working-documents/<name>.md)
 - Các bước tiếp theo (nếu có)
+- (Tùy chọn) Section **Tóm tắt nghiệp vụ** trong cùng file khi có user impact
 ````
-
-### Business version (`docs/business/working-documents/<name>.md`)
-
-```markdown
----
-type: working-document
-audience: business
-title: "Tóm tắt nghiệp vụ: <Tiêu đề / tên branch hoặc commit>"
-description: "Tác động nghiệp vụ và user impact của các thay đổi từ <commit/branch>."
-tags: [working-document]
-timestamp: <ISO 8601>
----
-
-# Tóm tắt nghiệp vụ: <Tiêu đề / tên branch hoặc commit>
-
-## Tổng quan
-
-- **Phạm vi**: <commit sha | branch base..head>
-- **Mục tiêu nghiệp vụ**: <thay đổi giải quyết vấn đề gì cho user/business>
-- **User impact**: <thay đổi gì trong cách user tương tác hệ thống>
-
-## Thay đổi chính
-
-### Bước 1 — <Tiêu đề thay đổi>
-
-- **Vấn đề nghiệp vụ**: <tại sao cần làm>
-- **Kết quả mong đợi**: <behavior mới user sẽ thấy>
-- **Acceptance criteria liên quan**: <các AC bị ảnh hưởng/thêm mới>
-
-## Tác động & Lưu ý
-
-- Ảnh hưởng đến user/business process
-- Breaking changes về behavior nếu có
-- Link đến developer version: [Chi tiết kỹ thuật](../developer/working-documents/<name>.md)
-```
 
 ## Quy tắc bắt buộc
 

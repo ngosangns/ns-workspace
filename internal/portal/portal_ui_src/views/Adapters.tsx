@@ -1,32 +1,39 @@
 import { createSignal, For, Show, onMount } from "solid-js";
 import { PhArrowSquareOut } from "../components/Icons";
 import { api, type Adapter } from "../api";
-import AppAlert from "../components/AppAlert";
+import PageHeader from "../components/PageHeader";
+import PageFeedback from "../components/PageFeedback";
+import ListSkeleton from "../components/ListSkeleton";
+import EmptyState from "../components/EmptyState";
+import ResourceRow from "../components/ResourceRow";
+import StatusPill from "../components/StatusPill";
+import EnableSwitch from "../components/EnableSwitch";
+import { usePageFeedback } from "../lib/usePageFeedback";
 
 export default function Adapters() {
   const [adapters, setAdapters] = createSignal<Adapter[]>([]);
   const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal("");
   const [toggling, setToggling] = createSignal<Record<string, boolean>>({});
+  const fb = usePageFeedback();
 
-  function tierClass(tier: string): string {
+  function tierKind(tier: string): "ok" | "warn" | "muted" {
     switch (tier) {
       case "stable":
-        return "status-pill--ok";
+        return "ok";
       case "manual":
-        return "status-pill--warn";
+        return "warn";
       default:
-        return "status-pill--muted";
+        return "muted";
     }
   }
 
   async function load() {
     setLoading(true);
-    setError("");
+    fb.clear();
     try {
       setAdapters(await api.getAdapters());
-    } catch (e: any) {
-      setError(e.message || String(e));
+    } catch (e) {
+      fb.fail(e);
     } finally {
       setLoading(false);
     }
@@ -34,12 +41,13 @@ export default function Adapters() {
 
   async function toggleEnabled(adapter: Adapter, next: boolean) {
     setToggling((t) => ({ ...t, [adapter.id]: true }));
-    setError("");
+    fb.clearError();
     try {
       const updated = await api.setAdapterEnabled(adapter.id, next);
       setAdapters((list) => list.map((a) => (a.id === adapter.id ? { ...a, enabled: updated.enabled } : a)));
-    } catch (e: any) {
-      setError(e.message || String(e));
+      fb.flash(next ? `Enabled ${adapter.name}` : `Disabled ${adapter.name}`);
+    } catch (e) {
+      fb.fail(e);
     } finally {
       setToggling((t) => ({ ...t, [adapter.id]: false }));
     }
@@ -47,55 +55,45 @@ export default function Adapters() {
 
   onMount(load);
 
+  const enabledCount = () => adapters().filter((a) => a.enabled).length;
+  const disabledCount = () => adapters().filter((a) => !a.enabled).length;
+
   return (
     <div>
-      <header class="page-header fade-in-up is-visible">
-        <h1 class="page-title">Adapters</h1>
-        <p class="page-subtitle">
-          {loading()
+      <PageHeader
+        title="Adapters"
+        subtitle={
+          loading()
             ? "Loading adapters..."
-            : `${adapters().length} providers · ${adapters().filter((a) => a.enabled).length} enabled · ${adapters().filter((a) => !a.enabled).length} disabled. Disable keeps providers listed; they are skipped during sync.`}
-        </p>
-      </header>
+            : `${adapters().length} providers · ${enabledCount()} enabled · ${disabledCount()} disabled. Disable keeps providers listed; they are skipped during sync.`
+        }
+      />
 
-      <Show when={error()}>
-        <AppAlert kind="error">{error()}</AppAlert>
-      </Show>
+      <PageFeedback error={fb.error()} success={fb.success()} class="!px-0" />
 
-      <Show when={!error() && loading()}>
-        <div class="surface overflow-hidden fade-in-up is-visible" aria-busy="true" aria-label="Loading adapters">
-          <div class="space-y-0 divide-y divide-border p-0">
-            <For each={[1, 2, 3, 4, 5, 6]}>
-              {() => (
-                <div class="px-4 py-3">
-                  <div class="skeleton h-12 rounded-md" />
-                </div>
-              )}
-            </For>
-          </div>
+      <Show when={loading()}>
+        <div class="surface overflow-hidden fade-in-up is-visible">
+          <ListSkeleton aria-label="Loading adapters" />
         </div>
       </Show>
 
-      <Show when={!error() && !loading() && adapters().length === 0}>
-        <div class="fade-in-up is-visible rounded-lg border border-dashed border-border-strong bg-surface px-5 py-12 text-center">
-          <p class="m-0 mb-1.5 text-[15px] font-semibold text-fg">No adapters configured</p>
-          <p class="m-0 text-[13px] text-fg-muted">Provider adapters appear here once presets are available.</p>
+      <Show when={!loading() && adapters().length === 0 && !fb.error()}>
+        <div class="fade-in-up is-visible rounded-lg border border-dashed border-border-strong bg-surface">
+          <EmptyState title="No adapters configured" description="Provider adapters appear here once presets are available." />
         </div>
       </Show>
 
-      <Show when={!error() && !loading() && adapters().length > 0}>
+      <Show when={!loading() && adapters().length > 0}>
         <div class="surface overflow-hidden fade-in-up is-visible">
           <ul class="m-0 list-none divide-y divide-border p-0">
             <For each={adapters()}>
               {(adapter) => (
-                <li
-                  class={`flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3 transition duration-160 ease-[var(--ease-out-soft)] hover:bg-elevated ${adapter.enabled ? "" : "opacity-60"}`}
-                >
+                <ResourceRow enabled={adapter.enabled}>
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-[14px] font-semibold tracking-tight text-fg">{adapter.name}</span>
                       <span class="font-mono text-[11.5px] text-fg-muted">{adapter.id}</span>
-                      <span class={`status-pill ${tierClass(adapter.tier)}`}>{adapter.tier}</span>
+                      <StatusPill kind={tierKind(adapter.tier)}>{adapter.tier}</StatusPill>
                     </div>
                     <Show when={adapter.notes}>
                       <p class="m-0 mt-1 text-[13px] leading-normal text-fg-secondary">{adapter.notes}</p>
@@ -134,22 +132,14 @@ export default function Adapters() {
                     </Show>
                   </div>
                   <div class="flex shrink-0 items-center gap-3 self-center">
-                    <span class={`status-pill ${adapter.enabled ? "status-pill--ok" : "status-pill--muted"}`}>
-                      {adapter.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                    <label class="flex items-center gap-2">
-                      <span class="text-[11px] font-medium uppercase tracking-wide text-fg-muted">{adapter.enabled ? "On" : "Off"}</span>
-                      <input
-                        type="checkbox"
-                        class="h-4 w-4 accent-[var(--color-accent)]"
-                        checked={adapter.enabled}
-                        disabled={toggling()[adapter.id]}
-                        aria-label={`Enable provider ${adapter.name}`}
-                        onChange={(e) => toggleEnabled(adapter, e.currentTarget.checked)}
-                      />
-                    </label>
+                    <EnableSwitch
+                      checked={adapter.enabled}
+                      disabled={toggling()[adapter.id]}
+                      aria-label={`Enable provider ${adapter.name}`}
+                      onChange={(next) => void toggleEnabled(adapter, next)}
+                    />
                   </div>
-                </li>
+                </ResourceRow>
               )}
             </For>
           </ul>

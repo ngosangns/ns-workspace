@@ -11,50 +11,44 @@ Dùng cho công việc chỉ đọc trên knowledge base. Không sửa docs; dù
 
 - **Đọc sâu trước:** Nghiên cứu codebase và docs/specs để hiểu bối cảnh. Chỉ hỏi user khi đã tự tìm hiểu mà vẫn không giải đáp.
 - **Ưu tiên docs trước code** cho architecture, feature behavior, module relations, spec questions. Fallback sang code khi docs thiếu/stale/mơ hồ.
-- **Phân biệt audience:** Khi cần góc nhìn nghiệp vụ, tìm trong `docs/business/`. Khi cần góc nhìn kỹ thuật, tìm trong `docs/developer/`.
+- **Layout flat:** Knowledge base dùng cây `docs/` phẳng (không bắt buộc `docs/business` + `docs/developer`). Audience thể hiện trong nội dung/frontmatter khi cần, không qua thư mục bắt buộc.
 
 ## Phạm Vi
 
 `docs/`, bao gồm:
 
-- `docs/business/features/` — user-facing behavior, requirements, acceptance criteria
-- `docs/business/modules/` — business view của module (contract, business rules)
-- `docs/business/specs/planning/` — business specs, user stories
-- `docs/business/shared/` — glossary, domain vocabulary
-- `docs/business/research/`
-- `docs/developer/architecture/` — architecture overview, decisions, patterns
-- `docs/developer/modules/` — technical module docs (boundary, API, dependencies)
-- `docs/developer/features/` — technical implementation notes cho features
-- `docs/developer/specs/planning/` — technical design specs
-- `docs/developer/development/conventions/`
-- `docs/developer/research/`, `docs/developer/learnings/`, `docs/developer/compliance/`
+- `docs/README.md`, `docs/_index.md`, `docs/_sync.md`
+- `docs/architecture/` — overview, decisions
+- `docs/modules/` — module boundary, API, invariants
+- `docs/features/` — behavior shipped, user-facing workflows
+- `docs/specs/planning/` — design plans đang active
+- `docs/shared/` — glossary, domain vocabulary
+- `docs/development/conventions/`
+- `docs/research/`, `docs/working-documents/`
 
 Đọc `AGENTS.md` hoặc `presets/agents/AGENTS.md` trước.
 
 ## Quy Trình
 
-1. `rg --files docs` → đọc `docs/README.md`, `docs/_index.md`, `docs/_sync.md`, `docs/business/README.md`, `docs/developer/README.md`, `docs/business/_index.md`, `docs/developer/_index.md`.
+1. `rg --files docs` → đọc `docs/README.md`, `docs/_index.md`, `docs/_sync.md`.
 2. Kiểm tra sync state: trích commit từ `_sync.md`, so `git rev-parse HEAD`. Nếu behind → docs là bối cảnh.
-3. Search hẹp: `rg -n "<keyword>" docs/business/<folder>` hoặc `docs/developer/<folder>` tùy audience.
+3. Search hẹp: `rg -n "<keyword>" docs/<folder>` theo mục tiêu (modules, features, specs, …).
 4. Theo Markdown link thật đến file liên quan.
 5. Inspect code path vừa đủ để verify nếu docs reference code.
 6. Dùng `lsp-code-graph` khi cần symbol/caller/callee context.
-7. Trả lờikèm file references, nói rõ dựa trên docs/code/suy luận và audience của doc.
+7. Trả lời kèm file references, nói rõ dựa trên docs/code/suy luận.
 
 ## Mẫu Tìm Kiếm
 
-| Mục tiêu                  | Audience  | Bắt đầu từ                                                    |
-| ------------------------- | --------- | ------------------------------------------------------------- |
-| Feature plan              | business  | `docs/business/specs/planning/` → `docs/business/features/`   |
-| Feature plan              | developer | `docs/developer/specs/planning/` → `docs/developer/features/` |
-| Behavior đã implement     | business  | `docs/business/features/`                                     |
-| Behavior đã implement     | developer | `docs/developer/features/` → `docs/developer/modules/` → code |
-| Architecture decision     | developer | `docs/developer/architecture/decisions/` + `patterns/`        |
-| Module boundary kỹ thuật  | developer | `docs/developer/modules/`                                     |
-| Module boundary nghiệp vụ | business  | `docs/business/modules/`                                      |
-| Thuật ngữ chung           | business  | `docs/business/shared/`                                       |
-| Investigation             | both      | `docs/business/research/` + `docs/developer/research/`        |
-| Lesson learned            | developer | `docs/developer/learnings/`                                   |
+| Mục tiêu              | Bắt đầu từ                                              |
+| --------------------- | ------------------------------------------------------- |
+| Feature plan          | `docs/specs/planning/` → `docs/features/`               |
+| Behavior đã implement | `docs/features/` → `docs/modules/` → code               |
+| Architecture          | `docs/architecture/`                                    |
+| Module boundary       | `docs/modules/`                                         |
+| Thuật ngữ             | `docs/shared/`                                          |
+| Investigation         | `docs/research/`                                        |
+| Working document      | `docs/working-documents/`                               |
 
 ## Ràng Buộc
 

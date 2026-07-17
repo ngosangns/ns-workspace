@@ -41,9 +41,16 @@ func writeFileManaged(ctx Context, path string, data []byte, replace bool) error
 // linkOrCopy creates dst pointing at src (symlink by default, or a
 // recursive copy when ctx.CopyMode is true or on Windows). It honors
 // replace (remove the existing dst first) and dry-run.
+//
+// In copy mode an existing correct symlink is not treated as done:
+// tools such as Kiro IDE ignore skill-dir symlinks, so update must
+// replace them with real directories/files.
 func linkOrCopy(ctx Context, src, dst string, replace bool) error {
+	wantCopy := ctx.CopyMode || runtime.GOOS == "windows"
 	if _, err := os.Lstat(dst); err == nil {
-		if sameLink(dst, src) {
+		// Link mode: keep an already-correct symlink.
+		// Copy mode: never keep a symlink even when it points at src.
+		if !wantCopy && sameLink(dst, src) {
 			ctx.Report.Line("ok: %s -> %s", dst, src)
 			return nil
 		}
@@ -58,14 +65,14 @@ func linkOrCopy(ctx Context, src, dst string, replace bool) error {
 		return err
 	}
 	if ctx.DryRun {
-		if ctx.CopyMode || runtime.GOOS == "windows" {
+		if wantCopy {
 			ctx.Report.Line("copy: %s -> %s", src, dst)
 			return nil
 		}
 		ctx.Report.Line("link: %s -> %s", dst, src)
 		return nil
 	}
-	if ctx.CopyMode || runtime.GOOS == "windows" {
+	if wantCopy {
 		return copyAny(ctx, src, dst)
 	}
 	ctx.Report.Line("link: %s -> %s", dst, src)

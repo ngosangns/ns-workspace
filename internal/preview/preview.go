@@ -150,32 +150,8 @@ func previewModuleRoot(start string) (string, bool) {
 	}
 }
 
-// runHotReloadSupervisor was used to watch preview frontend sources and
-// rebuild/restart the server. The standalone preview UI has been removed, so
-// this is now a no-op stub.
-func runHotReloadSupervisor(moduleRoot string, args []string, projectRoot string) error {
-	_ = moduleRoot
-	_ = args
-	_ = projectRoot
-	return nil
-}
-
 type previewChildResult struct {
 	err error
-}
-
-// buildPreviewFrontend was used to build the standalone preview frontend. It
-// is now a no-op stub kept for compatibility with tests that exercise the
-// function directly.
-func buildPreviewFrontend(moduleRoot string) error {
-	_ = moduleRoot
-	return nil
-}
-
-// buildPreviewFrontendForTest lets tests stub the frontend build. It is now a
-// no-op stub because the standalone preview frontend no longer exists.
-var buildPreviewFrontendForTest = func(moduleRoot string) error {
-	return buildPreviewFrontend(moduleRoot)
 }
 
 func previewChildArgs(args []string, projectRoot string) ([]string, error) {
@@ -234,8 +210,7 @@ func pickPreviewAddrAt(addr string) (string, error) {
 	return listener.Addr().String(), nil
 }
 
-// startPreviewChildForTest lets tests replace the real `go run` child with a stub so
-// runHotReloadSupervisor can be exercised without spawning Go subprocesses.
+// startPreviewChildForTest lets tests replace the real `go run` child with a stub.
 var startPreviewChildForTest = startPreviewChild
 
 func startPreviewChild(moduleRoot string, args []string) (*exec.Cmd, <-chan previewChildResult, error) {
@@ -262,8 +237,7 @@ func stopPreviewChild(cmd *exec.Cmd) {
 	stopPreviewChildForTest(cmd)
 }
 
-// stopPreviewChildForTest lets tests stub the child process killer so
-// runHotReloadSupervisor's interrupt branch can be exercised without
+// stopPreviewChildForTest lets tests stub the child process killer without
 // actually sending SIGKILL to the test process.
 var stopPreviewChildForTest = func(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
@@ -549,12 +523,6 @@ func portOf(addr string) string {
 	}
 	return port
 }
-
-// prepareQuartzWorkspaceForTest lets tests stub workspace preparation.
-var prepareQuartzWorkspaceForTest = prepareQuartzWorkspace
-
-// runQuartzServeForTest lets tests stub the Quartz serve command.
-var runQuartzServeForTest = runQuartzServe
 
 // ioDiscard is a typed alias for io.Discard so tests can reference it.
 var ioDiscard = io.Discard

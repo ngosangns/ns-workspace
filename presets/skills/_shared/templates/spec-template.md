@@ -1,19 +1,17 @@
 # Mẫu Spec
 
-Dùng cho specs trong cả hai cây audience:
+Dùng cho specs/plans trong layout flat:
 
-- `docs/business/specs/*.md` — business specs: user stories, acceptance criteria, business rules.
-- `docs/developer/specs/*.md` — technical specs: design, API, implementation details.
+- `docs/specs/planning/*.md` — design plans, technical specs, acceptance notes.
 
 ```markdown
 ---
-type: spec
-audience: business | developer
+type: planning
 title: "[Tính năng hoặc thay đổi]"
 description: "[Mô tả ngắn]"
-tags: [spec]
+tags: [planning]
 timestamp: <ISO 8601>
-status: draft | approved | implemented
+status: draft | proposed | approved | implemented
 ---
 
 # [Tính năng hoặc thay đổi]

@@ -1,18 +1,16 @@
 # Mẫu Module Doc
 
-Dùng cho module docs trong cả hai cây audience:
+Dùng cho module docs trong layout flat:
 
-- `docs/business/modules/<module>/*.md` — business view: purpose, contract, business rules.
-- `docs/developer/modules/<module>/*.md` — technical view: boundary, API, dependencies, invariants.
+- `docs/modules/<module>.md` — purpose, contract, boundary, API, dependencies, invariants.
 
 Bắt đầu bằng frontmatter OKF (xem `frontmatter-schema.md`):
 
 ```markdown
 ---
 type: module
-audience: business | developer
 title: "[Tên Module]"
-description: "[Một câu mô tả boundary của module từ góc nhìn audience]"
+description: "[Một câu mô tả boundary của module]"
 tags: ["module"]
 timestamp: <ISO 8601>
 status: active
@@ -33,7 +31,7 @@ compliance: current-state
 
 ## Quan Hệ
 
-Dùng link OKF bundle-relative tới docs liên quan, ví dụ [Chỉ mục developer](/developer/_index.md) hoặc [Chỉ mục business](/business/_index.md).
+Dùng link OKF bundle-relative tới docs liên quan, ví dụ [Chỉ mục](/_index.md), [Module preview](/modules/preview.md), hoặc [Preview web](/features/preview-web.md).
 
 ## Quyết Định Liên Quan
 ```

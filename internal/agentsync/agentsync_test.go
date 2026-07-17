@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -297,6 +298,58 @@ func TestKiroCLISelectionUsesKiroAdapter(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustNotExist(t, filepath.Join(home, ".qwen", "settings.json"))
+}
+
+// TestUpdateCopiesKiroSkillsInsteadOfSymlink ensures update replaces skill
+// symlinks with real directories. Kiro IDE does not follow ~/.kiro/skills
+// symlinks (github.com/kirodotdev/Kiro/issues/6401).
+func TestUpdateCopiesKiroSkillsInsteadOfSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("init always copies on Windows; symlink→copy migration is Unix-only")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTS_HOME", "")
+	t.Setenv("KIRO_HOME", "")
+
+	manager := Manager{Presets: os.DirFS("../..")}
+	opt := Options{
+		Command:    "init",
+		AgentsDir:  filepath.Join(home, ".agents"),
+		NoRegistry: true,
+		ToolFilter: ParseTools("kiro"),
+	}
+
+	if err := manager.Apply(opt, false); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	skillDir := filepath.Join(home, ".kiro", "skills", "execution")
+	info, err := os.Lstat(skillDir)
+	if err != nil {
+		t.Fatalf("lstat after init: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("init without --copy should create skill symlink, got mode %v", info.Mode())
+	}
+
+	if err := manager.Apply(opt, true); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	info, err = os.Lstat(skillDir)
+	if err != nil {
+		t.Fatalf("lstat after update: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, _ := os.Readlink(skillDir)
+		t.Fatalf("update should copy skills (not symlink); still link -> %s", target)
+	}
+	if !info.IsDir() {
+		t.Fatalf("update skill path should be a real directory, got mode %v", info.Mode())
+	}
+	mustExist(t, filepath.Join(skillDir, "SKILL.md"))
 }
 
 func TestGrokSelectionCreatesNativeSkills(t *testing.T) {
@@ -611,6 +664,55 @@ func TestRegistryCommandArgsStayAlignedWithScriptCommand(t *testing.T) {
 	for _, part := range []string{"AGENTS_HOME=/tmp/ns-agents", "npx --yes skills add leonxlnx/taste-skill", "--skill design-taste-frontend", "--global", "--agent universal", "--yes", "--copy"} {
 		if !strings.Contains(line, part) {
 			t.Fatalf("registry command %q missing %q", line, part)
+		}
+	}
+}
+
+func TestValidateRegistrySource(t *testing.T) {
+	for _, bad := range []string{
+		"org/repo",
+		"https://github.com/org/repo.git",
+		"git@github.com:org/repo.git",
+		"owner/repo",
+		"user/repo",
+		"example/repo",
+		"your-org/your-repo",
+		"foo/bar",
+		"nopath",
+		"",
+	} {
+		if err := validateRegistrySource(bad); err == nil {
+			t.Fatalf("expected error for %q", bad)
+		}
+	}
+	for _, ph := range []string{"org/repo", "ORG/REPO", "https://github.com/org/repo.git", "owner/repo", "foo/bar"} {
+		if !IsPlaceholderRegistrySource(ph) {
+			t.Fatalf("IsPlaceholderRegistrySource(%q) = false, want true", ph)
+		}
+	}
+	for _, good := range []string{"github/awesome-copilot", "vercel-labs/skills", "https://github.com/github/awesome-copilot.git", "2389-research/landing-page-design"} {
+		if err := validateRegistrySource(good); err != nil {
+			t.Fatalf("unexpected error for %q: %v", good, err)
+		}
+		if IsPlaceholderRegistrySource(good) {
+			t.Fatalf("IsPlaceholderRegistrySource(%q) = true, want false", good)
+		}
+	}
+}
+
+func TestSanitizeRegistrySkillsDropsPlaceholders(t *testing.T) {
+	in := []RegistrySkill{
+		{Name: "ok", Source: "github/awesome-copilot", Skill: "git-commit"},
+		{Name: "bad", Source: "org/repo", Skill: "new"},
+		{Name: "but", Skill: "but", Installer: installerButSkill},
+	}
+	got := SanitizeRegistrySkills(in)
+	if len(got) != 2 {
+		t.Fatalf("SanitizeRegistrySkills = %+v, want 2 entries (ok + but)", got)
+	}
+	for _, sk := range got {
+		if sk.Source == "org/repo" || IsPlaceholderRegistrySource(sk.Source) && sk.Installer != installerButSkill {
+			t.Fatalf("placeholder leaked: %+v", sk)
 		}
 	}
 }
@@ -1297,6 +1399,7 @@ func TestTransformMCPServersForAdapter(t *testing.T) {
 		{adapter: "gemini", urlKey: "httpUrl", expectTyp: nil},
 		{adapter: "cline", urlKey: "url", expectTyp: nil},
 		{adapter: "kimi", urlKey: "url", expectTyp: "http"},
+		{adapter: "kiro", urlKey: "url", expectTyp: "http"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.adapter, func(t *testing.T) {
@@ -1317,6 +1420,19 @@ func TestTransformMCPServersForAdapter(t *testing.T) {
 			}
 			if _, ok := http[tc.urlKey].(string); !ok {
 				t.Fatalf("%s http server missing %s: %v", tc.adapter, tc.urlKey, http)
+			}
+			if tc.adapter == "kiro" {
+				// Managed servers must be force-enabled so Kiro panel
+				// toggles (disabled:true) do not stick after portal sync.
+				for _, name := range []string{"http", "sse", "local"} {
+					srv, _ := out[name].(map[string]any)
+					if srv == nil {
+						t.Fatalf("kiro dropped %s: %v", name, out)
+					}
+					if srv["disabled"] != false {
+						t.Fatalf("kiro %s disabled = %v, want false", name, srv["disabled"])
+					}
+				}
 			}
 			if tc.adapter == "opencode" {
 				if http["enabled"] != true {

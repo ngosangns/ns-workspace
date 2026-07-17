@@ -4,10 +4,77 @@ export interface Skill {
   id: string;
   name: string;
   description?: string;
+  /** embedded | overlay | installed */
   source: string;
+  /** GitHub owner/repo when linked via registry overlay. */
+  registrySource?: string;
   overridden: boolean;
   enabled: boolean;
   content?: string;
+}
+
+export interface CatalogSkill {
+  id: string;
+  /** Installable id for `npx skills add --skill` (frontmatter name, not always folder). */
+  skillId: string;
+  name: string;
+  description?: string;
+  installs?: number;
+  source: string;
+  url?: string;
+  path?: string;
+  installed: boolean;
+}
+
+export interface CatalogSearchResponse {
+  query: string;
+  skills: CatalogSkill[];
+}
+
+export interface RegistrySource {
+  source: string;
+  /** Configured rows in skills.json for this source. */
+  enabledEntries: number;
+  /** Configured rows in skills.disabled.json for this source. */
+  disabledEntries: number;
+  /**
+   * Installable skills in the package (GitHub SKILL.md count).
+   * /skills/registries returns 0; filled after /skills/catalog for that source.
+   * Not the same as enabledEntries + disabledEntries (configured rows).
+   */
+  skillCount: number;
+  configured: boolean;
+  listable: boolean;
+  note?: string;
+}
+
+export interface RegistriesResponse {
+  registries: RegistrySource[];
+}
+
+export interface CatalogListResponse {
+  registry?: string;
+  query?: string;
+  skills: CatalogSkill[];
+  count: number;
+}
+
+export interface SkillInstallRequest {
+  source: string;
+  skill: string;
+  name?: string;
+  /** Repo-relative SKILL.md path from catalog — enables direct install fallback. */
+  path?: string;
+}
+
+export interface SkillInstallResponse {
+  skill: Skill;
+  registry: RegistrySkill;
+}
+
+export interface SkillInstallBatchResponse {
+  installed: SkillInstallResponse[];
+  failed?: { source: string; skill: string; error: string }[];
 }
 
 export interface SkillUpdate {
@@ -18,20 +85,23 @@ export interface EnableRequest {
   enabled: boolean;
 }
 
+/** Loose MCP server config (stdio / HTTP / SSE / vendor fields). */
+export type MCPServerConfig = Record<string, unknown>;
+
 export interface MCPServers {
-  mcpServers: Record<string, any>;
+  mcpServers: Record<string, MCPServerConfig>;
 }
 
 export interface MCPServerItem {
   name: string;
   enabled: boolean;
-  config: any;
+  config: MCPServerConfig;
 }
 
 export interface MCPManifest extends MCPServers {
-  source: "embedded" | "overlay";
+  source: "embedded" | "overlay" | string;
   overridden: boolean;
-  disabledServers?: Record<string, any>;
+  disabledServers?: Record<string, MCPServerConfig>;
   items?: MCPServerItem[];
   /**
    * Single catalog document:
@@ -130,6 +200,35 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ enabled } satisfies EnableRequest),
     }),
+  searchSkillsCatalog: (q: string, registry?: string) => {
+    const params = new URLSearchParams({ q });
+    if (registry) params.set("registry", registry);
+    return fetchJSON<CatalogSearchResponse>(`/skills/search?${params}`);
+  },
+  listSkillRegistries: () => fetchJSON<RegistriesResponse>("/skills/registries"),
+  listSkillsCatalog: (opts?: { registry?: string; q?: string; refresh?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.registry) params.set("registry", opts.registry);
+    if (opts?.q) params.set("q", opts.q);
+    if (opts?.refresh) params.set("refresh", "1");
+    const qs = params.toString();
+    return fetchJSON<CatalogListResponse>(`/skills/catalog${qs ? `?${qs}` : ""}`);
+  },
+  installSkill: (body: SkillInstallRequest) =>
+    fetchJSON<SkillInstallResponse>("/skills/install", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  installSkillsBatch: (skills: SkillInstallRequest[]) =>
+    fetchJSON<SkillInstallBatchResponse>("/skills/install-batch", {
+      method: "POST",
+      body: JSON.stringify({ skills }),
+    }),
+  uninstallSkill: (skill: string) =>
+    fetchJSON<{ ok: boolean; skill: string }>("/skills/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ skill }),
+    }),
 
   getMCPs: () => fetchJSON<MCPManifest>("/mcps"),
   getMCPPreset: () => fetchJSON<MCPServers>("/mcps/preset"),
@@ -143,11 +242,21 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ content }),
     }),
+  /** Full catalog replace with optional disabled name list. */
+  updateMCPCatalog: (mcpServers: Record<string, MCPServerConfig>, disabled?: string[]) =>
+    fetchJSON<MCPManifest>("/mcps", {
+      method: "PUT",
+      body: JSON.stringify({ mcpServers, disabled: disabled ?? [] }),
+    }),
   resetMCPs: () => fetchJSON<MCPManifest>("/mcps", { method: "DELETE" }),
   setMCPEnabled: (name: string, enabled: boolean) =>
     fetchJSON<MCPManifest>(`/mcps/${encodeURIComponent(name)}/enabled`, {
       method: "POST",
       body: JSON.stringify({ enabled } satisfies EnableRequest),
+    }),
+  deleteMCP: (name: string) =>
+    fetchJSON<MCPManifest>(`/mcps/${encodeURIComponent(name)}`, {
+      method: "DELETE",
     }),
 
   getRegistry: () => fetchJSON<RegistrySkills>("/registry"),

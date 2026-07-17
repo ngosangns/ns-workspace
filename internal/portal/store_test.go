@@ -195,6 +195,47 @@ func TestWriteUnifiedMCPContent(t *testing.T) {
 	}
 }
 
+func TestDeleteMCP(t *testing.T) {
+	store, _, _ := newTestStore(t)
+
+	raw := `{
+  "mcpServers": {
+    "alpha": {"command": "a"},
+    "beta": {"command": "b"}
+  },
+  "disabled": ["beta"]
+}`
+	if err := store.WriteMCPsContent([]byte(raw)); err != nil {
+		t.Fatalf("WriteMCPsContent: %v", err)
+	}
+	if err := store.DeleteMCP("beta"); err != nil {
+		t.Fatalf("DeleteMCP beta: %v", err)
+	}
+	manifest, err := store.ReadMCPs()
+	if err != nil {
+		t.Fatalf("ReadMCPs: %v", err)
+	}
+	if _, ok := manifest.DisabledServers["beta"]; ok {
+		t.Fatal("beta should be removed from disabled")
+	}
+	if _, ok := manifest.Servers()["alpha"]; !ok {
+		t.Fatal("alpha should remain")
+	}
+	if err := store.DeleteMCP("alpha"); err != nil {
+		t.Fatalf("DeleteMCP alpha: %v", err)
+	}
+	manifest, err = store.ReadMCPs()
+	if err != nil {
+		t.Fatalf("ReadMCPs after alpha delete: %v", err)
+	}
+	if _, ok := manifest.Servers()["alpha"]; ok {
+		t.Fatal("alpha should be gone")
+	}
+	if err := store.DeleteMCP("missing"); err == nil {
+		t.Fatal("expected error for missing server")
+	}
+}
+
 func TestReadWriteRegistry(t *testing.T) {
 	store, _, _ := newTestStore(t)
 
@@ -206,7 +247,7 @@ func TestReadWriteRegistry(t *testing.T) {
 		t.Fatalf("expected 1 registry skill, got %d", len(reg.Skills))
 	}
 
-	reg.Skills = append(reg.Skills, RegistrySkill{Name: "new", Source: "org/repo", Skill: "new"})
+	reg.Skills = append(reg.Skills, RegistrySkill{Name: "demo-skill", Source: "acme/demo-skills", Skill: "demo-skill"})
 	if err := store.WriteRegistry(reg); err != nil {
 		t.Fatalf("WriteRegistry error: %v", err)
 	}
@@ -217,5 +258,15 @@ func TestReadWriteRegistry(t *testing.T) {
 	}
 	if len(reg.Skills) != 2 {
 		t.Fatalf("expected 2 registry skills after write, got %d", len(reg.Skills))
+	}
+
+	// Placeholders must never be accepted.
+	if err := store.WriteRegistry(&RegistrySkills{Skills: []RegistrySkill{
+		{Name: "new", Source: "org/repo", Skill: "new"},
+	}}); err == nil {
+		t.Fatal("WriteRegistry must reject org/repo placeholder")
+	}
+	if err := store.UpsertRegistrySkill(RegistrySkill{Name: "x", Source: "owner/repo", Skill: "x"}); err == nil {
+		t.Fatal("UpsertRegistrySkill must reject owner/repo placeholder")
 	}
 }

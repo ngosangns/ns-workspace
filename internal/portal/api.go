@@ -5,10 +5,14 @@ type Skill struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Source      string `json:"source"` // "embedded" or overlay path
-	Overridden  bool   `json:"overridden"`
-	Enabled     bool   `json:"enabled"`
-	Content     string `json:"content,omitempty"`
+	// Source is the install origin: "embedded", "overlay", or "installed".
+	Source string `json:"source"`
+	// RegistrySource is the GitHub owner/repo from the registry overlay when
+	// this skill was installed via registry / portal Discover (empty otherwise).
+	RegistrySource string `json:"registrySource,omitempty"`
+	Overridden     bool   `json:"overridden"`
+	Enabled        bool   `json:"enabled"`
+	Content        string `json:"content,omitempty"`
 }
 
 // SkillUpdate is the request body for updating a skill.

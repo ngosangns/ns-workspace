@@ -20,15 +20,15 @@ Không tự đoán hoặc tự chọn hướng có rủi ro sai ý user.
 
 Không chạy full build rộng nếu repo guidance không yêu cầu. Chọn validation mục tiêu theo phạm vi thay đổi.
 
-## Đọc `requirements.md`
+## Đọc Requirements / Module Docs
 
 Trước khi sửa code trong phạm vi feature/module:
 
-1. Tìm requirements thuộc phạm vi ảnh hưởng trong cả hai cây audience:
-   - `docs/business/features/**/requirements.md` — acceptance criteria, business rules, user impact.
-   - `docs/developer/features/**/requirements.md` — technical constraints, implementation requirements.
-   - `docs/business/modules/**/requirements.md` — business view của module (contract, rules).
-   - `docs/developer/modules/**/requirements.md` — technical view của module (API, boundary, invariants).
+1. Tìm docs thuộc phạm vi ảnh hưởng trong cây flat `docs/`:
+   - `docs/features/**` — behavior, acceptance criteria, user impact.
+   - `docs/modules/**` — boundary, API, invariants, business rules.
+   - `docs/specs/planning/**` — plan active nếu còn.
+   - `requirements.md` cạnh feature/module **nếu file tồn tại** (optional; không bắt buộc dual-tree).
 2. Đọc toàn bộ, coi chúng là acceptance constraints bắt buộc.
 3. Nếu requirements mâu thuẫn với plan/prompt/code hiện tại → **dừng lại** và báo rõ mâu thuẫn.
 

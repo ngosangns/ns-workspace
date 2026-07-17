@@ -7,7 +7,7 @@ Docs trong repo tuân theo **Open Knowledge Format (OKF)**: mỗi doc là một 
 ```yaml
 ---
 type: module # BẮT BUỘC — loại concept
-audience: business | developer # RECOMMENDED — audience chính của doc, dùng khi doc nằm trong docs/business/ hoặc docs/developer/
+# audience: business | developer # optional — không bắt buộc; layout repo là flat docs/
 title: "[Tên hiển thị, nên trùng/gần trùng H1]"
 description: "[Một câu mô tả phạm vi hiện tại]"
 tags: ["domain", "area"] # optional, list string ngắn
@@ -24,7 +24,7 @@ priority: P1
 ## Quy Tắc
 
 - **`type` là field bắt buộc** và phải có giá trị không rỗng. Giá trị mô tả, tự giải thích.
-- **`audience` là field khuyến nghị** cho mọi doc audience-specific. Giá trị hợp lệ: `business` hoặc `developer`. Dùng để lọc, export, và kiểm tra doc nằm đúng cây thư mục.
+- **`audience` là field tùy chọn.** Giá trị gợi ý: `business` hoặc `developer`. Knowledge base dùng layout flat `docs/`; không bắt buộc tách cây thư mục theo audience.
 - Giá trị `type` dùng trong repo này: `module`, `feature`, `spec`, `architecture`, `decision`, `pattern`, `reference`, `research`, `shared`, `development`, `index`, `working-document`. Type lạ vẫn hợp lệ (consumer permissive), nhưng ưu tiên tập trên cho nhất quán.
 - `title`/`description` nên có để index, search snippet và preview hiển thị tốt.
 - `tags` là YAML list; một string đơn cũng được normalize về list.

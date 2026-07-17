@@ -108,7 +108,7 @@ Harness flags:
 --dry-run        show planned actions without running
 ```
 
-Dùng `--copy` nếu không muốn tạo symlink. Dùng `--config <file>` trỏ tới file JSON user-level để override hoặc bổ sung embedded preset (xem [User Config Overlay](#user-config-overlay)).
+Dùng `--copy` với `init` nếu không muốn tạo symlink. Lệnh `update` luôn copy (không symlink) vì một số tool (đặc biệt Kiro IDE) không follow skill-directory symlink. Dùng `--config <file>` trỏ tới file JSON user-level để override hoặc bổ sung embedded preset (xem [User Config Overlay](#user-config-overlay)).
 
 ## User Config Overlay
 

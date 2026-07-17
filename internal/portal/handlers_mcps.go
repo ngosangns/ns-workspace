@@ -113,7 +113,7 @@ func (s *portalServer) handleMCPPreset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, servers)
 }
 
-// handleMCPServer routes /api/mcps/{name}/enabled and reserved subpaths.
+// handleMCPServer routes /api/mcps/{name}/enabled, DELETE /api/mcps/{name}, and reserved subpaths.
 func (s *portalServer) handleMCPServer(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/mcps/")
 	if path == "" || path == "preset" {
@@ -158,7 +158,26 @@ func (s *portalServer) handleMCPServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, manifest)
 		return
 	}
-	writeError(w, http.StatusNotFound, fmt.Errorf("unknown mcp path %q", path))
+	// DELETE /api/mcps/{name} — hard-remove from enabled + disabled overlay.
+	name := strings.Trim(path, "/")
+	if name == "" || strings.Contains(name, "/") {
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown mcp path %q", path))
+		return
+	}
+	if r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, errMethodNotAllowed)
+		return
+	}
+	if err := s.store.DeleteMCP(name); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	manifest, err := s.store.ReadMCPs()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, manifest)
 }
 
 func isMCPPath(path string) bool {

@@ -51,9 +51,9 @@ export default function SyncPanel(props: { onDone?: () => void }) {
       const job = await api.startSync(command, tools);
       setCurrentJob(job);
       stream(job.id);
-    } catch (e: any) {
+    } catch (e) {
       setRunning(false);
-      setError(e.message || String(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 

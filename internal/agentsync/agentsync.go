@@ -435,6 +435,10 @@ func (m Manager) apply(ctx Context, update bool) error {
 	mode := "init"
 	if update {
 		mode = "update"
+		// Always materialize real files on update. Some tools (notably Kiro IDE)
+		// do not follow skill-directory symlinks, so link mode leaves skills
+		// invisible to the agent. Init still defaults to symlink unless --copy.
+		ctx.CopyMode = true
 	}
 	plan, err := m.buildPlan(ctx, update)
 	if err != nil {

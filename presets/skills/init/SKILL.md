@@ -1,6 +1,6 @@
 ---
 name: init
-description: Khởi tạo knowledge base cho repo mới: quét codebase, lập aspect inventory, rồi cập nhật docs/specs với 2 phiên bản business và developer trong các thư mục riêng biệt.
+description: Khởi tạo knowledge base cho repo mới: quét codebase, lập aspect inventory, rồi cập nhật docs/specs theo layout flat trong `docs/`.
 ---
 
 # Init Knowledge Base
@@ -9,13 +9,11 @@ Dùng khi user muốn khởi tạo hoặc làm mới knowledge base từ gần n
 
 ## Kết Quả
 
-- Aspect inventory markdown trong `docs/business/research/` hoặc `docs/developer/research/` tùy audience.
+- Aspect inventory markdown trong `docs/research/`.
 - Docs được tạo/cập nhật từ inventory:
   - `docs/README.md`, `docs/_index.md`, `docs/_sync.md`
-  - `docs/business/README.md`, `docs/business/_index.md`
-  - `docs/developer/README.md`, `docs/developer/_index.md`
-  - `docs/business/features/`, `docs/business/modules/`, `docs/business/shared/`
-  - `docs/developer/architecture/`, `docs/developer/modules/`, `docs/developer/features/`, `docs/developer/development/conventions/`
+  - `docs/architecture/`, `docs/modules/`, `docs/features/`, `docs/shared/`
+  - `docs/development/conventions/` khi cần
 - Không sửa source code trừ khi user yêu cầu rõ.
 
 ## Workflow
@@ -26,23 +24,20 @@ Dùng khi user muốn khởi tạo hoặc làm mới knowledge base từ gần n
    - `lsp-code-graph` khi cần symbol/caller/callee context.
    - `plan` tạo aspect inventory markdown.
 
-2. **Aspect inventory:** Mỗi aspect cần: tên, lý do quan trọng, source paths, docs hiện có, khoảng trống, doc target, priority, **audience** (`business` | `developer` | `both`). Bao phủ tối thiểu:
-   - **Business:** domain purpose, user workflows, business rules, acceptance criteria, vocabulary, user personas.
-   - **Developer:** module boundaries, public API, data models, integrations, invariants, failure modes, security, dev workflow, generated artifacts, architecture decisions, conventions.
-   - **Both:** features/modules có cả góc nhìn nghiệp vụ và kỹ thuật.
+2. **Aspect inventory:** Mỗi aspect cần: tên, lý do quan trọng, source paths, docs hiện có, khoảng trống, doc target, priority. Bao phủ tối thiểu:
+   - Domain purpose, user workflows, business rules, acceptance criteria, vocabulary.
+   - Module boundaries, public API, data models, integrations, invariants, failure modes, security, dev workflow, generated artifacts, architecture decisions, conventions.
 
 3. **Update docs (`//ru`):**
    - `read-search-docs` đọc lại inventory.
-   - `update-docs` cập nhật docs nhỏ nhất đủ mô tả hiện tại, theo đúng phân chia `business/` và `developer/`.
-   - Với mỗi feature/module quan trọng (P0/P1), tạo **cả hai** phiên bản nếu ảnh hưởng cả hai audience.
-   - Tạo link tương đối thật, cập nhật `docs/_index.md`, `docs/business/_index.md`, `docs/developer/_index.md`, và `docs/_sync.md`.
+   - `update-docs` cập nhật docs nhỏ nhất đủ mô tả hiện tại trong cây flat `docs/`.
+   - Tạo link tương đối thật, cập nhật `docs/_index.md` và `docs/_sync.md`.
 
-4. **Review:** Đối chiếu docs với inventory, đảm bảo aspect P0/P1 có doc target đúng audience. Chạy validation docs hoặc `git diff --check`.
+4. **Review:** Đối chiếu docs với inventory, đảm bảo aspect P0/P1 có doc target. Chạy validation docs hoặc `git diff --check`.
 
 ## Nguyên Tắc
 
 - Docs-first. Source code chỉ đọc để hiểu, không sửa.
-- OKF-first: mọi doc tạo mới theo Open Knowledge Format — markdown + YAML frontmatter với `type` bắt buộc, nên có `audience` (xem `_shared/templates/frontmatter-schema.md`). Cross-link dùng dạng bundle-relative `/business/...` hoặc `/developer/...`.
-- Audience-first: mỗi doc target phải rõ thuộc `business/` hay `developer/`; feature/module cross-cutting thì có cả hai.
+- OKF-first: mọi doc tạo mới theo Open Knowledge Format — markdown + YAML frontmatter với `type` bắt buộc (xem `_shared/templates/frontmatter-schema.md`). Cross-link dùng dạng bundle-relative `/modules/...` hoặc `/features/...` khi phù hợp.
 - Docs stale → coi là bối cảnh, không phải chân lý.
-- Không tạo placeholder rỗng. Mỗi doc phải giúp ngườimới hiểu aspect cụ thể.
+- Không tạo placeholder rỗng. Mỗi doc phải giúp người mới hiểu aspect cụ thể.

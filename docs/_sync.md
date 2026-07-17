@@ -3,7 +3,7 @@ type: sync
 title: "Trạng Thái Sync Tài Liệu"
 description: "Snapshot sync hiện tại của knowledge base, ghi commit phản ánh, phạm vi kiểm tra và trạng thái worktree còn chưa commit."
 tags: ["sync"]
-timestamp: 2026-06-23T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -19,8 +19,8 @@ compliance: current-state
 
 ## Current Sync
 
-- **Last Synced Commit**: a6beaf5a37d08b02feaf7310b3aaeee939c281f9
-- **Branch**: current worktree
-- **Sync Date**: 2026-06-03T10:11:31Z
-- **Scope**: Harness and looping agentic implementation, including internal/harness package, harness CLI command, preset skills/subagents, docs updates and AGENTS.md trigger additions.
-- **Known Unsynced**: Current worktree contains uncommitted cleanup skill preset/local changes, trigger instruction updates, tests and architecture docs.
+- **Last Synced Commit**: 068f62094544c9e6a3c702b35697a0382a668108
+- **Branch**: main (worktree)
+- **Sync Date**: 2026-07-17T00:00:00Z
+- **Scope**: Full-repo cleanup — dead planning links removed from index/module Meta; agentsync/architecture prose matches replace-in-place (no backup-before-write); Quartz stack and no-op preview stubs removed; portal useFlashMessage re-export removed; skill/convention paths aligned to flat `docs/`; active plan at `docs/specs/planning/cleanup-repo.md`.
+- **Known Unsynced**: Worktree still contains in-progress portal skills-catalog / MCP UI and agentsync MCP overlay feature work unrelated to cleanup; not part of this sync scope.

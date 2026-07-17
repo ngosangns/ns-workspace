@@ -279,3 +279,68 @@ export function PhCircleNotch(props: IconProps) {
     <path d="M168 40a96 96 0 1 1-40-8" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" fill="none" />,
   );
 }
+
+export function PhMagnifyingGlass(props: IconProps) {
+  return svg(
+    props,
+    <>
+      <circle cx="112" cy="112" r="72" stroke="currentColor" stroke-width={stroke(props.weight)} fill="none" />
+      <line x1="164.5" y1="164.5" x2="224" y2="224" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" />
+    </>,
+  );
+}
+
+export function PhDownloadSimple(props: IconProps) {
+  return svg(
+    props,
+    <>
+      <path
+        d="M80 168l48 48 48-48"
+        stroke="currentColor"
+        stroke-width={stroke(props.weight)}
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"
+      />
+      <line x1="128" y1="40" x2="128" y2="216" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" />
+      <path d="M48 216h160" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" />
+    </>,
+  );
+}
+
+export function PhPlus(props: IconProps) {
+  return svg(
+    props,
+    <>
+      <line x1="40" y1="128" x2="216" y2="128" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" />
+      <line x1="128" y1="40" x2="128" y2="216" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" />
+    </>,
+  );
+}
+
+export function PhTrash(props: IconProps) {
+  return svg(
+    props,
+    <>
+      <path d="M216 56H40" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" fill="none" />
+      <path d="M104 104v64" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" fill="none" />
+      <path d="M152 104v64" stroke="currentColor" stroke-width={stroke(props.weight)} stroke-linecap="round" fill="none" />
+      <path
+        d="M200 56v152a8 8 0 0 1-8 8H64a8 8 0 0 1-8-8V56"
+        stroke="currentColor"
+        stroke-width={stroke(props.weight)}
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"
+      />
+      <path
+        d="M168 56V40a16 16 0 0 0-16-16h-48a16 16 0 0 0-16 16v16"
+        stroke="currentColor"
+        stroke-width={stroke(props.weight)}
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"
+      />
+    </>,
+  );
+}

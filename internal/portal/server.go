@@ -44,7 +44,7 @@ func newPortalServer(presets fs.FS, agentsDir string) (*portalServer, error) {
 func (s *portalServer) router() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/skills", s.handleSkills)
-	mux.HandleFunc("/api/skills/", s.handleSkill)
+	mux.HandleFunc("/api/skills/", s.handleSkillCatalogOrSkill)
 	mux.HandleFunc("/api/mcps", s.handleMCPs)
 	mux.HandleFunc("/api/mcps/", s.handleMCPServer)
 	mux.HandleFunc("/api/registry", s.handleRegistry)

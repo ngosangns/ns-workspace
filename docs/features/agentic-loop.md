@@ -15,7 +15,7 @@ compliance: current-state
 - **Status**: active
 - **Description**: Feature looping agentic cho phép chạy self-correct loop với multi-agent routing và memory persistence.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Module harness](../modules/harness.md), [Spec harness looping agentic](../specs/planning/harness-looping-agentic.md)
+- **Links**: [Chỉ mục](../_index.md), [Module harness](../modules/harness.md)
 
 ## Tổng Quan
 

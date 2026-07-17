@@ -171,6 +171,7 @@ func readUserConfigFile(path string) (*UserConfig, error) {
 		return nil, fmt.Errorf("parse user config %s: %w", path, err)
 	}
 	entries := make(map[string]string, len(raw))
+	stale := false
 	for key, value := range raw {
 		normalized := NormalizePresetKey(key)
 		if !strings.HasPrefix(normalized, "presets/") {
@@ -185,6 +186,12 @@ func readUserConfigFile(path string) (*UserConfig, error) {
 		}
 		info, err := os.Stat(abs)
 		if err != nil {
+			// Dangling overlay paths (file deleted while key remains) must not
+			// brick portal / agentsync — skip the entry and rewrite config.
+			if errors.Is(err, os.ErrNotExist) {
+				stale = true
+				continue
+			}
 			return nil, fmt.Errorf("user config %s: key %q source %s: %w", path, key, abs, err)
 		}
 		if info.IsDir() {
@@ -192,7 +199,28 @@ func readUserConfigFile(path string) (*UserConfig, error) {
 		}
 		entries[normalized] = abs
 	}
+	if stale {
+		// Best-effort rewrite so the next load is clean.
+		_ = writeUserConfigEntries(path, entries)
+	}
 	return &UserConfig{entries: entries, origin: path}, nil
+}
+
+// writeUserConfigEntries rewrites the user config JSON map (absolute paths).
+func writeUserConfigEntries(path string, entries map[string]string) error {
+	if len(entries) == 0 {
+		_ = os.Remove(path)
+		return nil
+	}
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // readPresetFile returns the bytes for a preset path, preferring the user

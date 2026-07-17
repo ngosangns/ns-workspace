@@ -15,7 +15,7 @@ compliance: current-state
 - **Status**: active
 - **Description**: Module harness cung cấp engine, task registry, evaluator, loop controller, dispatcher và memory store cho `ns-workspace` CLI.
 - **Compliance**: current-state
-- **Links**: [Chỉ mục](../_index.md), [Feature agentic loop](../features/agentic-loop.md), [Spec harness looping agentic](../specs/planning/harness-looping-agentic.md)
+- **Links**: [Chỉ mục](../_index.md), [Feature agentic loop](../features/agentic-loop.md)
 
 ## Tổng Quan
 

@@ -1,4 +1,4 @@
-import { createSignal, For, Show, type Component } from "solid-js";
+import { createSignal, For, Show, type Component, type ParentProps } from "solid-js";
 import { A, useLocation } from "@solidjs/router";
 import { PhSquaresFour, PhBrain, PhHardDrives, PhCirclesFour, PhPuzzlePiece, PhList } from "./components/Icons";
 
@@ -16,7 +16,7 @@ const navItems: NavItem[] = [
   { label: "Adapters", icon: PhPuzzlePiece, to: "/adapters" },
 ];
 
-export default function App(props: { children?: any }) {
+export default function App(props: ParentProps) {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = createSignal(false);
 

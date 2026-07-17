@@ -188,8 +188,17 @@ func transformMCPServersForAdapter(adapterID string, manifest MCPManifest) (map[
 			// shape is what its plugin-cache .mcp.json already uses.
 			// Pass the manifest through verbatim so the ZCode adapter is
 			// ready the day a ~/.zcode/mcp.json target ships.
+		case "kiro", "kiro-cli":
+			// Kiro IDE/CLI honors per-server `disabled` (see
+			// https://kiro.dev/docs/mcp/configuration/). When the user
+			// toggles a server off in the Kiro panel it writes
+			// `"disabled": true` into ~/.kiro/settings/mcp.json. Portal
+			// enablement is separate (servers.disabled.json); any server
+			// still present in the enabled catalog must load in Kiro, so
+			// force disabled=false on every managed entry during sync.
+			next["disabled"] = false
 		default:
-			// claude, kimi, kiro and other adapters: keep the shared shape.
+			// claude, kimi and other adapters: keep the shared shape.
 		}
 		out[name] = next
 	}

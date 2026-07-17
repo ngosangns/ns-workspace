@@ -43,7 +43,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 ### Adapter Sync Boundary
 
-- **Lý do**: `internal/agentsync` là lõi bootstrap/sync cấu hình agent, bao gồm native targets, backup, symlink/copy, JSON merge, managed blocks và adapter support tiers.
+- **Lý do**: `internal/agentsync` là lõi bootstrap/sync cấu hình agent, bao gồm native targets, replace-in-place writes, symlink/copy, JSON merge, managed blocks và adapter support tiers.
 - **Source paths**: `internal/agentsync/`, `internal/cli/agentsync.go`, `internal/agentsync/agentsync_test.go`, `internal/cli/agentsync_test.go`, `presets/agents/AGENTS.md`, `presets/settings/settings.json`, `presets/mcp/servers.json`, `presets/registry/skills.json`, `presets/opencode/opencode.json`.
 - **Docs hiện có**: [Kiến trúc tổng quan](../architecture/overview.md), `README.md`, `DEVELOPER.md`.
 - **Khoảng trống**: Cần module doc riêng để mô tả operation model, adapter catalog, safety rules và failure modes.
@@ -72,7 +72,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 - **Lý do**: Code Graph thay thế graphify runtime bằng LSP, có installer/cache riêng và phải fail-open khi thiếu binary hoặc capability.
 - **Source paths**: `internal/preview/preview_lsp.go`, `internal/preview/preview_lsp_setup.go`, `internal/graphquery/`, `internal/preview/graph.go`, `presets/skills/lsp-code-graph/SKILL.md`.
-- **Docs hiện có**: [Module graph query](../modules/graphquery.md), [Module preview](../modules/preview.md), [Preview web](../features/preview-web.md), planning docs trong `docs/specs/planning/`.
+- **Docs hiện có**: [Module graph query](../modules/graphquery.md), [Module preview](../modules/preview.md), [Preview web](../features/preview-web.md).
 - **Khoảng trống**: Không cần doc mới; cần giữ sync khi thêm language server hoặc thay đổi side effect cài đặt.
 - **Doc target**: [Module graph query](../modules/graphquery.md), [Module preview](../modules/preview.md).
 - **Priority**: P0.
@@ -117,7 +117,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 ### Invariants Và Business Rules
 
-- **Lý do**: Các rule như `init` không overwrite nếu không `--force`, `update` rewrite managed output có backup, preview/search read-only, HTTP không auto-install LSP và generated preview UI không được index bởi LSP là guardrail quan trọng.
+- **Lý do**: Các rule như `init` không overwrite nếu không `--force`, `update` rewrite managed output tại chỗ (không backup), preview/search read-only, HTTP không auto-install LSP và generated preview UI không được index bởi LSP là guardrail quan trọng.
 - **Source paths**: `internal/agentsync/agentsync.go`, `internal/preview/preview_lsp.go`, `internal/preview/preview_api.go`, `internal/preview/preview_search.go`, tests trong `main_test.go`, `internal/agentsync/agentsync_test.go`, `internal/preview/preview_test.go`.
 - **Docs hiện có**: [Module agentsync](../modules/agentsync.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md), [Preview web](../features/preview-web.md).
 - **Khoảng trống**: Không cần doc requirements riêng lúc này vì repo đang dùng flat module docs; tạo `requirements.md` nếu sau này migrate module folders.
@@ -156,7 +156,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 - **Lý do**: Lệnh `preview` embed SolidJS SPA trong `internal/preview/preview_ui/`; graph/search cần bỏ generated artifacts khỏi LSP Code Graph index.
 - **Source paths**: `internal/preview/preview_lsp.go`, `internal/preview/preview_search.go`, `internal/preview/preview_ui/`.
 - **Docs hiện có**: [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md), [Preview web](../features/preview-web.md).
-- **Khoảng trống**: Search Semantic generated filtering còn là planning scope trong [Tối ưu và rút gọn Preview Web](../specs/planning/optimize-preview-web-surface.md); LSP Code Graph filtering đã shipped.
+- **Khoảng trống**: Search Semantic generated filtering và LSP Code Graph filtering đã nằm trong behavior shipped của module preview; cần giữ sync khi đổi surface generated assets.
 - **Doc target**: [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md).
 - **Priority**: P1.
 

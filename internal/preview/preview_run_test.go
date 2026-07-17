@@ -123,8 +123,25 @@ func TestRunQuartzDirDeprecatedIgnored(t *testing.T) {
 	root := t.TempDir()
 	_ = os.MkdirAll(root+"/docs", 0o755)
 
-	if err := Run([]string{"--addr", "127.0.0.1:0", "--quartz-dir", "/custom/quartz", "--project", root}); err != nil {
-		t.Fatalf("Run with deprecated --quartz-dir: %v", err)
+	// Capture stderr so we prove the shipped Run path still accepts the flag
+	// and emits the deprecation warning (Quartz helpers are gone; flag kept).
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	origStderr := os.Stderr
+	os.Stderr = w
+	runErr := Run([]string{"--addr", "127.0.0.1:0", "--quartz-dir", "/custom/quartz", "--project", root})
+	_ = w.Close()
+	os.Stderr = origStderr
+	stderrBytes, _ := io.ReadAll(r)
+	_ = r.Close()
+	if runErr != nil {
+		t.Fatalf("Run with deprecated --quartz-dir: %v", runErr)
+	}
+	stderr := string(stderrBytes)
+	if !strings.Contains(stderr, "--quartz-dir is deprecated") {
+		t.Fatalf("expected deprecation warning on stderr, got %q", stderr)
 	}
 }
 

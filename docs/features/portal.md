@@ -37,7 +37,13 @@ Flags:
 
 | Method | Endpoint                          | Mô tả                                                                  |
 | ------ | --------------------------------- | ---------------------------------------------------------------------- |
-| GET    | `/api/skills`                     | Danh sách skills (`enabled` flag)                                      |
+| GET    | `/api/skills`                     | Danh sách skills (`enabled`, `source`, optional `registrySource`)      |
+| GET    | `/api/skills/registries`          | Unique GitHub registry sources từ Registry overlay (enabled+disabled)  |
+| GET    | `/api/skills/catalog?registry=&q=`| List full SKILL.md trong registry (GitHub tree API; filter name)       |
+| GET    | `/api/skills/search?q=`           | Search skills.sh (min 2 chars; optional `registry=`)                   |
+| POST   | `/api/skills/install`             | Cài skill (`source`+`skill`) vào agents home + upsert registry overlay |
+| POST   | `/api/skills/install-batch`       | Cài nhiều skills (tối đa 50)                                           |
+| POST   | `/api/skills/uninstall`           | Gỡ skill khỏi `~/.agents/skills/<id>` + xóa entry registry overlay     |
 | GET    | `/api/skills/{id}`                | Chi tiết skill                                                         |
 | PUT    | `/api/skills/{id}`                | Cập nhật skill                                                         |
 | DELETE | `/api/skills/{id}`                | Reset skill về default                                                 |
@@ -46,6 +52,8 @@ Flags:
 | PUT    | `/api/mcps`                       | Ghi **toàn bộ catalog** (`content` hoặc `mcpServers`+`disabled`)       |
 | DELETE | `/api/mcps`                       | Reset MCP overlay về embedded default                                  |
 | POST   | `/api/mcps/{name}/enabled`        | Enable/disable một MCP trong catalog                                   |
+| DELETE | `/api/mcps/{name}`                | Xóa hẳn server khỏi enabled + disabled overlay                         |
+| GET    | `/api/mcps/preset`                | Embedded MCP preset (read-only)                                        |
 | GET    | `/api/registry`                   | Registry skills + disabled + items                                     |
 | PUT    | `/api/registry`                   | Cập nhật registry skills (removed → `skills.disabled.json`)            |
 | DELETE | `/api/registry`                   | Reset registry overlay (enabled + disabled)                            |
@@ -59,12 +67,14 @@ Flags:
 
 ## Giao Diện
 
-- **Dashboard**: tổng quan số lượng skills, MCP servers, registry skills, adapters và trạng thái `~/.agents`.
-- **Skills**: list skill kèm description, toggle On/Off, dialog xem Markdown, reset về default.
-- **MCPs**: một catalog — List (toggle) + Edit JSON; Save thay thế toàn bộ catalog. Reset về embedded default.
-- **Registry**: tab List (toggle per skill) + File (enabled JSON).
-- **Adapters**: list adapter với tier, artifacts, docs và toggle enable/disable.
-- **Sync Panel**: nút chạy `status`, `doctor`, `init`, `update`, `registry` với log stream SSE.
+UI dùng **page kit** SolidJS chung (`PageHeader`, `UiSegmented`, `EnableSwitch`, `ResourceRow`, `EmptyState`, `ListSkeleton`, `StatusPill`, `PageFeedback`, `SearchInput`) — xem [conventions frontend](../development/conventions/preview-frontend.md).
+
+- **Dashboard**: metrics skills / MCP / registry / adapters (total + enabled/disabled), deep-link tới từng trang, path status `~/.agents`, Sync panel.
+- **Skills**: tab **Installed** (registry filter gồm **All**, name filter, enable switch, dialog Markdown) và tab **Discover** (cùng registry filter **All** + từng source, catalog GitHub, multi-select / batch install tối đa 50; skill đã cài có **Reinstall** + **Uninstall**).
+- **MCPs**: **card grid** (transport badge, summary command/url, enable switch); search + filter All/Enabled/Disabled; dialog form (stdio / HTTP / SSE) + Raw JSON; Add / edit / Remove; **Advanced** (catalog JSON + embedded preset); Reset overlay.
+- **Registry**: list thống nhất (filter, enable switch) + Edit JSON (enabled list); Reset khi custom overlay.
+- **Adapters**: list provider (tier, artifacts, docs) + enable switch.
+- **Sync Panel**: `status`, `doctor`, `init`, `update`, `registry` + SSE log; filter provider.
 
 ## Serve Và Lint
 
