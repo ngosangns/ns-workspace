@@ -10,7 +10,7 @@ Repo cũng có các lệnh đọc knowledge base: `preview` serve SolidJS SPA + 
 
 Đây là dự án cá nhân, phát triển nhanh để phục vụ workflow riêng. Một số adapter path, hook command, MCP config hoặc generated artifact có thể phụ thuộc vào phiên bản tool và môi trường local.
 
-Trước khi apply lên môi trường quan trọng, hãy dùng `doctor`, `status` và `--dry-run` (update ghi đè managed output tại chỗ, không tạo backup timestamp).
+Trước khi apply lên môi trường quan trọng, hãy dùng `doctor`, `status` và `--dry-run`. Lệnh `update` ghi đè managed output tại chỗ (replace-in-place).
 
 ## Quickstart
 
