@@ -25,7 +25,7 @@ Adapter là lớp đồng bộ cấu hình từ `~/.agents` sang native user-lev
 
 Preset là source config được lưu trong `presets/` và Go embed vào binary để `init/update` có thể ghi shared home hoặc native adapter output.
 
-Managed artifact là file, directory, JSON key hoặc managed text block do `ns-workspace` tạo và có thể rewrite khi chạy `update` (replace-in-place, không backup-before-write).
+Managed artifact là file, directory, JSON key hoặc managed text block do `ns-workspace` tạo và có thể rewrite khi chạy `update` (replace-in-place).
 
 Managed block là đoạn text có label trong file native, ví dụ block MCP trong `~/.codex/config.toml`.
 

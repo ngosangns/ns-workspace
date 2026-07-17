@@ -27,7 +27,7 @@ Các command `init`, `update`, `status`, `doctor`, `registry`, `agents` và alia
 
 - `Manager.BuildPlan(opt, update)` tạo `SyncPlan` inspectable gồm core phase, registry helper phase, registry install phase, MCP phase và adapter phase.
 - `Manager.Apply(opt, update=false)` phục vụ `init`: build plan, tạo shared layout và adapter native output nhưng mặc định bỏ qua file đã tồn tại, trừ khi dùng `--force`.
-- `Manager.Apply(opt, update=true)` phục vụ `update`: build plan, rewrite phần tool quản lý từ preset hiện tại (replace-in-place, không backup-before-write), và không giữ key/entry managed đã bị xóa khỏi preset.
+- `Manager.Apply(opt, update=true)` phục vụ `update`: build plan, rewrite phần tool quản lý từ preset hiện tại bằng replace-in-place, và không giữ key/entry managed đã bị xóa khỏi preset.
 - `Manager.Status()` in trạng thái path shared và native theo adapter đang chọn.
 - `Manager.Doctor()` validate JSON shared/native, in OS/arch, path tồn tại và các agent CLI executable có trong `PATH`.
 - `Manager.Catalog()` liệt kê adapter support tier và artifact support.
@@ -59,13 +59,13 @@ Các command `init`, `update`, `status`, `doctor`, `registry`, `agents` và alia
 - `InstallPresetFile` ghi một file preset vào shared/native path.
 - `InstallPresetTree` ghi cả cây preset, dùng cho skills và subagents.
 - `LinkOrCopy` link hoặc copy file từ shared home sang native path tùy `--copy` hoặc Windows.
-- `LinkSkillDirs` link/copy từng skill/subagent dir; trong dry-run có thể đọc embedded preset names khi source shared chưa tồn tại. Mỗi entry preset luôn ghi đè entry cùng tên trong provider target (per-entry replace), kể cả khi `init` không `--force`, nên toàn bộ skill trong preset luôn override skill trong provider target; entry cũ bị thay tại chỗ, không tạo bản backup.
+- `LinkSkillDirs` link/copy từng skill/subagent dir; trong dry-run có thể đọc embedded preset names khi source shared chưa tồn tại. Mỗi entry preset luôn ghi đè entry cùng tên trong provider target (per-entry replace), kể cả khi `init` không `--force`, nên toàn bộ skill trong preset luôn override skill trong provider target; entry cũ bị thay tại chỗ.
 - `MergeJSON` merge JSON vào key path cụ thể và có thể rewrite object managed khi update.
 - `AppendManagedBlock` thay managed block có label trong file text như Codex config.
 - `ManualStep` ghi guidance vào `~/.agents/generated/<agent>/README.md` cho adapter chưa có native write path chắc chắn.
 - `WriteRegistryHelpers`, `RegistryInstall` và `WriteMCPReadme` model hóa các phase đặc biệt thay vì để chúng ẩn trong core apply.
 
-Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `ok`; nếu path tồn tại và không replace thì `init` bỏ qua; nếu replace thì ghi đè trực tiếp (không backup).
+Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `ok`; nếu path tồn tại và không replace thì `init` bỏ qua; nếu replace thì ghi đè trực tiếp.
 
 ## Adapter Catalog
 

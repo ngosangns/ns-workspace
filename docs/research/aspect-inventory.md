@@ -117,7 +117,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 ### Invariants Và Business Rules
 
-- **Lý do**: Các rule như `init` không overwrite nếu không `--force`, `update` rewrite managed output tại chỗ (không backup), preview/search read-only, HTTP không auto-install LSP và generated preview UI không được index bởi LSP là guardrail quan trọng.
+- **Lý do**: Các rule như `init` không overwrite nếu không `--force`, `update` rewrite managed output tại chỗ (replace-in-place), preview/search read-only, HTTP không auto-install LSP và generated preview UI không được index bởi LSP là guardrail quan trọng.
 - **Source paths**: `internal/agentsync/agentsync.go`, `internal/preview/preview_lsp.go`, `internal/preview/preview_api.go`, `internal/preview/preview_search.go`, tests trong `main_test.go`, `internal/agentsync/agentsync_test.go`, `internal/preview/preview_test.go`.
 - **Docs hiện có**: [Module agentsync](../modules/agentsync.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md), [Preview web](../features/preview-web.md).
 - **Khoảng trống**: Không cần doc requirements riêng lúc này vì repo đang dùng flat module docs; tạo `requirements.md` nếu sau này migrate module folders.

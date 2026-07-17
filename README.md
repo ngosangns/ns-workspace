@@ -68,7 +68,7 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 | Lệnh       | Mục đích                                                                                                                                       |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `init`     | Tạo cấu hình shared và link/copy sang adapter native. Mặc định bỏ qua file đã tồn tại, trừ khi dùng `--force`.                                 |
-| `update`   | Rewrite các phần config do tool quản lý từ preset embedded (replace-in-place, không backup) và xóa nội dung managed không còn trong preset.     |
+| `update`   | Rewrite các phần config do tool quản lý từ preset embedded (replace-in-place) và xóa nội dung managed không còn trong preset.     |
 | `portal`   | Local web UI quản lý skills (installed + discover/catalog), MCP catalog, registry, adapters và chạy sync qua SSE.                                |
 | `status`   | Hiển thị path đã cài, path thiếu và link hiện có.                                                                                              |
 | `doctor`   | Validate JSON config và report các local agent CLI.                                                                                            |
