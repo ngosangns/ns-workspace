@@ -12,9 +12,10 @@ Tài liệu này dành cho việc phát triển `ns-workspace` trong checkout lo
 
 | Path                               | Vai trò                                                                                                                                                |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `main.go`                          | CLI entrypoint, route nhóm lệnh agentsync, harness, preview/search, graph, export, mcp và lsp.                                                          |
+| `main.go`                          | CLI entrypoint, route nhóm lệnh agentsync, harness, portal, preview/search, graph, export, mcp, kb, setup và lsp.                                      |
 | `internal/cli/`                    | Parse flags và dispatch nhóm lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`/`catalog`, `harness`.                                       |
-| `internal/agentsync/`              | Logic adapter sync, `SyncPlan`, path native của từng agent, backup và operation apply/status/doctor.                                                   |
+| `internal/agentsync/`              | Logic adapter sync, `SyncPlan`, path native của từng agent, replace-in-place writes và operation apply/status/doctor.                                    |
+| `internal/portal/`                 | Local portal HTTP API + embed UI (skills catalog/discover, MCP, registry, adapters, sync SSE).                                                           |
 | `internal/harness/`                | Engine, task registry, evaluator, loop controller, subagent dispatcher, memory store và enrichment task `enrich-docs` (`enrich.go`) cho lệnh `harness`. |
 | `internal/preview/`                | Backend scan docs, search/graph API, static export (`export.go` + `export_ui/` Solid viewer), knowledge façade, `kb`, và `preview` SPA + PreviewHandler. |
 | `internal/preview/preview_ui_src/` | Source SolidJS/TypeScript 7/Tailwind của docs preview SPA.                                                                                             |
@@ -39,6 +40,7 @@ go run . mcp --project . list-docs
 go run . lsp list --project .
 go run . harness list
 go run . harness run --task <id> --project . --dry-run
+go run . portal --open
 ```
 
 Lệnh `preview` serve SolidJS SPA embed + PreviewHandler REST/SSE (docs list/detail, search, graph). Không clone Quartz; `--quartz-dir` bị deprecate. Build UI: `npm run build:preview` (TypeScript 7 + Solid).
@@ -86,7 +88,7 @@ Không cần chạy full build chỉ để sửa docs thuần. Với thay đổi
 
 1. Dùng `go run . status` để xem output hiện tại.
 2. Chạy `go run . init --dry-run` hoặc `go run . update --dry-run` trước khi ghi file user-level.
-3. Khi sửa adapter stable trong `internal/agentsync/`, kiểm tra cả path create/update, backup, symlink/copy mode và filter `--tools`.
+3. Khi sửa adapter stable trong `internal/agentsync/`, kiểm tra cả path create/update, replace-in-place writes, symlink/copy mode và filter `--tools`.
 4. Khi thêm agent mới, cập nhật catalog/support tier, preset materialization và test liên quan.
 5. Khi sửa harness trong `internal/harness/`, chạy `go test ./internal/harness/...` và thử `go run . harness run --task <id> --project . --dry-run`.
 6. Sau khi chỉnh preset trong `presets/`, kiểm tra command tương ứng bằng `--dry-run` trước khi apply thật.
@@ -120,7 +122,7 @@ Khi một doc có cả hai, frontmatter thắng ở key trùng và `## Meta` đi
 ## Rủi Ro Cần Nhớ
 
 - Repo có thể ghi vào user-level config thật; luôn dùng `--dry-run` trước với thay đổi adapter hoặc preset.
-- `--force` thay thế file đã tồn tại trong `init`, nên chỉ dùng khi đã đọc diff/backups.
+- `--force` thay thế file đã tồn tại trong `init`, nên chỉ dùng khi đã đọc diff và chấp nhận ghi đè.
 - Preview search có thể dùng embedding runtime local nếu được cấu hình; fallback lexical vẫn phải cho kết quả hợp lý khi embedding không khả dụng.
 - Code Graph dựa vào language server cài trong môi trường local hoặc cache `ns-workspace`; resolver kiểm tra `PATH`, Go bin dirs như `GOBIN`/`GOPATH/bin`/`~/go/bin`, local `node_modules/.bin` và cache dirs từ `internal/graphquery`. LSP source scan bỏ generated artifacts và node_modules khỏi index; khi LSP binary thiếu, một file symbol timeout hoặc relation expansion thiếu capability, search phải fail-open bằng warning thay vì làm hỏng preview.
 - `graph --query` tự ensure LSP theo mặc định và có thể tải package/archive vào user cache; dùng `--no-ensure-lsp` cho kiểm tra read-only. Preview/Search HTTP không được tự cài LSP trong request.

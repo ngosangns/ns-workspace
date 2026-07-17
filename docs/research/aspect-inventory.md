@@ -3,7 +3,7 @@ type: research
 title: "Aspect Inventory"
 description: "Inventory các aspect chính của `ns-workspace` để người mới hiểu domain, module boundary, workflow, invariants và docs gaps hiện tại."
 tags: ["research", "aspect-inventory"]
-timestamp: 2026-06-23T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -34,19 +34,19 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 
 ### Public Commands Và User Workflows
 
-- **Lý do**: CLI là public surface chính; các lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`, `preview`, `search`, `graph` và `lsp` có side effect khác nhau.
-- **Source paths**: `main.go`, `internal/cli/agentsync.go`, `internal/agentsync/`, `internal/preview/preview.go`, `internal/preview/graph.go`, `internal/graphquery/lsp.go`, `main_test.go`, `internal/cli/agentsync_test.go`, `internal/preview/preview_test.go`.
-- **Docs hiện có**: [Tài liệu dự án](../README.md), [Kiến trúc tổng quan](../architecture/overview.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md).
-- **Khoảng trống**: Adapter workflow cần module doc riêng để người mới không phải ghép thông tin từ README, architecture và code.
-- **Doc target**: [Module agentsync](../modules/agentsync.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md).
+- **Lý do**: CLI là public surface chính; các lệnh `init`, `update`, `status`, `doctor`, `registry`, `agents`, `portal`, `preview`, `search`, `graph`, `export`, `mcp`, `kb`, `setup` và `lsp` có side effect khác nhau.
+- **Source paths**: `main.go`, `internal/cli/agentsync.go`, `internal/agentsync/`, `internal/portal/`, `internal/preview/preview.go`, `internal/preview/graph.go`, `internal/graphquery/lsp.go`, `main_test.go`, `internal/cli/agentsync_test.go`, `internal/preview/preview_test.go`.
+- **Docs hiện có**: [Tài liệu dự án](../README.md), [Kiến trúc tổng quan](../architecture/overview.md), [Module agentsync](../modules/agentsync.md), [Portal](../features/portal.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md).
+- **Khoảng trống**: Không còn gap P0; giữ sync khi thêm public command.
+- **Doc target**: [Module agentsync](../modules/agentsync.md), [Portal](../features/portal.md), [Module preview](../modules/preview.md), [Module graph query](../modules/graphquery.md).
 - **Priority**: P0.
 
 ### Adapter Sync Boundary
 
 - **Lý do**: `internal/agentsync` là lõi bootstrap/sync cấu hình agent, bao gồm native targets, replace-in-place writes, symlink/copy, JSON merge, managed blocks và adapter support tiers.
 - **Source paths**: `internal/agentsync/`, `internal/cli/agentsync.go`, `internal/agentsync/agentsync_test.go`, `internal/cli/agentsync_test.go`, `presets/agents/AGENTS.md`, `presets/settings/settings.json`, `presets/mcp/servers.json`, `presets/registry/skills.json`, `presets/opencode/opencode.json`.
-- **Docs hiện có**: [Kiến trúc tổng quan](../architecture/overview.md), `README.md`, `DEVELOPER.md`.
-- **Khoảng trống**: Cần module doc riêng để mô tả operation model, adapter catalog, safety rules và failure modes.
+- **Docs hiện có**: [Kiến trúc tổng quan](../architecture/overview.md), [Module agentsync](../modules/agentsync.md), `README.md`, `DEVELOPER.md`.
+- **Khoảng trống**: Không còn gap P0; giữ sync khi đổi adapter catalog hoặc safety rules.
 - **Doc target**: [Module agentsync](../modules/agentsync.md).
 - **Priority**: P0.
 
@@ -64,7 +64,7 @@ Inventory này là bản đồ current-state cho lần khởi tạo knowledge ba
 - **Lý do**: Preview web là workflow đọc knowledge base, search docs/code, mở graph và validate metadata docs.
 - **Source paths**: `internal/preview/preview.go`, `internal/preview/preview_ui_src/`, `internal/preview/preview_api.go`, `internal/preview/spec_project.go`, `internal/preview/preview_search.go`, `package.json`.
 - **Docs hiện có**: [Preview web](../features/preview-web.md), [Module preview](../modules/preview.md), [Quy ước frontend preview](../development/conventions/preview-frontend.md).
-- **Khoảng trống**: Planning docs còn mô tả một số context lịch sử; shipped behavior đã nằm trong feature/module docs.
+- **Khoảng trống**: Không còn gap P0; shipped Solid SPA behavior nằm trong feature/module docs.
 - **Doc target**: [Preview web](../features/preview-web.md), [Module preview](../modules/preview.md).
 - **Priority**: P0.
 

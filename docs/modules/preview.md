@@ -3,7 +3,7 @@ type: module
 title: "Module Preview"
 description: "Tài liệu module `internal/preview`: scan docs, search/graph, export, kb, và lệnh `preview` serve SolidJS SPA + PreviewHandler."
 tags: ["module", "preview"]
-timestamp: 2026-07-15T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -38,6 +38,9 @@ Preview và portal tách riêng:
 | `export.go` + `export_ui/` | Export OKF HTML; viewer Solid build (`export_ui_src` → `viz.js`)                 |
 | `graph.go`               | Lệnh `graph` / `search` CLI                                                        |
 | `kb.go` / `knowledge.go` | OKF validate/index và façade kbmcp                                                 |
+| `docs_links_test.go`     | Assert relative markdown links under `docs/` resolve on disk                       |
+
+`preview` **không** dùng Quartz. Flag CLI `--quartz-dir` vẫn được parse để tương thích, in deprecation warning rồi bỏ qua.
 
 ## Lệnh `preview`
 

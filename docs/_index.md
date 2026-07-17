@@ -4,7 +4,7 @@ title: "Chỉ Mục Tài Liệu"
 description: "Chỉ mục điều hướng của knowledge base, liệt kê tài liệu chính, trạng thái hiện tại và quan hệ graph giữa các docs."
 okf_version: "0.1"
 tags: ["index"]
-timestamp: 2026-07-17T00:00:00Z
+timestamp: 2026-07-17T12:00:00Z
 status: active
 compliance: current-state
 ---
@@ -16,7 +16,7 @@ compliance: current-state
 - **Status**: active
 - **Description**: Chỉ mục điều hướng của knowledge base, liệt kê tài liệu chính, trạng thái hiện tại và quan hệ graph giữa các docs.
 - **Compliance**: current-state
-- **Links**: [Tài liệu dự án](./README.md), [Trạng thái sync](./_sync.md), [Kiến trúc tổng quan](./architecture/overview.md), [Aspect inventory](./research/aspect-inventory.md), [Module agentsync](./modules/agentsync.md), [Module harness](./modules/harness.md), [Preview web](./features/preview-web.md), [Portal](./features/portal.md), [Agentic loop](./features/agentic-loop.md), [Module preview](./modules/preview.md), [Module kbmcp](./modules/kbmcp.md), [Module graph query](./modules/graphquery.md), [Thuật ngữ](./shared/glossary.md), [Quy ước frontend](./development/conventions/preview-frontend.md), [Cleanup repo](./specs/planning/cleanup-repo.md)
+- **Links**: [Tài liệu dự án](./README.md), [Trạng thái sync](./_sync.md), [Kiến trúc tổng quan](./architecture/overview.md), [Aspect inventory](./research/aspect-inventory.md), [Module agentsync](./modules/agentsync.md), [Module harness](./modules/harness.md), [Preview web](./features/preview-web.md), [Portal](./features/portal.md), [Agentic loop](./features/agentic-loop.md), [Module preview](./modules/preview.md), [Module kbmcp](./modules/kbmcp.md), [Module graph query](./modules/graphquery.md), [Thuật ngữ](./shared/glossary.md), [Quy ước frontend](./development/conventions/preview-frontend.md), [Cleanup repo](./specs/planning/cleanup-repo.md), [Working document Kiro](./working-documents/kiro-agent-loads-synced-resources.md)
 
 ## Modules
 

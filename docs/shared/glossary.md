@@ -3,7 +3,7 @@ type: shared
 title: "Thuật Ngữ"
 description: "Thuật ngữ chung cho `ns-workspace`, bao gồm adapter sync, presets, managed artifacts, preview web, spec docs, feature docs, module docs và metadata docs."
 tags: ["shared", "glossary"]
-timestamp: 2026-06-23T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -25,13 +25,15 @@ Adapter là lớp đồng bộ cấu hình từ `~/.agents` sang native user-lev
 
 Preset là source config được lưu trong `presets/` và Go embed vào binary để `init/update` có thể ghi shared home hoặc native adapter output.
 
-Managed artifact là file, directory, JSON key hoặc managed text block do `ns-workspace` tạo và có thể rewrite khi chạy `update`.
+Managed artifact là file, directory, JSON key hoặc managed text block do `ns-workspace` tạo và có thể rewrite khi chạy `update` (replace-in-place, không backup-before-write).
 
 Managed block là đoạn text có label trong file native, ví dụ block MCP trong `~/.codex/config.toml`.
 
 Support tier là mức ổn định của adapter: `stable` ghi native path thật, `manual` tạo helper guidance, còn `experimental` được guard vì path hoặc contract chưa đủ chắc.
 
-Preview web là dashboard local được mở bằng lệnh `preview` để đọc, search và điều hướng tài liệu trong `docs/`.
+Portal là web UI local (`go run . portal`) để quản lý skills (installed + discover/catalog), MCP servers, registry entries, adapters và chạy sync.
+
+Preview web là dashboard local được mở bằng lệnh `preview` (SolidJS SPA) để đọc, search và điều hướng tài liệu trong `docs/`.
 
 Spec là tài liệu yêu cầu hoặc plan nằm dưới `docs/specs/`.
 

@@ -1,6 +1,6 @@
 # ns-workspace
 
-`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Gemini, Codex, Cline và các adapter khác.
+`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Gemini, Codex, Cline, ZCode và các adapter khác.
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent nhận cùng workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
@@ -10,7 +10,7 @@ Repo cũng có các lệnh đọc knowledge base: `preview` serve SolidJS SPA + 
 
 Đây là dự án cá nhân, phát triển nhanh để phục vụ workflow riêng. Một số adapter path, hook command, MCP config hoặc generated artifact có thể phụ thuộc vào phiên bản tool và môi trường local.
 
-Trước khi apply lên môi trường quan trọng, hãy dùng `doctor`, `status`, `--dry-run` và đọc diff/backups.
+Trước khi apply lên môi trường quan trọng, hãy dùng `doctor`, `status` và `--dry-run` (update ghi đè managed output tại chỗ, không tạo backup timestamp).
 
 ## Quickstart
 
@@ -68,7 +68,8 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 | Lệnh       | Mục đích                                                                                                                                       |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `init`     | Tạo cấu hình shared và link/copy sang adapter native. Mặc định bỏ qua file đã tồn tại, trừ khi dùng `--force`.                                 |
-| `update`   | Rewrite các phần config do tool quản lý từ preset embedded, tạo backup timestamp trước khi ghi và xóa nội dung managed không còn trong preset. |
+| `update`   | Rewrite các phần config do tool quản lý từ preset embedded (replace-in-place, không backup) và xóa nội dung managed không còn trong preset.     |
+| `portal`   | Local web UI quản lý skills (installed + discover/catalog), MCP catalog, registry, adapters và chạy sync qua SSE.                                |
 | `status`   | Hiển thị path đã cài, path thiếu và link hiện có.                                                                                              |
 | `doctor`   | Validate JSON config và report các local agent CLI.                                                                                            |
 | `registry` | Cài các skill lấy từ registry.                                                                                                                 |
@@ -158,6 +159,16 @@ Stable adapters ghi vào các user-level path đã biết:
 | Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root); skills không mirror vì Gemini CLI đọc alias `.agents/skills` thẳng từ `~/.agents/skills` |
 | Codex CLI     | `~/.codex/AGENTS.md`, managed MCP block trong `~/.codex/config.toml`; Codex không có `~/.codex/skills` — chỉ đọc `.agents/skills` (repo) và `~/.agents/skills` (user) nên không cần mirror |
 | Cline         | `~/.cline/skills`, `~/.cline/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                             |
+| ZCode         | `~/.zcode/AGENTS.md` (link từ shared); skills đọc native `~/.agents/skills` (không mirror)                                                                                        |
+
+## Portal
+
+`portal` serve localhost UI (SolidJS) để bật/tắt skills, MCP, registry entries và adapters, discover/install skill từ GitHub registry, và chạy `init`/`update`/`registry`/`doctor`/`status` với log SSE. Overlay user ghi dưới `~/.config/ns-workspace/portal/` (không sửa embedded presets). Xem [docs/features/portal.md](docs/features/portal.md).
+
+```bash
+task ns:portal
+go run . portal --open
+```
 
 ## Preview, Search, Graph Và Harness
 

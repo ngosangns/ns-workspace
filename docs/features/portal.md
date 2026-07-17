@@ -3,7 +3,7 @@ type: feature
 title: "Portal Web UI"
 description: "Trang web local quản lý skills, MCPs, registry skills và chạy sync cho ns-workspace."
 tags: ["feature", "portal", "ui"]
-timestamp: 2026-07-15T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---

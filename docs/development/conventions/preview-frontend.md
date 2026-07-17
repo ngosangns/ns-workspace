@@ -3,7 +3,7 @@ type: development
 title: "Quy Ước Frontend Preview & Portal"
 description: "SolidJS + TypeScript 7 conventions cho portal, preview SPA và export viewer."
 tags: ["development", "preview-frontend", "portal", "solidjs"]
-timestamp: 2026-07-15T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -69,5 +69,5 @@ PageHeader
 ```
 
 - Prefer `EnableSwitch` + opacity for disabled rows; keep pills for tier/source/Custom/transport.
-- Prefer `lib/` over Vue-era `composables/` for new hooks.
+- Prefer `lib/` for new hooks (`usePageFeedback`); do not reintroduce deprecated flash re-exports.
 - Catch with `unknown` + `errMessage` / `usePageFeedback().fail`.

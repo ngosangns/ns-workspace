@@ -3,7 +3,7 @@ type: module
 title: "Module Agentsync"
 description: "Tài liệu module `internal/agentsync`, mô tả sync plan, adapter sync, preset materialization, managed operations, registry skills, native targets và safety rules."
 tags: ["module", "agentsync"]
-timestamp: 2026-06-23T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---
@@ -69,7 +69,7 @@ Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `
 
 ## Adapter Catalog
 
-Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI và Cline. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
+Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Gemini CLI, Codex CLI, Cline và ZCode. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
 
 Plugin adapter hiện có:
 
@@ -93,7 +93,7 @@ Phase order của `SyncPlan`:
 4. Shared MCP preset và README nếu enabled.
 5. Adapter native operations theo selected adapters.
 
-Khi build `update`, MCP/settings manifests được đọc từ embedded presets để stale shared output không đi tiếp sang native configs. Khi build `init`, existing shared manifest được dùng nếu file đã tồn tại; nếu chưa có, embedded preset là fallback.
+Khi build `update`, MCP/settings manifests được đọc từ embedded presets (và portal overlay nếu có) để stale shared output không đi tiếp sang native configs. Khi build `init`, existing shared manifest / portal MCP enabled overlay được ưu tiên khi file đã tồn tại; nếu chưa có, embedded preset là fallback. Portal disable overlays (`portal/disabled.json`, `servers.disabled.json`, `skills.disabled.json`) và MCP enabled overlay được agentsync áp dụng khi materialize — xem [Portal](../features/portal.md).
 
 Registry skills trong `presets/registry/skills.json` được ghi thành `~/.agents/registry/skills.json` và `install.sh`. Khi không dùng `--no-registry`, manager cài từng entry vào shared skills home theo `installer`:
 

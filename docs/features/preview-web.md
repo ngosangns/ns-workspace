@@ -3,7 +3,7 @@ type: feature
 title: "Preview Web"
 description: "Lệnh `preview` serve SolidJS SPA local để đọc docs, search hybrid và graph qua PreviewHandler."
 tags: ["feature", "preview-web"]
-timestamp: 2026-07-15T00:00:00Z
+timestamp: 2026-07-17T00:00:00Z
 status: active
 compliance: current-state
 ---

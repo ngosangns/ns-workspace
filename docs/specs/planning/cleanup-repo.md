@@ -223,23 +223,23 @@ go test ./internal/agentsync/...  # nếu chỉ sửa docs agentsync thì option
 npm run check:portal
 ```
 
-Acceptance:
+Acceptance (đã đạt sau execution + public scrub):
 
-- [ ] Không còn link trong `docs/**` trỏ file planning không tồn tại (trừ chính plan active).
-- [ ] `_index.md` Modules khớp filesystem + có portal.
-- [ ] Không còn `quartz.go` / production Quartz helpers.
-- [ ] `useFlashMessage` không còn trong source.
-- [ ] Docs agentsync/architecture không còn claim backup-before-write.
-- [ ] WIP portal vẫn intact trong worktree.
-- [ ] `go test` packages chạm pass.
+- [x] Không còn link trong `docs/**` trỏ file planning không tồn tại (trừ plan active).
+- [x] `_index.md` Modules khớp filesystem + có portal.
+- [x] Không còn `quartz.go` / production Quartz helpers.
+- [x] `useFlashMessage` không còn trong source.
+- [x] Docs agentsync/architecture không còn claim backup-before-write.
+- [x] Portal skills-catalog đã ship trên main (không còn WIP cleanup scope).
+- [x] `go test` packages chạm pass.
 
-## Câu Hỏi Chờ Duyệt
+## Quyết định đã áp dụng
 
-1. **D1 dual-audience:** giữ flat docs + sửa skills (khuyến nghị), hay migrate `docs/business`+`docs/developer`?
-2. **B4 `--quartz-dir`:** giữ deprecated, hay gỡ luôn trong Phase 2?
-3. **Scope execution:** chỉ Phase 1 docs, hay Phase 1+2 ngay sau duyệt?
-4. **`skills-lock.json`:** commit / gitignore / bỏ qua?
+1. **Dual-audience:** giữ flat `docs/` + skill templates trỏ path flat.
+2. **`--quartz-dir`:** giữ deprecated warn + ignore.
+3. **Scope:** Phase 1+2 cleanup đã ship; history privacy scrub riêng.
+4. **`skills-lock.json`:** local only (không commit).
 
 ---
 
-**Trạng thái:** đã triển khai theo duyệt full (flat docs, giữ `--quartz-dir` deprecated, không đụng portal WIP).
+**Trạng thái:** implemented trên main (`dc7ef83` và các commit cleanup/privacy trước đó).

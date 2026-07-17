@@ -12,7 +12,7 @@ Nguồn surface chính chủ:
 - Headless one-shot: `kimi -p` / `--prompt`
 - Session: `-c` / `--continue`, `-S` / `--session`
 - ACP (IDE/client): `kimi acp`
-- Docs: https://moonshotai.github.io/kimi-cli/ · https://github.com/MoonshotAI/kimi-cli
+- Docs: [Kimi CLI docs](https://moonshotai.github.io/kimi-cli/) · [MoonshotAI/kimi-cli](https://github.com/MoonshotAI/kimi-cli)
 
 ## Nguyên Tắc
 
