@@ -248,7 +248,7 @@ Sau `ns-workspace init` hoặc `ns-workspace update`, `~/.config/opencode/openco
 
 - Luôn dùng `--dry-run` trước khi áp dụng lên môi trường quan trọng vì module này có thể ghi vào user-level config thật.
 - `init` không overwrite path có sẵn nếu không có `--force`; ngoại lệ: skill/subagent entry trong provider target luôn bị preset ghi đè tại chỗ để đảm bảo preset là source of truth cho skills. `update` dùng replace mode cho output managed.
-- Replace mode ghi đè hoặc xóa file/tree managed tại chỗ; không tạo bản backup trước khi ghi.
+- Replace mode ghi đè hoặc xóa file/tree managed tại chỗ (replace-in-place).
 - JSON native bị invalid làm command fail sớm để tránh ghi chồng lên config không parse được.
 - `--copy` (với `init`) tránh symlink khi người dùng muốn snapshot file hoặc khi platform không dùng symlink. Lệnh `update` luôn bật copy mode: materialize file/directory thật thay vì symlink, vì một số consumer (Kiro IDE) không follow skill-directory symlink.
 - Tool filter `--tools stable`, `--tools manual`, `--tools experimental` hoặc danh sách agent cụ thể giới hạn adapter plans được chạy.
