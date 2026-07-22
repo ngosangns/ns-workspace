@@ -110,12 +110,14 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
   rồi mới đi sâu.
 - **Giải thích "tại sao" trước "như thế nào"**: nêu nguyên nhân/vấn đề, rồi mới
   đến cách giải quyết.
+- **Triển khai theo từng bước hợp lý**: sắp xếp các thay đổi theo trình tự triển khai logic và dễ theo dõi (ví dụ: định nghĩa model/interface -> xử lý logic/service -> tích hợp API/UI/handler).
+- **Gắn code liên quan trực tiếp (Code Snippets)**: với mỗi bước triển khai, trích dẫn đoạn code quan trọng được thêm/sửa/xóa (dạng code block với syntax highlighting), không dán cả file hay diff thô quá dài.
+- **Giải thích code chi tiết**: đi kèm mỗi đoạn code là lời giải thích rõ ràng về mục đích, cơ chế hoạt động, và lý do xử lý logic như vậy.
 - **Luôn neo vào code thật**: khi nhắc đến `methodX`, nói rõ nó thuộc `ClassY`
   trong `path/to/file`.
 - **Dùng diagram/flow khi cần**: nếu thay đổi liên quan đến luồng dữ liệu, thứ tự
-  gọi, vòng đờihoặc kiến trúc, hãy vẽ bằng Mermaid (`flowchart`, `sequenceDiagram`,
+  gọi, vòng đời hoặc kiến trúc, hãy vẽ bằng Mermaid (`flowchart`, `sequenceDiagram`,
   `classDiagram`). Không vẽ diagram thừa cho thay đổi đơn giản.
-- Tránh dán nguyên diff dài; trích đoạn ngắn (vài dòng) kèm giải thích là đủ.
 
 ## Cấu trúc tài liệu đầu ra
 
@@ -142,23 +144,27 @@ timestamp: <ISO 8601>
 
 <Mô tả trạng thái trước khi thay đổi và lý do cần thay đổi>
 
-## Chi tiết thay đổi theo từng bước
+## Chi tiết thay đổi & Triển khai theo từng bước
 
-### Bước 1 — <Tiêu đề thay đổi> (`<commit sha ngắn>` nếu có)
+### Bước 1 — <Tiêu đề bước triển khai> (`<commit sha ngắn>` nếu có)
 
-- **Vấn đề / Nguyên nhân**: <tại sao cần làm>
-- **Cách thay đổi**: <làm gì, theo hướng nào>
+- **Vấn đề / Nguyên nhân**: <Tại sao cần thực hiện bước này>
+- **Cách triển khai & Mục tiêu**: <Mô tả hướng giải quyết và các công việc cần triển khai>
 - **Vị trí trong code**:
   - `tênMethod()` thuộc `Class/Module` trong `path/to/file.ext`
   - ...
-- **Giải thích logic**: <giải thích dễ hiểu cách hoạt động sau thay đổi>
+- **Code liên quan**:
+  ```<language>
+  // Trích dẫn đoạn code quan trọng được thêm/sửa/xóa trực tiếp ở bước này
+  ```
+- **Giải thích chi tiết đoạn code**: <Giải thích mục đích, logic hoạt động của các dòng code trên và lý do thay đổi>
 - (Tùy chọn) Diagram/flow nếu thay đổi phức tạp:
   ```mermaid
   flowchart TD
     A[...] --> B[...]
   ```
 
-### Bước 2 —
+### Bước 2 — <Tiêu đề bước triển khai tiếp theo>
 
 ...
 
@@ -178,7 +184,9 @@ timestamp: <ISO 8601>
 
 - LUÔN dùng `git --no-pager` (hoặc tool đọc file) để tránh treo terminal.
 - LUÔN đọc code thật để xác nhận vị trí method/property/logic — không suy đoán.
+- LUÔN trình bày cách triển khai theo từng bước hợp lý, giải thích rõ nguyên nhân, cách hoạt động và gắn đoạn code (code snippet) liên quan trực tiếp vào từng bước.
 - LUÔN chỉ rõ "thành phần → thuộc gì → ở file nào" khi nhắc đến code.
 - Diagram chỉ thêm khi nó làm rõ luồng/kiến trúc; bỏ qua nếu thay đổi đơn giản.
 - Viết để ngườidọc không quen codebase vẫn hiểu được.
 - KHÔNG sửa code trong skill này; chỉ đọc git + code và viết tài liệu.
+
