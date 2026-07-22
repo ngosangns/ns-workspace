@@ -16,6 +16,131 @@
       "skill": "dispatching-parallel-agents"
     },
     {
+      "name": "using-superpowers",
+      "source": "obra/superpowers",
+      "skill": "using-superpowers"
+    },
+    {
+      "name": "brainstorming",
+      "source": "obra/superpowers",
+      "skill": "brainstorming"
+    },
+    {
+      "name": "writing-plans",
+      "source": "obra/superpowers",
+      "skill": "writing-plans"
+    },
+    {
+      "name": "executing-plans",
+      "source": "obra/superpowers",
+      "skill": "executing-plans"
+    },
+    {
+      "name": "subagent-driven-development",
+      "source": "obra/superpowers",
+      "skill": "subagent-driven-development"
+    },
+    {
+      "name": "test-driven-development",
+      "source": "obra/superpowers",
+      "skill": "test-driven-development"
+    },
+    {
+      "name": "systematic-debugging",
+      "source": "obra/superpowers",
+      "skill": "systematic-debugging"
+    },
+    {
+      "name": "verification-before-completion",
+      "source": "obra/superpowers",
+      "skill": "verification-before-completion"
+    },
+    {
+      "name": "requesting-code-review",
+      "source": "obra/superpowers",
+      "skill": "requesting-code-review"
+    },
+    {
+      "name": "receiving-code-review",
+      "source": "obra/superpowers",
+      "skill": "receiving-code-review"
+    },
+    {
+      "name": "using-git-worktrees",
+      "source": "obra/superpowers",
+      "skill": "using-git-worktrees"
+    },
+    {
+      "name": "finishing-a-development-branch",
+      "source": "obra/superpowers",
+      "skill": "finishing-a-development-branch"
+    },
+    {
+      "name": "writing-skills",
+      "source": "obra/superpowers",
+      "skill": "writing-skills"
+    },
+    {
+      "name": "ponytail",
+      "source": "DietrichGebert/ponytail",
+      "skill": "ponytail"
+    },
+    {
+      "name": "ponytail-review",
+      "source": "DietrichGebert/ponytail",
+      "skill": "ponytail-review"
+    },
+    {
+      "name": "ponytail-audit",
+      "source": "DietrichGebert/ponytail",
+      "skill": "ponytail-audit"
+    },
+    {
+      "name": "ponytail-debt",
+      "source": "DietrichGebert/ponytail",
+      "skill": "ponytail-debt"
+    },
+    {
+      "name": "ponytail-gain",
+      "source": "DietrichGebert/ponytail",
+      "skill": "ponytail-gain"
+    },
+    {
+      "name": "ponytail-help",
+      "source": "DietrichGebert/ponytail",
+      "skill": "ponytail-help"
+    },
+    {
+      "name": "caveman",
+      "source": "JuliusBrussee/caveman",
+      "skill": "caveman"
+    },
+    {
+      "name": "caveman-commit",
+      "source": "JuliusBrussee/caveman",
+      "skill": "caveman-commit"
+    },
+    {
+      "name": "caveman-review",
+      "source": "JuliusBrussee/caveman",
+      "skill": "caveman-review"
+    },
+    {
+      "name": "caveman-compress",
+      "source": "JuliusBrussee/caveman",
+      "skill": "caveman-compress"
+    },
+    {
+      "name": "caveman-help",
+      "source": "JuliusBrussee/caveman",
+      "skill": "caveman-help"
+    },
+    {
+      "name": "caveman-stats",
+      "source": "JuliusBrussee/caveman",
+      "skill": "caveman-stats"
+    },
+    {
       "name": "gitbutler",
       "skill": "but",
       "installer": "but-skill"

@@ -23,6 +23,18 @@
     "kimi": {
       "command": "npx",
       "args": ["-y", "kimi-for-claude"]
+    },
+    "serena": {
+      "command": "serena",
+      "args": ["start-mcp-server", "--project-from-cwd"]
+    },
+    "code-review-graph": {
+      "command": "uvx",
+      "args": ["code-review-graph", "serve"]
+    },
+    "headroom": {
+      "command": "headroom",
+      "args": ["mcp", "serve"]
     }
   }
 }
