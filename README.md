@@ -6,6 +6,30 @@
 
 Repo cũng có các lệnh đọc knowledge base: `preview` serve SolidJS SPA + PreviewHandler cho `docs/`, `search` mở Search/Code Graph standalone, `graph` chạy query terminal dạng text/JSON, `export` dump docs + graph thành một file HTML tĩnh self-contained (viewer SolidJS), `mcp` cung cấp command-line truy cập `docs/` dưới dạng JSON (list/lookup/search), còn `lsp` quản lý language server dùng cho Code Graph qua graph-query LSP registry.
 
+## Screenshots
+
+Portal UI (`task ns:portal` / `ns-workspace portal`) quản lý skills, MCP, registry và adapters trên máy local.
+
+### Dashboard
+
+![ns-workspace portal dashboard](./screenshots/01-portal-dashboard.png)
+
+### Skills
+
+![ns-workspace portal skills](./screenshots/02-portal-skills.png)
+
+### MCP Servers
+
+![ns-workspace portal MCP servers](./screenshots/03-portal-mcps.png)
+
+### Registry
+
+![ns-workspace portal registry](./screenshots/04-portal-registry.png)
+
+### Adapters
+
+![ns-workspace portal adapters](./screenshots/05-portal-adapters.png)
+
 ## Trạng Thái
 
 Đây là dự án cá nhân, phát triển nhanh để phục vụ workflow riêng. Một số adapter path, hook command, MCP config hoặc generated artifact có thể phụ thuộc vào phiên bản tool và môi trường local.
