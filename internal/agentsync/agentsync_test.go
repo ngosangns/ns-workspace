@@ -46,7 +46,9 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
-	mustExist(t, filepath.Join(home, ".gemini", "settings.json"))
+	mustExist(t, filepath.Join(home, ".gemini", "GEMINI.md"))
+	mustExist(t, filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"))
+	mustExist(t, filepath.Join(home, ".gemini", "config", "mcp_config.json"))
 	mustExist(t, filepath.Join(home, ".codex", "config.toml"))
 	mustExist(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
 	mustExist(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
@@ -112,7 +114,7 @@ func TestInstalledSettingsDoNotInstallGraphifyHooks(t *testing.T) {
 		filepath.Join(home, ".agents", "settings.json"),
 		filepath.Join(home, ".claude", "settings.json"),
 		filepath.Join(home, ".qwen", "settings.json"),
-		filepath.Join(home, ".gemini", "settings.json"),
+		filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"),
 	}
 	for _, path := range settingsPaths {
 		t.Run(filepath.Base(filepath.Dir(path))+"/"+filepath.Base(path), func(t *testing.T) {
@@ -880,7 +882,7 @@ func TestAdapterSettingsPerProviderNoFieldLeak(t *testing.T) {
 		Command:    "init",
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("claude,qwen,gemini"),
+		ToolFilter: ParseTools("claude,qwen,antigravity"),
 	}
 	if err := manager.Apply(opt, false); err != nil {
 		t.Fatalf("init failed: %v", err)
@@ -900,21 +902,20 @@ func TestAdapterSettingsPerProviderNoFieldLeak(t *testing.T) {
 	if mode, _ := perms["defaultMode"].(string); mode != "yolo" {
 		t.Fatalf("qwen permissions.defaultMode = %q, want \"yolo\": %s", mode, qwenSettings)
 	}
-	if qwen, _ := qwenParsed["general"]; qwen != nil {
-		t.Fatalf("qwen settings should NOT have Gemini-style \"general\" key (field leak): %s", qwenSettings)
+	if qwen, _ := qwenParsed["toolPermission"]; qwen != nil {
+		t.Fatalf("qwen settings should NOT have Antigravity-style \"toolPermission\" key (field leak): %s", qwenSettings)
 	}
 
-	geminiSettings := readFile(t, filepath.Join(home, ".gemini", "settings.json"))
-	geminiParsed := readJSONFile(t, filepath.Join(home, ".gemini", "settings.json"))
-	general, _ := geminiParsed["general"].(map[string]any)
-	if general == nil {
-		t.Fatalf("gemini settings should have general.defaultApprovalMode=auto_edit: %s", geminiSettings)
+	agySettings := readFile(t, filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"))
+	agyParsed := readJSONFile(t, filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"))
+	if mode, _ := agyParsed["toolPermission"].(string); mode != "always-proceed" {
+		t.Fatalf("antigravity settings should have toolPermission=always-proceed: %s", agySettings)
 	}
-	if mode, _ := general["defaultApprovalMode"].(string); mode != "auto_edit" {
-		t.Fatalf("gemini general.defaultApprovalMode = %q, want \"auto_edit\": %s", mode, geminiSettings)
+	if agy, _ := agyParsed["permissions"]; agy != nil {
+		t.Fatalf("antigravity settings should NOT have Claude/Qwen-style \"permissions\" key (field leak): %s", agySettings)
 	}
-	if gemini, _ := geminiParsed["permissions"]; gemini != nil {
-		t.Fatalf("gemini settings should NOT have Claude/Qwen-style \"permissions\" key (field leak): %s", geminiSettings)
+	if _, ok := agyParsed["mcpServers"]; ok {
+		t.Fatalf("antigravity settings should NOT nest mcpServers (MCP is separate mcp_config.json): %s", agySettings)
 	}
 }
 
@@ -924,9 +925,9 @@ func TestAdapterSettingsPerProviderNoFieldLeak(t *testing.T) {
 //   - Claude Code: `permissions.defaultMode: "bypassPermissions"`.
 //   - Qwen Code: `permissions.defaultMode: "yolo"` + `confirmShellCommands:
 //     false` + `confirmFileEdits: false`.
-//   - Gemini CLI: `general.defaultApprovalMode: "auto_edit"` (Gemini's YOLO
-//     mode is CLI-flag only; auto_edit is the closest settings.json option
-//     that auto-approves edit tools).
+//   - Antigravity CLI: `toolPermission: "always-proceed"` +
+//     `artifactReviewPolicy: "always-proceed"` in
+//     ~/.gemini/antigravity-cli/settings.json.
 //   - Cline: per-MCP-server `trust: true` (Cline stores YOLO mode in
 //     `~/.cline/data/settings/global-settings.json`, which cannot be set
 //     from cline_mcp_settings.json; per-server trust is the closest
@@ -944,7 +945,7 @@ func TestProviderFullBypassConfig(t *testing.T) {
 		Command:    "init",
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("claude,opencode,qwen,gemini,cline"),
+		ToolFilter: ParseTools("claude,opencode,qwen,antigravity,cline"),
 	}
 	if err := manager.Apply(opt, false); err != nil {
 		t.Fatalf("init failed: %v", err)
@@ -982,14 +983,13 @@ func TestProviderFullBypassConfig(t *testing.T) {
 		t.Fatalf("qwen permissions.confirmFileEdits = true, want false (full bypass): %v", qwenPerms)
 	}
 
-	// Gemini CLI
-	gemini := readJSONFile(t, filepath.Join(home, ".gemini", "settings.json"))
-	general, _ := gemini["general"].(map[string]any)
-	if general == nil {
-		t.Fatalf("gemini settings missing general: %v", gemini)
+	// Antigravity CLI
+	agy := readJSONFile(t, filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"))
+	if mode, _ := agy["toolPermission"].(string); mode != "always-proceed" {
+		t.Fatalf("antigravity toolPermission = %q, want \"always-proceed\": %v", mode, agy)
 	}
-	if mode, _ := general["defaultApprovalMode"].(string); mode != "auto_edit" {
-		t.Fatalf("gemini general.defaultApprovalMode = %q, want \"auto_edit\": %v", mode, gemini)
+	if policy, _ := agy["artifactReviewPolicy"].(string); policy != "always-proceed" {
+		t.Fatalf("antigravity artifactReviewPolicy = %q, want \"always-proceed\": %v", policy, agy)
 	}
 
 	// Cline — trust flag on every shared MCP server
@@ -1015,7 +1015,7 @@ func TestProviderFullBypassConfig(t *testing.T) {
 //   - Claude Code settings docs (mcpServers.{name}: type/url or command/args).
 //   - OpenCode MCP docs (mcp.{name}: type "remote"+url+enabled, or type "local"+command[]+enabled).
 //   - Qwen Code MCP docs (mcpServers.{name}: httpUrl for HTTP servers, no type).
-//   - Gemini CLI MCP docs (mcpServers.{name}: httpUrl for HTTP servers, no type).
+//   - Antigravity MCP docs (mcp_config.json mcpServers.{name}: serverUrl for remote, no type).
 //   - Cline MCP docs (mcpServers.{name}: url or command+args, no type field).
 func TestProviderMCPServerShapeMatchesVendorDocs(t *testing.T) {
 	home := t.TempDir()
@@ -1029,7 +1029,7 @@ func TestProviderMCPServerShapeMatchesVendorDocs(t *testing.T) {
 		Command:    "init",
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("claude,opencode,qwen,gemini,cline"),
+		ToolFilter: ParseTools("claude,opencode,qwen,antigravity,cline"),
 	}
 	if err := manager.Apply(opt, false); err != nil {
 		t.Fatalf("init failed: %v", err)
@@ -1129,19 +1129,23 @@ func assertOpenCodeMCPServers(t *testing.T, opencode map[string]any) {
 // It accepts any HTTP-flavoured transport signal:
 //
 //   - shared preset: `type:"http"` + `url`
-//   - qwen / gemini output: `httpUrl` (no `type`)
+//   - qwen output: `httpUrl` (no `type`)
+//   - antigravity output: `serverUrl` (no `type`)
 //   - cline output: `url` (no `type`)
 //   - opencode output: `type:"remote"` + `url`
 //
-// The presence of a URL field (`url` or `httpUrl`) is the canonical
-// signal after the per-adapter transform; we also accept `type` values
-// `http`, `sse`, or `remote` for completeness, covering raw preset
+// The presence of a URL field (`url`, `httpUrl`, or `serverUrl`) is the
+// canonical signal after the per-adapter transform; we also accept `type`
+// values `http`, `sse`, or `remote` for completeness, covering raw preset
 // entries and transport-renamed outputs.
 func isHTTPServer(server map[string]any) bool {
 	if _, hasURL := server["url"]; hasURL {
 		return true
 	}
 	if _, hasHTTPURL := server["httpUrl"]; hasHTTPURL {
+		return true
+	}
+	if _, hasServerURL := server["serverUrl"]; hasServerURL {
 		return true
 	}
 	if typ, ok := server["type"].(string); ok {
@@ -1237,11 +1241,11 @@ func TestAdapterSettingsHonorsMergeStrategy(t *testing.T) {
 	}
 }
 
-// TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline extends the
-// provider shape assertions to Qwen, Gemini and Cline. It is split from
+// TestProviderMCPServerShapeMatchesVendorDocs_QwenAntigravityCline extends the
+// provider shape assertions to Qwen, Antigravity and Cline. It is split from
 // TestProviderMCPServerShapeMatchesVendorDocs so the suite can be filtered
 // to just those providers when running local debugging.
-func TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline(t *testing.T) {
+func TestProviderMCPServerShapeMatchesVendorDocs_QwenAntigravityCline(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
@@ -1253,7 +1257,7 @@ func TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline(t *testing.T) {
 		Command:    "init",
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("qwen,gemini,cline"),
+		ToolFilter: ParseTools("qwen,antigravity,cline"),
 	}
 	if err := manager.Apply(opt, false); err != nil {
 		t.Fatalf("init failed: %v", err)
@@ -1263,12 +1267,13 @@ func TestProviderMCPServerShapeMatchesVendorDocs_QwenGeminiCline(t *testing.T) {
 	// field), {command,args} unchanged for stdio servers.
 	assertQwenMCPServers(t, readJSONFile(t, filepath.Join(home, ".qwen", "settings.json")))
 
-	// Gemini CLI: mcpServers.{name}.httpUrl, no type, no hooks key.
-	gemini := readJSONFile(t, filepath.Join(home, ".gemini", "settings.json"))
-	if _, ok := gemini["hooks"]; ok {
-		t.Fatalf("gemini settings should NOT have hooks key (Gemini CLI ignores it): %v", gemini)
+	// Antigravity CLI: MCP lives in ~/.gemini/config/mcp_config.json with
+	// serverUrl for remote servers (not nested in settings.json).
+	agySettings := readJSONFile(t, filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"))
+	if _, ok := agySettings["mcpServers"]; ok {
+		t.Fatalf("antigravity settings should NOT nest mcpServers: %v", agySettings)
 	}
-	assertGeminiMCPServers(t, gemini)
+	assertAntigravityMCPServers(t, readJSONFile(t, filepath.Join(home, ".gemini", "config", "mcp_config.json")))
 
 	// Cline: mcpServers.{name}.{url} for HTTP servers, {command,args}
 	// for stdio servers; the `type` field is stripped on every entry,
@@ -1310,34 +1315,41 @@ func assertQwenMCPServers(t *testing.T, qwen map[string]any) {
 	}
 }
 
-// assertGeminiMCPServers asserts Gemini's MCP shape: HTTP servers use
-// `httpUrl` (not `url` + `type`); stdio servers keep `command` + `args`
-// verbatim. The `type` field is dropped across the board.
-func assertGeminiMCPServers(t *testing.T, gemini map[string]any) {
+// assertAntigravityMCPServers asserts Antigravity's MCP shape: remote
+// servers use `serverUrl` (not `url`/`httpUrl`/`type`); stdio servers keep
+// `command` + `args` verbatim. The `type` field is dropped across the board.
+// https://antigravity.google/docs/mcp
+func assertAntigravityMCPServers(t *testing.T, agy map[string]any) {
 	t.Helper()
-	geminiServers, _ := gemini["mcpServers"].(map[string]any)
-	if geminiServers == nil {
-		t.Fatalf("gemini settings missing mcpServers: %v", gemini)
+	servers, _ := agy["mcpServers"].(map[string]any)
+	if servers == nil {
+		t.Fatalf("antigravity mcp_config missing mcpServers: %v", agy)
 	}
-	for name, raw := range geminiServers {
+	for name, raw := range servers {
 		server := raw.(map[string]any)
 		if _, ok := server["type"]; ok {
-			t.Fatalf("gemini mcpServers.%s should NOT have type field: %v", name, server)
+			t.Fatalf("antigravity mcpServers.%s should NOT have type field: %v", name, server)
+		}
+		if _, ok := server["httpUrl"]; ok {
+			t.Fatalf("antigravity mcpServers.%s should NOT have legacy httpUrl: %v", name, server)
 		}
 		switch {
 		case isHTTPServer(server):
-			if _, ok := server["httpUrl"].(string); !ok {
-				t.Fatalf("gemini mcpServers.%s missing httpUrl: %v", name, server)
+			if _, ok := server["serverUrl"].(string); !ok {
+				t.Fatalf("antigravity mcpServers.%s missing serverUrl: %v", name, server)
+			}
+			if _, ok := server["url"]; ok {
+				t.Fatalf("antigravity mcpServers.%s should NOT keep url after serverUrl rewrite: %v", name, server)
 			}
 		case isStdioServer(server):
 			if cmd, _ := server["command"].(string); cmd == "" {
-				t.Fatalf("gemini mcpServers.%s missing command: %v", name, server)
+				t.Fatalf("antigravity mcpServers.%s missing command: %v", name, server)
 			}
 			if _, ok := server["args"].([]any); !ok {
-				t.Fatalf("gemini mcpServers.%s missing args: %v", name, server)
+				t.Fatalf("antigravity mcpServers.%s missing args: %v", name, server)
 			}
 		default:
-			t.Fatalf("gemini mcpServers.%s has unrecognized shape: %v", name, server)
+			t.Fatalf("antigravity mcpServers.%s has unrecognized shape: %v", name, server)
 		}
 	}
 }
@@ -1396,7 +1408,7 @@ func TestTransformMCPServersForAdapter(t *testing.T) {
 		{adapter: "claude", urlKey: "url", expectTyp: "http"},
 		{adapter: "opencode", urlKey: "url", expectTyp: "remote"},
 		{adapter: "qwen", urlKey: "httpUrl", expectTyp: nil},
-		{adapter: "gemini", urlKey: "httpUrl", expectTyp: nil},
+		{adapter: "antigravity", urlKey: "serverUrl", expectTyp: nil},
 		{adapter: "cline", urlKey: "url", expectTyp: nil},
 		{adapter: "kimi", urlKey: "url", expectTyp: "http"},
 		{adapter: "kiro", urlKey: "url", expectTyp: "http"},

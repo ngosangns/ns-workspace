@@ -117,9 +117,10 @@ var transformMCPServersForAdapterImpl = transformMCPServersForAdapter
 //   - qwen: HTTP servers use the field `httpUrl` (not `url` + `type`).
 //     Strip the `type` key and rename `url` to `httpUrl`. SSE servers
 //     keep `url`; stdio servers keep `command`+`args`.
-//   - gemini: same HTTP shape as Qwen (`httpUrl` + no `type`). Gemini's
-//     settings.json groups everything under `mcpServers` with the same
-//     field semantics as Qwen.
+//   - antigravity: remote HTTP/SSE/websocket use `serverUrl` (legacy
+//     `url`/`httpUrl` are not supported). Drop `type`. Stdio keeps
+//     `command`+`args`+`env`. Written to ~/.gemini/config/mcp_config.json
+//     (not settings.json). See https://antigravity.google/docs/mcp.
 //   - cline: HTTP servers use `url` (no `type` field); Cline docs do not
 //     document a `type` discriminator, so the field is stripped. We
 //     also set `trust: true` so Cline auto-approves MCP tool calls.
@@ -152,9 +153,9 @@ func transformMCPServersForAdapter(adapterID string, manifest MCPManifest) (map[
 		case "opencode":
 			out[name] = transformOpenCodeMCPServer(next)
 			continue
-		case "qwen", "gemini":
-			// Qwen and Gemini both require HTTP servers to use the `httpUrl`
-			// field (streamable HTTP transport) and do not document a `type`
+		case "qwen":
+			// Qwen requires HTTP servers to use the `httpUrl` field
+			// (streamable HTTP transport) and does not document a `type`
 			// discriminator. Drop `type` and rename `url` to `httpUrl`.
 			typ, _ := next["type"].(string)
 			if typ == "http" {
@@ -168,6 +169,30 @@ func transformMCPServersForAdapter(adapterID string, manifest MCPManifest) (map[
 				// `type` if present so the native config doesn't see an
 				// undocumented key.
 				delete(next, "type")
+			}
+		case "antigravity":
+			// Antigravity CLI requires remote servers to use `serverUrl`.
+			// Legacy `url` / `httpUrl` are rejected. Drop `type`; stdio
+			// keeps command/args/env.
+			// https://antigravity.google/docs/mcp
+			// https://antigravity.google/docs/cli/gcli-migration
+			typ, _ := next["type"].(string)
+			delete(next, "type")
+			if typ == "http" || typ == "sse" || typ == "remote" {
+				if url, ok := next["url"].(string); ok && url != "" {
+					next["serverUrl"] = url
+					delete(next, "url")
+				}
+				if httpURL, ok := next["httpUrl"].(string); ok && httpURL != "" {
+					next["serverUrl"] = httpURL
+					delete(next, "httpUrl")
+				}
+			} else if url, ok := next["url"].(string); ok && url != "" {
+				// Bare remote URL without type → still migrate to serverUrl.
+				if _, hasCmd := next["command"]; !hasCmd {
+					next["serverUrl"] = url
+					delete(next, "url")
+				}
 			}
 		case "cline":
 			// Cline docs document `url` (HTTP/SSE) or `command`+`args`

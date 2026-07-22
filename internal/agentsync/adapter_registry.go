@@ -126,18 +126,32 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 
 	r.add(&ProfileAdapter{BaseAdapter: BaseAdapter{
 		Spec: AdapterSpec{
-			ID: "gemini", Tier: TierStable, Executables: []string{"gemini"},
+			ID: "antigravity", Tier: TierStable, Executables: []string{"agy"},
 			Targets: AdapterTargets{
-				Instruction:  filepath.Join(home, ".gemini", "GEMINI.md"),
-				HooksPath:    filepath.Join(home, ".gemini", "settings.json"),
-				HooksKeyPath: []string{"hooks"},
-				MCPPath:      filepath.Join(home, ".gemini", "settings.json"),
-				MCPKeyPath:   []string{"mcpServers"},
+				// Global context lives at ~/.gemini/GEMINI.md.
+				// https://antigravity.google/docs/cli/gcli-migration
+				Instruction: filepath.Join(home, ".gemini", "GEMINI.md"),
+				// Global skills: ~/.gemini/antigravity-cli/skills/ (workspace: .agents/skills/).
+				// https://antigravity.google/docs/cli/plugins
+				Skills: filepath.Join(home, ".gemini", "antigravity-cli", "skills"),
+				// Sparse CLI settings (toolPermission, sandbox, …).
+				// https://antigravity.google/docs/cli/settings
+				Settings: filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"),
+				// MCP is a standalone profile (not nested in settings.json).
+				// Remote servers use serverUrl (not url/httpUrl).
+				// https://antigravity.google/docs/mcp
+				MCPPath:    filepath.Join(home, ".gemini", "config", "mcp_config.json"),
+				MCPKeyPath: []string{"mcpServers"},
 			},
-			Docs:  []string{"https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md", "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/skills.md"},
-			Notes: "Gemini CLI resolves a `.agents/skills/` alias (user and workspace tiers) that takes precedence over `.gemini/skills/`, so it reads the shared ~/.agents/skills/ directly and this adapter does not mirror skills into ~/.gemini/skills.",
+			Docs: []string{
+				"https://antigravity.google/docs/cli/settings",
+				"https://antigravity.google/docs/mcp",
+				"https://antigravity.google/docs/cli/plugins",
+				"https://antigravity.google/docs/cli/gcli-migration",
+			},
+			Notes: "Antigravity CLI (agy). Instructions at ~/.gemini/GEMINI.md; settings at ~/.gemini/antigravity-cli/settings.json; skills mirrored to ~/.gemini/antigravity-cli/skills; MCP at ~/.gemini/config/mcp_config.json with serverUrl for remote servers.",
 		},
-		Plugin: GeminiPlugin{},
+		Plugin: AntigravityPlugin{},
 	}})
 
 	r.add(&CodexAdapter{BaseAdapter: BaseAdapter{

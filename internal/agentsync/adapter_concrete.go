@@ -13,7 +13,7 @@ type SimpleAdapter struct {
 }
 
 // ProfileAdapter covers providers that have a settings profile in
-// presets/adapters/<id>.json (claude, qwen, gemini, cline). Its only
+// presets/adapters/<id>.json (claude, qwen, antigravity, cline). Its only
 // customization beyond the template method is how MCP servers are
 // transformed before being merged into the native config.
 type ProfileAdapter struct {

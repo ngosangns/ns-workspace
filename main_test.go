@@ -36,7 +36,7 @@ func TestInitCreatesSharedAndNativeLayout(t *testing.T) {
 	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
-	mustExist(t, filepath.Join(home, ".gemini", "settings.json"))
+	mustExist(t, filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"))
 	mustExist(t, filepath.Join(home, ".codex", "config.toml"))
 	mustExist(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
 	mustExist(t, filepath.Join(home, ".config", "opencode", "opencode.json"))

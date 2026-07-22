@@ -22,13 +22,16 @@
       "settingsProfile": "presets/adapters/qwen.json"
     },
     {
-      "id": "gemini",
+      "id": "antigravity",
       "tier": "stable",
-      "executable": "gemini",
+      "executable": "agy",
       "docs": [
-        "https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md"
+        "https://antigravity.google/docs/cli/settings",
+        "https://antigravity.google/docs/mcp",
+        "https://antigravity.google/docs/cli/plugins",
+        "https://antigravity.google/docs/cli/gcli-migration"
       ],
-      "settingsProfile": "presets/adapters/gemini.json"
+      "settingsProfile": "presets/adapters/antigravity.json"
     },
     {
       "id": "cline",

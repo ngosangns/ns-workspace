@@ -1,0 +1,7 @@
+{
+  "id": "antigravity",
+  "target": ".gemini/antigravity-cli/settings.json",
+  "preset": "presets/settings/antigravity.json",
+  "raw": true,
+  "notes": "Antigravity CLI settings are sparse top-level keys (toolPermission, artifactReviewPolicy). MCP lives separately in ~/.gemini/config/mcp_config.json."
+}

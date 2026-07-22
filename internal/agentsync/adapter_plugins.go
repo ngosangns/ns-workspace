@@ -99,7 +99,7 @@ func (CodexPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 	return manifest, nil
 }
 
-// QwenPlugin / GeminiPlugin / ClinePlugin are minimal per-provider
+// QwenPlugin / AntigravityPlugin / ClinePlugin are minimal per-provider
 // overrides whose only job is to rewrite MCP servers into the
 // vendor-specific shape. They use TransformMCPServers to drop or
 // rename fields; the BaseAdapter handles the rest of the file fan-out.
@@ -135,30 +135,32 @@ func (QwenPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error)
 	return MCPManifest{MCPServers: transformed}, nil
 }
 
-// GeminiPlugin is the Gemini-CLI counterpart of QwenPlugin: same
-// httpUrl rewrite, no hooks at root. The shared mcpServers go into
-// the same settings.json that holds general.defaultApprovalMode.
-type GeminiPlugin struct{}
+// AntigravityPlugin rewrites remote MCP servers to serverUrl and
+// writes them into the standalone mcp_config.json profile (not
+// settings.json). Skills/settings fan-out is handled by BaseAdapter.
+// Docs: https://antigravity.google/docs/mcp
+type AntigravityPlugin struct{}
 
 // ExtendCapabilities adds ArtifactMCP for the shared mcpServers path.
-func (GeminiPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
+func (AntigravityPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
 	caps.Artifacts = append(caps.Artifacts, ArtifactMCP)
 	return caps
 }
 
 // ExtraOperations returns no extras.
-func (GeminiPlugin) ExtraOperations(_ Context, _ AdapterSpec, _ bool) ([]Operation, error) {
+func (AntigravityPlugin) ExtraOperations(_ Context, _ AdapterSpec, _ bool) ([]Operation, error) {
 	return nil, nil
 }
 
 // ExtraStatusPaths returns no extras.
-func (GeminiPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return nil }
+func (AntigravityPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return nil }
 
-// TransformMCPServers drops `type` and renames `url` to `httpUrl`.
-func (GeminiPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
-	transformed, err := transformMCPServersForAdapterImpl("gemini", manifest)
+// TransformMCPServers drops `type` and renames remote `url`/`httpUrl`
+// to `serverUrl` per Antigravity MCP schema.
+func (AntigravityPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
+	transformed, err := transformMCPServersForAdapterImpl("antigravity", manifest)
 	if err != nil {
-		return MCPManifest{}, fmt.Errorf("gemini transform: %w", err)
+		return MCPManifest{}, fmt.Errorf("antigravity transform: %w", err)
 	}
 	return MCPManifest{MCPServers: transformed}, nil
 }
@@ -291,7 +293,7 @@ var (
 	_ AdapterPlugin = OpenCodePlugin{}
 	_ AdapterPlugin = CodexPlugin{}
 	_ AdapterPlugin = QwenPlugin{}
-	_ AdapterPlugin = GeminiPlugin{}
+	_ AdapterPlugin = AntigravityPlugin{}
 	_ AdapterPlugin = ClinePlugin{}
 	_ AdapterPlugin = GrokPlugin{}
 	_ AdapterPlugin = ZCodePlugin{}

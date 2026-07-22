@@ -307,12 +307,12 @@ func TestQwenPlugin(t *testing.T) {
 	}
 }
 
-func TestGeminiPlugin(t *testing.T) {
+func TestAntigravityPlugin(t *testing.T) {
 	_, _ = newTestContext(t)
-	p := GeminiPlugin{}
+	p := AntigravityPlugin{}
 	caps := p.ExtendCapabilities(AdapterSpec{}, AgentCapabilities{Tier: TierStable})
 	if !containsKind(caps.Artifacts, ArtifactMCP) {
-		t.Fatalf("Gemini caps missing MCP: %v", caps.Artifacts)
+		t.Fatalf("Antigravity caps missing MCP: %v", caps.Artifacts)
 	}
 	out, err := p.TransformMCPServers(MCPManifest{MCPServers: map[string]any{
 		"http": map[string]any{"type": "http", "url": "https://x"},
@@ -321,8 +321,8 @@ func TestGeminiPlugin(t *testing.T) {
 		t.Fatalf("TransformMCPServers: %v", err)
 	}
 	http, _ := out.MCPServers["http"].(map[string]any)
-	if http["httpUrl"] != "https://x" {
-		t.Fatalf("Gemini http should have httpUrl: %v", http)
+	if http["serverUrl"] != "https://x" {
+		t.Fatalf("Antigravity http should have serverUrl: %v", http)
 	}
 }
 
@@ -408,7 +408,7 @@ func TestPluginTransformMCPServersError(t *testing.T) {
 		want string
 	}{
 		{"Qwen", func(m MCPManifest) (MCPManifest, error) { return QwenPlugin{}.TransformMCPServers(m) }, "qwen transform: forced plugin transform failure"},
-		{"Gemini", func(m MCPManifest) (MCPManifest, error) { return GeminiPlugin{}.TransformMCPServers(m) }, "gemini transform: forced plugin transform failure"},
+		{"Antigravity", func(m MCPManifest) (MCPManifest, error) { return AntigravityPlugin{}.TransformMCPServers(m) }, "antigravity transform: forced plugin transform failure"},
 		{"Cline", func(m MCPManifest) (MCPManifest, error) { return ClinePlugin{}.TransformMCPServers(m) }, "cline transform: forced plugin transform failure"},
 		{"ZCode", func(m MCPManifest) (MCPManifest, error) { return ZCodePlugin{}.TransformMCPServers(m) }, "zcode transform: forced plugin transform failure"},
 	}
@@ -3190,7 +3190,7 @@ func TestApplyUpdateExercisesAllPaths(t *testing.T) {
 		Command:    "init",
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("claude,opencode,qwen,gemini,cline,codex,kiro"),
+		ToolFilter: ParseTools("claude,opencode,qwen,antigravity,cline,codex,kiro"),
 	}
 	// First apply
 	if err := mgr.Apply(opt, false); err != nil {
@@ -3352,7 +3352,7 @@ func TestAllPlugins(t *testing.T) {
 		{"OpenCodePlugin", OpenCodePlugin{ConfigPath: "/x"}, nil},
 		{"CodexPlugin", CodexPlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"QwenPlugin", QwenPlugin{}, []ArtifactKind{ArtifactMCP}},
-		{"GeminiPlugin", GeminiPlugin{}, []ArtifactKind{ArtifactMCP}},
+		{"AntigravityPlugin", AntigravityPlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"ClinePlugin", ClinePlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"ZCodePlugin", ZCodePlugin{}, nil},
 	}
@@ -3386,7 +3386,7 @@ func TestAllPlugins(t *testing.T) {
 	manifest := MCPManifest{MCPServers: map[string]any{
 		"x": map[string]any{"type": "http", "url": "https://x"},
 	}}
-	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, GeminiPlugin{}, ClinePlugin{}, ZCodePlugin{}} {
+	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, AntigravityPlugin{}, ClinePlugin{}, ZCodePlugin{}} {
 		if _, err := p.TransformMCPServers(manifest); err != nil {
 			t.Fatalf("TransformMCPServers: %v", err)
 		}
@@ -4192,7 +4192,7 @@ func TestClineAdapterPlanNoMCP(t *testing.T) {
 	}
 }
 
-func TestGeminiAdapterPlan(t *testing.T) {
+func TestAntigravityAdapterPlan(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
@@ -4201,13 +4201,13 @@ func TestGeminiAdapterPlan(t *testing.T) {
 		Command:    "init",
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("gemini"),
+		ToolFilter: ParseTools("antigravity"),
 	}, false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 }
 
-func TestGeminiAdapterPlanNoMCP(t *testing.T) {
+func TestAntigravityAdapterPlanNoMCP(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
@@ -4217,7 +4217,7 @@ func TestGeminiAdapterPlanNoMCP(t *testing.T) {
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoMCP:      true,
 		NoRegistry: true,
-		ToolFilter: ParseTools("gemini"),
+		ToolFilter: ParseTools("antigravity"),
 	}, false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -4483,7 +4483,7 @@ func TestOpenCodePlanWithUserConfig(t *testing.T) {
 		Command:    "init",
 		AgentsDir:  filepath.Join(home, ".agents"),
 		NoRegistry: true,
-		ToolFilter: ParseTools("opencode,claude,codex,gemini,qwen,cline"),
+		ToolFilter: ParseTools("opencode,claude,codex,antigravity,qwen,cline"),
 	}, false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -5238,7 +5238,7 @@ func TestAdapterPluginsTransformError(t *testing.T) {
 		plugin AdapterPlugin
 	}{
 		{"QwenPlugin", QwenPlugin{}},
-		{"GeminiPlugin", GeminiPlugin{}},
+		{"AntigravityPlugin", AntigravityPlugin{}},
 		{"ClinePlugin", ClinePlugin{}},
 		{"ZCodePlugin", ZCodePlugin{}},
 	}
@@ -5714,7 +5714,7 @@ func TestTransformMCPServersForAdapterAll(t *testing.T) {
 	manifest := MCPManifest{MCPServers: map[string]any{
 		"a": map[string]any{"command": "npx"},
 	}}
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline"} {
 		got, err := transformMCPServersForAdapter(id, manifest)
 		if err != nil {
 			t.Fatalf("transformMCPServersForAdapter(%s): %v", id, err)
@@ -8612,7 +8612,7 @@ func TestAdapterDoctorExecutablesUnique(t *testing.T) {
 
 func TestAdapterRegistryIncludesAllPlugins(t *testing.T) {
 	r := NewAdapterRegistry(RegistryOptions{Home: t.TempDir(), XDGConfigHome: t.TempDir(), KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline", "zcode", "kimi", "kiro", "grok"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "kimi", "kiro", "grok"} {
 		if r.Lookup(id) == nil {
 			t.Fatalf("missing adapter: %s", id)
 		}
@@ -8630,7 +8630,7 @@ func TestAdapterRegistryCount(t *testing.T) {
 func TestAdapterStatusPathsExtra(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	r := NewAdapterRegistry(RegistryOptions{Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome, KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "gemini", "cline", "zcode"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode"} {
 		if a := r.Lookup(id); a != nil {
 			_ = a.StatusPaths(ctx)
 		}
@@ -8640,7 +8640,7 @@ func TestAdapterStatusPathsExtra(t *testing.T) {
 func TestAdapterTransformMCPServersError(t *testing.T) {
 	// Force the plugin TransformMCPServers error path via custom plugin
 	type errPlugin struct{ NoopPlugin }
-	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, GeminiPlugin{}, ClinePlugin{}, ZCodePlugin{}} {
+	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, AntigravityPlugin{}, ClinePlugin{}, ZCodePlugin{}} {
 		_, _ = p.TransformMCPServers(MCPManifest{MCPServers: map[string]any{"x": map[string]any{"type": "stdio"}}})
 	}
 }
@@ -8659,8 +8659,8 @@ func TestAdapterTransformMCPServersQwenSSE(t *testing.T) {
 	}
 }
 
-func TestAdapterTransformMCPServersGemini(t *testing.T) {
-	plugin := GeminiPlugin{}
+func TestAdapterTransformMCPServersAntigravity(t *testing.T) {
+	plugin := AntigravityPlugin{}
 	out, err := plugin.TransformMCPServers(MCPManifest{MCPServers: map[string]any{
 		"http": map[string]any{"type": "http", "url": "https://x"},
 		"sse":  map[string]any{"type": "sse", "url": "https://y"},
@@ -8669,11 +8669,14 @@ func TestAdapterTransformMCPServersGemini(t *testing.T) {
 		t.Fatal(err)
 	}
 	servers := out.MCPServers
-	if servers["http"].(map[string]any)["httpUrl"] != "https://x" {
-		t.Fatalf("gemini http should use httpUrl: %v", servers["http"])
+	if servers["http"].(map[string]any)["serverUrl"] != "https://x" {
+		t.Fatalf("antigravity http should use serverUrl: %v", servers["http"])
 	}
-	if servers["sse"].(map[string]any)["url"] != "https://y" {
-		t.Fatalf("gemini sse should keep url: %v", servers["sse"])
+	if servers["sse"].(map[string]any)["serverUrl"] != "https://y" {
+		t.Fatalf("antigravity sse should use serverUrl: %v", servers["sse"])
+	}
+	if _, ok := servers["sse"].(map[string]any)["url"]; ok {
+		t.Fatalf("antigravity sse should drop legacy url: %v", servers["sse"])
 	}
 }
 
@@ -8838,7 +8841,7 @@ func TestCodexAdapterPlanBasePlanError(t *testing.T) {
 func TestPluginTransformMCPServersErrorWrapping(t *testing.T) {
 	for name, p := range map[string]AdapterPlugin{
 		"qwen":   QwenPlugin{},
-		"gemini": GeminiPlugin{},
+		"antigravity": AntigravityPlugin{},
 		"cline":  ClinePlugin{},
 		"zcode":  ZCodePlugin{},
 	} {

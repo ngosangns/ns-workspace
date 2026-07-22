@@ -111,7 +111,7 @@ func TestEnableDisableSkillAndMCPAndAdapter(t *testing.T) {
 	}
 
 	// Disable a provider (may or may not be in registry depending on env)
-	req = httptest.NewRequest(http.MethodPost, "/api/adapters/gemini/enabled", strings.NewReader(`{"enabled":false}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/adapters/antigravity/enabled", strings.NewReader(`{"enabled":false}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr = httptest.NewRecorder()
 	srv.router().ServeHTTP(rr, req)

@@ -1,6 +1,6 @@
 # ns-workspace
 
-`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Gemini, Codex, Cline, ZCode và các adapter khác.
+`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Antigravity, Codex, Cline, ZCode và các adapter khác.
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent nhận cùng workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
@@ -116,7 +116,7 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 --config ~/.config/ns-workspace/config.json
 --tools all
 --tools stable
---tools claude,opencode,grok,kimi,kiro,qwen,gemini,codex,cline
+--tools claude,opencode,grok,kimi,kiro,qwen,antigravity,codex,cline
 --tools kiro-cli
 --dry-run
 --force
@@ -180,7 +180,7 @@ Stable adapters ghi vào các user-level path đã biết:
 | Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/mcp.json`; skills không mirror vì Kimi đọc thẳng `~/.agents/skills` (generic, độc lập với `KIMI_CODE_HOME`)                                          |
 | Kiro / CLI    | `~/.kiro/steering/AGENTS.md`, `~/.kiro/skills`, `~/.kiro/settings/mcp.json`, `~/.kiro/agents/ns-full.json` (full-permissions custom agent); `--tools kiro-cli` là alias của `kiro` |
 | Qwen Code     | `~/.qwen/QWEN.md`, `~/.qwen/skills`, `~/.qwen/settings.json` với hooks và MCP                                                                                                      |
-| Gemini CLI    | `~/.gemini/GEMINI.md`, `~/.gemini/settings.json` với MCP (HTTP servers dùng `httpUrl`, không có `hooks` ở root); skills không mirror vì Gemini CLI đọc alias `.agents/skills` thẳng từ `~/.agents/skills` |
+| Antigravity CLI (`agy`) | Instructions `~/.gemini/GEMINI.md`; settings `~/.gemini/antigravity-cli/settings.json` (`toolPermission`/`artifactReviewPolicy`); skills mirror `~/.gemini/antigravity-cli/skills`; MCP riêng `~/.gemini/config/mcp_config.json` (remote dùng `serverUrl`, không `url`/`httpUrl`) |
 | Codex CLI     | `~/.codex/AGENTS.md`, managed MCP block trong `~/.codex/config.toml`; Codex không có `~/.codex/skills` — chỉ đọc `.agents/skills` (repo) và `~/.agents/skills` (user) nên không cần mirror |
 | Cline         | `~/.cline/skills`, `~/.cline/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                             |
 | ZCode         | `~/.zcode/AGENTS.md` (link từ shared); skills đọc native `~/.agents/skills` (không mirror)                                                                                        |

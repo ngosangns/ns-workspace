@@ -15,7 +15,7 @@ import (
 //
 //	{
 //	  "skills": ["spawn-kimi"],
-//	  "providers": ["gemini"]
+//	  "providers": ["antigravity"]
 //	}
 //
 // Missing file → everything enabled by default.
