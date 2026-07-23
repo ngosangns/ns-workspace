@@ -78,10 +78,14 @@ func isMissingPreset(err error) bool {
 }
 
 // loadDisabledSkills returns the set of skill top-level names disabled
-// via portal disabled.json. Used by InstallPresetTree.
+// via portal disabled.json. Used by InstallPresetTree and registry install.
 func loadDisabledSkills(ctx Context) map[string]bool {
 	if ctx.DisabledSkills != nil {
 		return ctx.DisabledSkills
+	}
+	// Tests may pass a Context with no Presets FS; treat as no disables.
+	if ctx.Presets == nil {
+		return map[string]bool{}
 	}
 	t, err := loadPortalToggles(ctx)
 	if err != nil {

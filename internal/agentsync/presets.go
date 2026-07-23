@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -229,6 +230,30 @@ func readSharedMCPValues(ctx Context) (map[string]any, error) {
 		return nil, err
 	}
 	return map[string]any{"mcpServers": manifest.MCPServers}, nil
+}
+
+// readMCPDisabledNames returns server names from the portal disabled
+// overlay (presets/mcp/servers.disabled.json). Missing/empty overlays
+// yield nil. Used by AppendManagedBlock to purge orphan [mcp_servers.*]
+// tables that remain after a portal disable.
+func readMCPDisabledNames(ctx Context) []string {
+	data, err := readPresetFile(ctx, MCPDisabledPath)
+	if err != nil {
+		return nil
+	}
+	disabled, err := ParseMCPDisabledJSON(data)
+	if err != nil || len(disabled) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(disabled))
+	for name := range disabled {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // loadAdapterSettingsManifest reads the central adapter settings

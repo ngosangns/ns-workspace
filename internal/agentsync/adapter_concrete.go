@@ -101,6 +101,8 @@ func (c *ClaudeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 
 // Plan overrides BaseAdapter.Plan for Codex: emit a TOML managed
 // block to ~/.codex/config.toml and drop the default MCP merge.
+// Empty catalogs still emit AppendManagedBlock so update clears a stale
+// managed block after portal MCP disable.
 func (c *CodexAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	ops, err := c.BaseAdapter.Plan(ctx, update)
 	if err != nil {
@@ -114,14 +116,15 @@ func (c *CodexAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(manifest.MCPServers) == 0 {
-		return ops, nil
+	names := make([]string, 0, len(manifest.MCPServers))
+	for name := range manifest.MCPServers {
+		names = append(names, name)
 	}
-	ops = append(ops, AppendManagedBlock{
-		Dst:     filepath.Join(ctx.Home, ".codex", "config.toml"),
-		Label:   "mcp",
-		Content: codexMCPBlock(manifest),
-		Replace: true,
+	ops = append(ops, AppendMCPManagedBlock{
+		Dst:          filepath.Join(ctx.Home, ".codex", "config.toml"),
+		Content:      codexMCPBlock(manifest),
+		Replace:      true,
+		EnabledNames: names,
 	})
 	_ = update
 	return ops, nil

@@ -75,8 +75,8 @@ Plugin adapter hiện có:
 
 - OpenCode merge MCP presets dưới key `mcp` (remote: `type/url/enabled`; local: `type/command[]/enabled`) và config values từ `presets/opencode/opencode.json` vào native config qua `MergeJSON` / `OpenCodeAdapter.Plan`.
 - Claude tạo script helper `~/.agents/generated/claude/mcp.commands.sh` để add MCP bằng CLI user scope.
-- Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers.
-- Grok link `~/.agents/AGENTS.md` → `~/.grok/AGENTS.md` và dùng `GrokPlugin.ExtraOperations` để append managed TOML block MCP vào `~/.grok/config.toml` (`[mcp_servers.<name>]`). Trước khi ghi block, các `[mcp_servers.<name>]` trùng tên với preset bên ngoài block được dọn để tránh lỗi TOML duplicate key. Skills **không** mirror — Grok đọc `~/.agents/skills` native.
+- Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers (cùng semantics cleanup/clear-on-empty với Grok: portal disable gỡ server khỏi block và orphan tables; catalog rỗng xóa block).
+- Grok link `~/.agents/AGENTS.md` → `~/.grok/AGENTS.md` và dùng `GrokPlugin.ExtraOperations` để append managed TOML block MCP vào `~/.grok/config.toml` (`[mcp_servers.<name>]`). Trước khi ghi block, agentsync dọn `[mcp_servers.<name>]` cho: catalog enabled hiện tại, tên từng nằm trong managed block cũ, **và** tên trong `servers.disabled.json` (portal disable) — kể cả orphan table ngoài markers do update cũ để lại. Catalog rỗng (disable hết MCP) vẫn emit op để **xóa** managed block thay vì để stale. Skills **không** mirror — Grok đọc `~/.agents/skills` native.
 - OpenCode / ZCode / Codex / Kimi: skills chỉ qua `~/.agents/skills` (không mirror native skills dir). OpenCode vẫn link AGENTS.md + subagents + merge MCP; ZCode link AGENTS.md; stale symlink cũ dưới `~/.config/opencode/skill`, `~/.grok/skills`, `~/.zcode/skills` được cleanup nếu trỏ vào shared home.
 - Antigravity: instructions `~/.gemini/GEMINI.md`; settings `~/.gemini/antigravity-cli/settings.json`; skills mirror `~/.gemini/antigravity-cli/skills`; MCP standalone `~/.gemini/config/mcp_config.json` (remote `serverUrl`).
 - Cline skills/agents: `~/.cline/skills` và `~/.cline/agents` (theo docs); cleanup path cũ `~/.cline/data/skills` và `data/agents`.
@@ -96,10 +96,16 @@ Phase order của `SyncPlan`:
 
 Khi build `update`, MCP/settings manifests được đọc từ embedded presets (và portal overlay nếu có) để stale shared output không đi tiếp sang native configs. Khi build `init`, existing shared manifest / portal MCP enabled overlay được ưu tiên khi file đã tồn tại; nếu chưa có, embedded preset là fallback. Portal disable overlays (`portal/disabled.json`, `servers.disabled.json`, `skills.disabled.json`) và MCP enabled overlay được agentsync áp dụng khi materialize — xem [Portal](../features/portal.md).
 
-Registry skills trong `presets/registry/skills.json` được ghi thành `~/.agents/registry/skills.json` và `install.sh`. Khi không dùng `--no-registry`, manager cài từng entry vào shared skills home theo `installer`:
+Registry skills trong `presets/registry/skills.json` được ghi thành `~/.agents/registry/skills.json` và `install.sh`. Khi không dùng `--no-registry`, manager cài entry vào shared skills home theo `installer`:
 
 - mặc định / `npx-skills`: `npx --yes skills add <source> --skill <skill> --global --agent universal --yes`
 - `but-skill` (GitButler): `but skill install --path <agents-home>/skills/<skill> --format none` theo [but skill docs](https://docs.gitbutler.com/commands/but-skill) (non-interactive cần `--path` hoặc `--detect`)
+
+**Skip khi không đổi (default `update` / `registry`):** agentsync so từng entry registry (sau sanitize + portal disable) với stamp trong `~/.agents/registry/.sync-state.json` (installer + source + skill id + name) và kiểm tra `SKILL.md` dưới `~/.agents/skills/<id>/`. Entry stamp khớp + present → **không gọi** installer cho entry đó. Mọi entry unchanged → log `registry: ok (unchanged, N skills)` và skip toàn bộ. Catalog thêm/sửa source hoặc thiếu skill trên disk → chỉ cài skill bị ảnh hưởng. Skip theo **catalog identity + presence**, **không** phát hiện nội dung upstream skill package đã đổi trên registry; muốn kéo bản skill mới từ vendor dùng `--refresh-skills` (force cài lại toàn bộ). Portal one-shot `InstallRegistrySkill` cũng ghi stamp vào cùng `.sync-state.json`. `--no-registry` bỏ qua phase install (vẫn ghi helper files).
+
+**Shared skills home cohabit preset + registry:** core phase `InstallPresetTree` (`presets/skills` → `~/.agents/skills`) **không** xóa top-level skill dir lạ (registry install hoặc skill user thêm). Chỉ prune file stale *bên trong* skill thuộc preset hiện tại, và gỡ hẳn skill bị portal disable. Nếu core xóa registry skill rồi phase registry cài lại, skip theo stamp/presence sẽ không bao giờ “thấy” skill present — đó là lý do preserve foreign tops.
+
+**Adapter skill mirror (`LinkSkillDirs`):** không wipe cả `DstRoot`; replace từng entry (symlink/copy ok khi đã đúng) và chỉ remove entry native không còn trong shared home.
 
 Adapter fan-out skills (khi còn mirror) lấy từ `~/.agents/skills`. Lỗi từng registry skill là warning để các bước khác vẫn chạy. `but` CLI không có trên PATH → skip entry `but-skill` kèm warning.
 

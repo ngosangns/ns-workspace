@@ -231,15 +231,26 @@ func TestUpdateRewritesManagedPresetContent(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	staleSharedSkill := filepath.Join(home, ".agents", "skills", "stale-local", "SKILL.md")
-	staleNativeSkill := filepath.Join(home, ".claude", "skills", "stale-local", "SKILL.md")
-	for _, path := range []string{staleSharedSkill, staleNativeSkill} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("stale\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	// Shared skills home cohabits registry/user tops: a foreign top-level
+	// skill is preserved. Stale files *inside* a managed preset skill are
+	// still pruned. Native mirrors only drop entries absent from shared.
+	staleInsideManaged := filepath.Join(home, ".agents", "skills", "execution", "orphan-local.md")
+	if err := os.WriteFile(staleInsideManaged, []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	foreignShared := filepath.Join(home, ".agents", "skills", "user-or-registry", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(foreignShared), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(foreignShared, []byte("foreign\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	staleNativeOnly := filepath.Join(home, ".claude", "skills", "stale-local", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(staleNativeOnly), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(staleNativeOnly, []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(home, ".qwen", "settings.json"), []byte(`{"mcpServers":{"stale":{}},"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"stale"}]}]}}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -252,8 +263,9 @@ func TestUpdateRewritesManagedPresetContent(t *testing.T) {
 		t.Fatalf("update failed: %v", err)
 	}
 
-	mustNotExist(t, staleSharedSkill)
-	mustNotExist(t, staleNativeSkill)
+	mustNotExist(t, staleInsideManaged)
+	mustExist(t, foreignShared)
+	mustNotExist(t, staleNativeOnly)
 	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".claude", "skills", "execution", "SKILL.md"))
 

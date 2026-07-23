@@ -2,6 +2,7 @@ package agentsync
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 )
 
@@ -120,6 +121,148 @@ func replaceManagedBlock(current, begin, end, block string) string {
 		return block
 	}
 	return strings.TrimRight(current, "\n") + "\n\n" + block
+}
+
+// removeManagedBlock strips the begin..end managed block (and surrounding
+// blank lines) from current. When no block is present the input is returned
+// unchanged.
+func removeManagedBlock(current, begin, end string) string {
+	start := strings.Index(current, begin)
+	if start < 0 {
+		return current
+	}
+	stop := strings.Index(current[start:], end)
+	if stop < 0 {
+		return current
+	}
+	stop = start + stop + len(end)
+	next := strings.TrimRight(current[:start], "\n")
+	rest := strings.TrimLeft(current[stop:], "\n")
+	if next == "" {
+		return rest
+	}
+	if rest == "" {
+		return next + "\n"
+	}
+	return next + "\n\n" + rest
+}
+
+// extractManagedBlockMCPNames returns every mcp_servers.<name> table header
+// found inside the begin..end managed block. Used so a catalog shrink (portal
+// disable) can purge orphan tables that previously lived only in the block
+// and any duplicates outside it.
+func extractManagedBlockMCPNames(current, begin, end string) []string {
+	start := strings.Index(current, begin)
+	if start < 0 {
+		return nil
+	}
+	stop := strings.Index(current[start:], end)
+	if stop < 0 {
+		return nil
+	}
+	section := current[start : start+stop]
+	var names []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(section, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "[") {
+			continue
+		}
+		name, ok := parseTOMLTableName(trimmed, "mcp_servers")
+		if !ok || name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names
+}
+
+// extractNonMCPFromManagedBlock returns TOML content trapped between the
+// managed markers that is not part of [mcp_servers] / [mcp_servers.<name>]
+// tables. Older writes sometimes left the end marker after user tables
+// (e.g. Codex [projects.*]); rewriting the block must not delete them.
+func extractNonMCPFromManagedBlock(current, begin, end string) string {
+	start := strings.Index(current, begin)
+	if start < 0 {
+		return ""
+	}
+	stop := strings.Index(current[start:], end)
+	if stop < 0 {
+		return ""
+	}
+	section := current[start+len(begin) : start+stop]
+	var kept []string
+	skipMCP := false
+	for _, line := range strings.Split(section, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if skipMCP {
+			if strings.HasPrefix(trimmed, "[") {
+				skipMCP = false
+			} else {
+				continue
+			}
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			if trimmed == "[mcp_servers]" || strings.HasPrefix(trimmed, "[mcp_servers.") {
+				skipMCP = true
+				continue
+			}
+		}
+		kept = append(kept, line)
+	}
+	// Drop leading/trailing blank lines so re-injection stays tidy.
+	for len(kept) > 0 && strings.TrimSpace(kept[0]) == "" {
+		kept = kept[1:]
+	}
+	for len(kept) > 0 && strings.TrimSpace(kept[len(kept)-1]) == "" {
+		kept = kept[:len(kept)-1]
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return strings.Join(kept, "\n")
+}
+
+// injectAfterManagedBlock inserts trapped (user) content immediately after
+// the managed end marker. If the marker is missing, content is appended.
+func injectAfterManagedBlock(doc, end, trapped string) string {
+	trapped = strings.TrimSpace(trapped)
+	if trapped == "" {
+		return doc
+	}
+	idx := strings.Index(doc, end)
+	if idx < 0 {
+		if strings.TrimSpace(doc) == "" {
+			return trapped + "\n"
+		}
+		return strings.TrimRight(doc, "\n") + "\n\n" + trapped + "\n"
+	}
+	at := idx + len(end)
+	head := strings.TrimRight(doc[:at], "\n")
+	tail := strings.TrimLeft(doc[at:], "\n")
+	if tail == "" {
+		return head + "\n\n" + trapped + "\n"
+	}
+	return head + "\n\n" + trapped + "\n\n" + tail
+}
+
+// uniqueStrings returns sorted unique non-empty strings from parts.
+func uniqueStrings(parts ...[]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, part := range parts {
+		for _, s := range part {
+			s = strings.TrimSpace(s)
+			if s == "" || seen[s] {
+				continue
+			}
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // removeTOMLTables strips every [prefix.<name>] table section (and its

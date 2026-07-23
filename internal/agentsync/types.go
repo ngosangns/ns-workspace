@@ -20,7 +20,12 @@ type Options struct {
 	CopyMode   bool
 	NoMCP      bool
 	NoRegistry bool
-	ToolFilter map[string]bool
+	// RefreshSkills forces registry skill installers to run even when
+	// per-skill stamps match and skills are already present on disk.
+	// Default false: skip unchanged catalog identity (does not detect
+	// upstream package content drift — use this flag to re-pull).
+	RefreshSkills bool
+	ToolFilter    map[string]bool
 	// DisabledProviders is filled from presets/portal/disabled.json during
 	// context setup. Keys are lower-case adapter ids. When set, selected()
 	// returns false even if --tools would otherwise include the adapter.

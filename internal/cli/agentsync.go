@@ -36,6 +36,7 @@ func RunAgentSync(cmd string, args []string, presets fs.FS) error {
 	flagSet.BoolVar(&opt.CopyMode, "copy", false, "copy files instead of creating symlinks (always on for update)")
 	flagSet.BoolVar(&opt.NoMCP, "no-mcp", false, "skip MCP configuration")
 	flagSet.BoolVar(&opt.NoRegistry, "no-registry", false, "skip skills registry installation")
+	flagSet.BoolVar(&opt.RefreshSkills, "refresh-skills", false, "force re-install registry skills even when catalog fingerprint is unchanged")
 	if err := flagSet.Parse(args); err != nil {
 		return err
 	}

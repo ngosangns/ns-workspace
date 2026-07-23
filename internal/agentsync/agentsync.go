@@ -127,7 +127,14 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		}
 	}
 	if op.Replace {
-		if err := removeStaleEntries(ctx, op.DstRoot, managed); err != nil {
+		// Shared skills home holds preset skills AND registry/user skills.
+		// Root policy only: drop portal-disabled tops, keep foreign tops,
+		// prune interiors of preset-owned tops via the shared recursive path.
+		if filepath.ToSlash(op.SrcRoot) == "presets/skills" {
+			if err := removeStaleSkillEntries(ctx, op.DstRoot, managed, disabledSkills); err != nil {
+				return err
+			}
+		} else if err := removeStaleEntries(ctx, op.DstRoot, managed); err != nil {
 			return err
 		}
 	}
@@ -148,6 +155,49 @@ func skillTopLevelName(rel string) string {
 		return ""
 	}
 	return name
+}
+
+// managedSkillTops returns top-level skill directory names that the
+// preset (and user overlay) currently owns.
+func managedSkillTops(managed map[string]bool) map[string]bool {
+	tops := map[string]bool{}
+	for key := range managed {
+		if top := skillTopLevelName(key); top != "" {
+			tops[top] = true
+		}
+	}
+	return tops
+}
+
+// removeStaleSkillEntries is a thin root policy over removeStaleRecursive:
+//   - portal-disabled top-level skill dirs are removed entirely
+//   - top-level dirs not owned by the current preset (registry/user) stay
+//   - within preset-owned tops, unmanaged files are removed as usual
+func removeStaleSkillEntries(ctx Context, dstRoot string, managed map[string]bool, disabled map[string]bool) error {
+	entries, err := os.ReadDir(dstRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	tops := managedSkillTops(managed)
+	var prune []os.DirEntry
+	for _, entry := range entries {
+		name := entry.Name()
+		fullPath := filepath.Join(dstRoot, name)
+		if disabled[name] {
+			if err := removePath(ctx, fullPath); err != nil {
+				ctx.Report.Line("warning: remove disabled skill failed: %v", err)
+			}
+			continue
+		}
+		if !tops[name] {
+			continue
+		}
+		prune = append(prune, entry)
+	}
+	return removeStaleRecursive(ctx, dstRoot, "", prune, managed)
 }
 
 func removeStaleEntries(ctx Context, dstRoot string, managed map[string]bool) error {
@@ -236,19 +286,16 @@ type LinkSkillDirs struct {
 }
 
 func (op LinkSkillDirs) Apply(ctx Context) error {
-	if op.Replace {
-		if err := removePath(ctx, op.DstRoot); err != nil {
-			return err
-		}
-	}
 	if err := ensureDir(ctx, op.DstRoot); err != nil {
 		return err
 	}
-	// Every preset skill/subagent must override the matching entry in the
-	// provider target, regardless of init vs update mode. In update mode the
-	// whole DstRoot is wiped above, so the per-entry replace is a no-op there;
-	// in init mode it guarantees a stale provider-target skill with the same
-	// name is replaced by the preset version instead of skipped.
+	// Every skill/subagent from the shared home must override the matching
+	// entry in the provider target. Per-entry replace (not wipe-and-recreate
+	// of DstRoot) keeps unchanged entries cheap: linkOrCopy reports ok when
+	// the symlink already points at src, and only rewrites what changed.
+	// When Replace is true, also drop destination entries that are no longer
+	// present under SrcRoot (stale native mirrors after skill removal).
+	srcNames := map[string]bool{}
 	entries, err := os.ReadDir(op.SrcRoot)
 	if err != nil {
 		if !ctx.DryRun {
@@ -259,14 +306,34 @@ func (op LinkSkillDirs) Apply(ctx Context) error {
 			return err
 		}
 		for _, name := range names {
+			srcNames[name] = true
 			if err := linkOrCopy(ctx, filepath.Join(op.SrcRoot, name), filepath.Join(op.DstRoot, name), true); err != nil {
 				return err
 			}
 		}
+	} else {
+		for _, entry := range entries {
+			srcNames[entry.Name()] = true
+			if err := linkOrCopy(ctx, filepath.Join(op.SrcRoot, entry.Name()), filepath.Join(op.DstRoot, entry.Name()), true); err != nil {
+				return err
+			}
+		}
+	}
+	if !op.Replace {
 		return nil
 	}
-	for _, entry := range entries {
-		if err := linkOrCopy(ctx, filepath.Join(op.SrcRoot, entry.Name()), filepath.Join(op.DstRoot, entry.Name()), true); err != nil {
+	dstEntries, err := os.ReadDir(op.DstRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range dstEntries {
+		if srcNames[entry.Name()] {
+			continue
+		}
+		if err := removePath(ctx, filepath.Join(op.DstRoot, entry.Name())); err != nil {
 			return err
 		}
 	}
@@ -365,39 +432,96 @@ func (op MergeJSON) Apply(ctx Context) error {
 func (op MergeJSON) Describe(ctx Context) { ctx.Report.Line("merge json: %s", op.Dst) }
 func (op MergeJSON) Path() string         { return op.Dst }
 
+// AppendManagedBlock replaces a labeled managed text block in Dst.
+// Generic: no MCP/table semantics. For Grok/Codex MCP TOML use
+// AppendMCPManagedBlock instead.
 type AppendManagedBlock struct {
 	Dst     string
 	Label   string
 	Content string
 	Replace bool
-	// CleanupTables, when non-empty, removes any existing TOML table
-	// sections whose header matches [mcp_servers.<name>] (or
-	// [mcp_servers."<name>"]) for the listed names before the managed
-	// block is inserted. This prevents duplicate-key errors when a
-	// previous config (user-written or vendor-generated) already defines
-	// the same MCP servers outside the managed block.
-	CleanupTables []string
 }
 
 func (op AppendManagedBlock) Apply(ctx Context) error {
 	begin := fmt.Sprintf("# >>> ns-workspace %s >>>", op.Label)
 	end := fmt.Sprintf("# <<< ns-workspace %s <<<", op.Label)
-	block := begin + "\n" + strings.TrimSpace(op.Content) + "\n" + end + "\n"
 	current := ""
 	if data, err := os.ReadFile(op.Dst); err == nil {
 		current = string(data)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if len(op.CleanupTables) > 0 {
-		current = removeTOMLTables(current, "mcp_servers", op.CleanupTables)
+	content := strings.TrimSpace(op.Content)
+	if content == "" {
+		next := removeManagedBlock(current, begin, end)
+		if strings.TrimSpace(next) == "" {
+			next = ""
+		}
+		return writeFileManaged(ctx, op.Dst, []byte(next), op.Replace)
 	}
+	block := begin + "\n" + content + "\n" + end + "\n"
 	next := replaceManagedBlock(current, begin, end, block)
 	return writeFileManaged(ctx, op.Dst, []byte(next), op.Replace)
 }
 
 func (op AppendManagedBlock) Describe(ctx Context) { ctx.Report.Line("managed block: %s", op.Dst) }
 func (op AppendManagedBlock) Path() string         { return op.Dst }
+
+// AppendMCPManagedBlock writes or clears the ns-workspace MCP managed
+// TOML block (Grok/Codex). EnabledNames is the current catalog (plan-
+// time); Apply also purges previous managed names and portal-disabled
+// orphans, and re-injects non-MCP tables accidentally trapped between
+// markers.
+type AppendMCPManagedBlock struct {
+	Dst          string
+	Content      string
+	Replace      bool
+	EnabledNames []string
+}
+
+const mcpManagedLabel = "mcp"
+
+func (op AppendMCPManagedBlock) Apply(ctx Context) error {
+	begin := fmt.Sprintf("# >>> ns-workspace %s >>>", mcpManagedLabel)
+	end := fmt.Sprintf("# <<< ns-workspace %s <<<", mcpManagedLabel)
+	current := ""
+	if data, err := os.ReadFile(op.Dst); err == nil {
+		current = string(data)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	trapped := extractNonMCPFromManagedBlock(current, begin, end)
+	prevNames := extractManagedBlockMCPNames(current, begin, end)
+	cleanup := uniqueStrings(op.EnabledNames, prevNames, readMCPDisabledNames(ctx))
+	if len(cleanup) > 0 {
+		current = removeTOMLTables(current, "mcp_servers", cleanup)
+	}
+	content := strings.TrimSpace(op.Content)
+	if content == "" {
+		next := removeManagedBlock(current, begin, end)
+		if trapped != "" {
+			if strings.TrimSpace(next) == "" {
+				next = trapped + "\n"
+			} else {
+				next = strings.TrimRight(next, "\n") + "\n\n" + trapped + "\n"
+			}
+		} else if strings.TrimSpace(next) == "" {
+			next = ""
+		}
+		return writeFileManaged(ctx, op.Dst, []byte(next), op.Replace)
+	}
+	block := begin + "\n" + content + "\n" + end + "\n"
+	next := replaceManagedBlock(current, begin, end, block)
+	if trapped != "" {
+		next = injectAfterManagedBlock(next, end, trapped)
+	}
+	return writeFileManaged(ctx, op.Dst, []byte(next), op.Replace)
+}
+
+func (op AppendMCPManagedBlock) Describe(ctx Context) {
+	ctx.Report.Line("managed mcp block: %s", op.Dst)
+}
+func (op AppendMCPManagedBlock) Path() string { return op.Dst }
 
 type ManualStep struct {
 	Agent string

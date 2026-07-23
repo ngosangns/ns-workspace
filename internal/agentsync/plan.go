@@ -148,6 +148,8 @@ func operationArtifact(op Operation) ArtifactKind {
 			return ArtifactMCP
 		}
 		return ArtifactRules
+	case AppendMCPManagedBlock:
+		return ArtifactMCP
 	case ManualStep:
 		return ArtifactCommands
 	case WriteFile:

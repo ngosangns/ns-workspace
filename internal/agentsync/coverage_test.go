@@ -896,20 +896,28 @@ func TestInstallPresetTreeOperation(t *testing.T) {
 		t.Fatalf("Path = %q", op.Path())
 	}
 
-	// With replace=true and a stale entry, removeStaleEntries should clean it up
-	staleDir := filepath.Join(dstRoot, "stale-skill")
-	if err := os.MkdirAll(staleDir, 0o755); err != nil {
+	// Shared skills home: foreign top-level dirs (registry/user) are kept.
+	foreignDir := filepath.Join(dstRoot, "registry-skill")
+	if err := os.MkdirAll(foreignDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	staleFile := filepath.Join(staleDir, "x.md")
-	if err := os.WriteFile(staleFile, []byte("stale"), 0o644); err != nil {
+	foreignFile := filepath.Join(foreignDir, "SKILL.md")
+	if err := os.WriteFile(foreignFile, []byte("# registry\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Stale file inside a managed preset skill must still be pruned.
+	staleInside := filepath.Join(dstRoot, "execution", "orphan.md")
+	if err := os.WriteFile(staleInside, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("Apply second: %v", err)
 	}
-	if _, err := os.Stat(staleFile); !os.IsNotExist(err) {
-		t.Fatalf("stale file still exists: %v", err)
+	if _, err := os.Stat(foreignFile); err != nil {
+		t.Fatalf("foreign registry skill must be preserved: %v", err)
+	}
+	if _, err := os.Stat(staleInside); !os.IsNotExist(err) {
+		t.Fatalf("stale file inside managed skill still exists: %v", err)
 	}
 }
 
@@ -1783,8 +1791,8 @@ func TestReplaceManagedBlockReplace(t *testing.T) {
 
 func TestCodexMCPBlockEmpty(t *testing.T) {
 	got := codexMCPBlock(MCPManifest{MCPServers: map[string]any{}})
-	if got != "[mcp_servers]\n" {
-		t.Fatalf("codexMCPBlock empty = %q", got)
+	if got != "" {
+		t.Fatalf("codexMCPBlock empty = %q, want \"\"", got)
 	}
 }
 
@@ -1894,8 +1902,8 @@ func TestGrokPluginExtraOperations(t *testing.T) {
 	if len(ops) != 1 {
 		t.Fatalf("ExtraOperations len = %d", len(ops))
 	}
-	block, ok := ops[0].(AppendManagedBlock)
-	if !ok || block.Label != "mcp" || !strings.Contains(block.Content, "[mcp_servers.context7]") {
+	block, ok := ops[0].(AppendMCPManagedBlock)
+	if !ok || !strings.Contains(block.Content, "[mcp_servers.context7]") {
 		t.Fatalf("unexpected op: %#v", ops[0])
 	}
 
@@ -2266,7 +2274,8 @@ func TestCodexAdapterPlanNoMCP(t *testing.T) {
 }
 
 func TestCodexAdapterPlanEmptyManifest(t *testing.T) {
-	// Test codex with empty mcpServers: AppendManagedBlock should not be added.
+	// Empty mcpServers still plans a clear op; Apply must not leave mcp_servers
+	// tables behind (portal disable-all).
 	// Use a user config overlay to override the MCP manifest with an empty one.
 	emptyManifestPath := filepath.Join(t.TempDir(), "empty-mcp.json")
 	if err := os.WriteFile(emptyManifestPath, []byte(`{"mcpServers":{}}`), 0o644); err != nil {
@@ -2509,6 +2518,7 @@ func TestOperationArtifact(t *testing.T) {
 		{MergeJSON{Dst: "y/settings.json", Values: map[string]any{}}, ArtifactSettings},
 		{AppendManagedBlock{Label: "mcp"}, ArtifactMCP},
 		{AppendManagedBlock{Label: "rules"}, ArtifactRules},
+		{AppendMCPManagedBlock{}, ArtifactMCP},
 		{ManualStep{}, ArtifactCommands},
 		{WriteFile{Dst: "presets/skills/x"}, ArtifactSkills},
 		{WriteRegistryHelpers{}, ArtifactSkills},
@@ -4117,6 +4127,7 @@ func TestOperationArtifactFull(t *testing.T) {
 		{AppendManagedBlock{Label: "rules"}, ArtifactRules},
 		{AppendManagedBlock{Label: "conventions"}, ArtifactRules},
 		{AppendManagedBlock{Label: "other"}, ArtifactRules},
+		{AppendMCPManagedBlock{}, ArtifactMCP},
 		{WriteFile{Dst: "x", Data: nil}, ArtifactRules},
 		{InstallPresetFile{Src: "presets/skills/x", Dst: "y"}, ArtifactSkills},
 		{MergeJSON{Dst: "y/mcp/x.json", Values: map[string]any{}}, ArtifactMCP},
@@ -5663,10 +5674,10 @@ func TestAdapterPluginsTransform(t *testing.T) {
 }
 
 func TestCodexMCPBlockEdgeCases(t *testing.T) {
-	// empty manifest -> just the section header
+	// empty manifest -> empty content so AppendManagedBlock can clear the block
 	got := codexMCPBlock(MCPManifest{})
-	if got != "[mcp_servers]\n" {
-		t.Fatalf("expected [mcp_servers]\\n for empty manifest, got %q", got)
+	if got != "" {
+		t.Fatalf("expected empty string for empty manifest, got %q", got)
 	}
 	// server with no command/url/type
 	m := MCPManifest{MCPServers: map[string]any{
@@ -6644,12 +6655,11 @@ command = "custom"
 	if err := os.WriteFile(dst, []byte(initial), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	op := AppendManagedBlock{
-		Dst:           dst,
-		Label:         "mcp",
-		Content:       "[mcp_servers.chrome-devtools]\ncommand = \"npx\"\nargs = [\"-y\", \"new\"]\n\n[mcp_servers.kimi]\ncommand = \"npx\"\nargs = [\"-y\", \"kimi-for-claude\"]\n",
-		Replace:       true,
-		CleanupTables: []string{"chrome-devtools", "kimi"},
+	op := AppendMCPManagedBlock{
+		Dst:          dst,
+		Content:      "[mcp_servers.chrome-devtools]\ncommand = \"npx\"\nargs = [\"-y\", \"new\"]\n\n[mcp_servers.kimi]\ncommand = \"npx\"\nargs = [\"-y\", \"kimi-for-claude\"]\n",
+		Replace:      true,
+		EnabledNames: []string{"chrome-devtools", "kimi"},
 	}
 	if err := op.Apply(ctx); err != nil {
 		t.Fatal(err)
@@ -10141,12 +10151,12 @@ func TestMcpCommandScriptServerNotInMap(t *testing.T) {
 	}
 }
 
-// mcp.go:168-169 - codexMCPBlock ok=false (server not in map)
+// mcp.go - codexMCPBlock with empty map returns "" so managed block can clear.
 func TestCodexMCPBlockServerNotInMap(t *testing.T) {
 	manifest := MCPManifest{MCPServers: map[string]any{}}
 	out := codexMCPBlock(manifest)
-	if !strings.Contains(out, "[mcp_servers]") {
-		t.Fatalf("expected mcp_servers header: %s", out)
+	if out != "" {
+		t.Fatalf("expected empty content for empty map, got %q", out)
 	}
 }
 

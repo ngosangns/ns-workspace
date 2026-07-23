@@ -266,10 +266,15 @@ func mcpCommandScript(ctx Context, agentID string, lineBuilder func(name string,
 
 // codexMCPBlock renders the TOML managed block that Codex expects in
 // `~/.codex/config.toml`. Servers are sorted by name for stable diffs.
+// Returns "" when the catalog is empty so AppendManagedBlock can drop a
+// previously written managed block (portal disable-all).
 func codexMCPBlock(manifest MCPManifest) string {
 	names := make([]string, 0, len(manifest.MCPServers))
 	for name := range manifest.MCPServers {
 		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return ""
 	}
 	sort.Strings(names)
 	out := "[mcp_servers]\n"

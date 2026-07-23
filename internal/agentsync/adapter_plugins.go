@@ -211,9 +211,8 @@ func (GrokPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) Agen
 }
 
 // ExtraOperations appends a managed MCP block into ~/.grok/config.toml
-// when MCP is enabled and the shared manifest has servers. Empty
-// manifests skip the op (Codex-compatible: a previously written block
-// is left in place if the preset becomes empty).
+// when MCP is enabled. An empty catalog still emits the op so update can
+// clear a previously written managed block (portal disable-all / shrink).
 func (GrokPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operation, error) {
 	if ctx.NoMCP {
 		return nil, nil
@@ -222,20 +221,16 @@ func (GrokPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operati
 	if err != nil {
 		return nil, err
 	}
-	if len(manifest.MCPServers) == 0 {
-		return nil, nil
-	}
 	names := make([]string, 0, len(manifest.MCPServers))
 	for name := range manifest.MCPServers {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return []Operation{AppendManagedBlock{
-		Dst:           filepath.Join(ctx.Home, ".grok", "config.toml"),
-		Label:         "mcp",
-		Content:       grokMCPBlock(manifest),
-		Replace:       true,
-		CleanupTables: names,
+	return []Operation{AppendMCPManagedBlock{
+		Dst:          filepath.Join(ctx.Home, ".grok", "config.toml"),
+		Content:      grokMCPBlock(manifest),
+		Replace:      true,
+		EnabledNames: names,
 	}}, nil
 }
 

@@ -74,9 +74,10 @@ func writeMCPReadme(ctx Context, replace bool) error {
 // installer "but-skill" use `but skill install --path ...` per
 // https://docs.gitbutler.com/commands/but-skill.
 //
-// Skipped when ctx.DryRun is true or when the registry manifest is empty.
-// Per-skill failures are reported as warnings so one bad entry does not
-// block the rest of update.
+// Default update skips installers when each skill has a matching
+// per-skill stamp and SKILL.md is present. Use Options.RefreshSkills
+// to force re-install. Per-skill failures are warnings so one bad
+// entry does not block the rest of update.
 func installRegistrySkills(ctx Context) error {
 	manifest, err := readRegistryManifest(ctx)
 	if err != nil {
@@ -88,13 +89,36 @@ func installRegistrySkills(ctx Context) error {
 	if skipped := len(raw) - len(manifest.Skills); skipped > 0 {
 		ctx.Report.Line("warning: skipped %d registry skill(s) with invalid/placeholder source (e.g. org/repo)", skipped)
 	}
+	// Portal-disabled top-level skill names are not re-installed.
+	disabled := loadDisabledSkills(ctx)
+	if len(disabled) > 0 {
+		filtered := make([]RegistrySkill, 0, len(manifest.Skills))
+		for _, sk := range manifest.Skills {
+			if disabled[skillInstallID(sk)] || disabled[strings.TrimSpace(sk.Name)] {
+				ctx.Report.Line("registry: skip %s (portal disabled)", skillInstallID(sk))
+				continue
+			}
+			filtered = append(filtered, sk)
+		}
+		manifest.Skills = filtered
+	}
 	if len(manifest.Skills) == 0 {
 		return nil
 	}
 
+	state := loadRegistrySyncState(ctx.Options.AgentsDir)
+	plan := planRegistryInstalls(ctx.Options.AgentsDir, manifest.Skills, state, ctx.RefreshSkills)
+	if plan.SkipAll {
+		ctx.Report.Line("registry: ok (unchanged, %d skills) — skip installers", len(manifest.Skills))
+		return nil
+	}
+	if len(plan.Skipped) > 0 {
+		ctx.Report.Line("registry: skip %d unchanged skill(s)", len(plan.Skipped))
+	}
+
 	needNpx := false
 	needBut := false
-	for _, skill := range manifest.Skills {
+	for _, skill := range plan.ToInstall {
 		switch skill.installerKind() {
 		case installerButSkill:
 			needBut = true
@@ -123,7 +147,15 @@ func installRegistrySkills(ctx Context) error {
 		baseEnv = append(baseEnv, "GITHUB_TOKEN="+ghToken)
 	}
 
-	for _, skill := range manifest.Skills {
+	// Track success for state: skipped (unchanged+present) count as OK;
+	// installs that succeed count as OK.
+	installedOK := map[string]bool{}
+	for _, id := range plan.Skipped {
+		installedOK[id] = true
+	}
+
+	for _, skill := range plan.ToInstall {
+		id := skillInstallID(skill)
 		ctx.Report.Line("registry: %s (%s)", skill.Name, skill.installerKind())
 		if ctx.DryRun {
 			ctx.Report.Line("run: %s", registryCommand(skill, true, ctx.CopyMode, ctx.Options.AgentsDir))
@@ -131,40 +163,33 @@ func installRegistrySkills(ctx Context) error {
 		}
 		if err := installOneRegistrySkill(ctx, skill, baseEnv, ghToken); err != nil {
 			ctx.Report.Line("warning: registry skill %s failed: %s", skill.Name, err.Error())
+			continue
 		}
+		// Stamp only when SKILL.md is on disk (real installers and test
+		// stubs that materialize the skill layout).
+		if registrySkillPresent(ctx.Options.AgentsDir, skill) {
+			installedOK[id] = true
+		}
+	}
+
+	if ctx.DryRun {
+		return nil
+	}
+
+	if err := saveRegistrySyncState(ctx.Options.AgentsDir, buildRegistrySyncState(manifest.Skills, installedOK)); err != nil {
+		ctx.Report.Line("warning: registry sync state save failed: %v", err)
+		return fmt.Errorf("save registry sync state: %w", err)
 	}
 	return nil
 }
 
-// InstallRegistrySkill installs one registry entry into agentsDir using the
-// same installers as update/registry (npx skills add or but skill install).
-// Intended for portal one-shot installs. Uses copy mode so agent skill dirs
-// that do not follow symlinks (e.g. Kiro IDE) still see the skill.
-func InstallRegistrySkill(agentsDir string, skill RegistrySkill) error {
-	if strings.TrimSpace(agentsDir) == "" {
-		return fmt.Errorf("agents home is required")
-	}
-	if strings.TrimSpace(skill.Skill) == "" && skill.installerKind() != installerButSkill {
-		return fmt.Errorf("skill id is required")
-	}
-	if skill.Name == "" {
-		skill.Name = skill.Skill
-	}
-	baseEnv := append(os.Environ(), "AGENTS_HOME="+agentsDir)
-	var ghToken string
-	if token, err := exec.Command("gh", "auth", "token").Output(); err == nil {
-		ghToken = strings.TrimSpace(string(token))
-		baseEnv = append(baseEnv, "GITHUB_TOKEN="+ghToken)
-	}
-	ctx := Context{
-		Options: Options{AgentsDir: agentsDir, CopyMode: true},
-		Report:  stdoutReporter{},
-	}
-	return installOneRegistrySkill(ctx, skill, baseEnv, ghToken)
-}
+// installOneRegistrySkill is the seam used by bulk/portal install so
+// tests can count/stub network installers without calling npx/but.
+// Production default is installOneRegistrySkillDefault.
+var installOneRegistrySkill = installOneRegistrySkillDefault
 
-// installOneRegistrySkill runs a single registry entry with a timeout.
-func installOneRegistrySkill(ctx Context, skill RegistrySkill, baseEnv []string, ghToken string) error {
+// installOneRegistrySkillDefault is the production installer (npx / but).
+func installOneRegistrySkillDefault(ctx Context, skill RegistrySkill, baseEnv []string, ghToken string) error {
 	cmdCtx, cancel := context.WithTimeout(context.Background(), registrySkillInstallTimeout)
 	defer cancel()
 
@@ -203,6 +228,41 @@ func installOneRegistrySkill(ctx Context, skill RegistrySkill, baseEnv []string,
 			msg = fmt.Sprintf("timed out after %s", registrySkillInstallTimeout)
 		}
 		return errors.New(msg)
+	}
+	return nil
+}
+
+// InstallRegistrySkill installs one registry entry into agentsDir using the
+// same installers as update/registry (npx skills add or but skill install).
+// Intended for portal one-shot installs. Uses copy mode so agent skill dirs
+// that do not follow symlinks (e.g. Kiro IDE) still see the skill.
+// On success, stamps registry/.sync-state.json so a later unchanged
+// update skips re-installing this skill.
+func InstallRegistrySkill(agentsDir string, skill RegistrySkill) error {
+	if strings.TrimSpace(agentsDir) == "" {
+		return fmt.Errorf("agents home is required")
+	}
+	if strings.TrimSpace(skill.Skill) == "" && skill.installerKind() != installerButSkill {
+		return fmt.Errorf("skill id is required")
+	}
+	if skill.Name == "" {
+		skill.Name = skill.Skill
+	}
+	baseEnv := append(os.Environ(), "AGENTS_HOME="+agentsDir)
+	var ghToken string
+	if token, err := exec.Command("gh", "auth", "token").Output(); err == nil {
+		ghToken = strings.TrimSpace(string(token))
+		baseEnv = append(baseEnv, "GITHUB_TOKEN="+ghToken)
+	}
+	ctx := Context{
+		Options: Options{AgentsDir: agentsDir, CopyMode: true},
+		Report:  stdoutReporter{},
+	}
+	if err := installOneRegistrySkill(ctx, skill, baseEnv, ghToken); err != nil {
+		return err
+	}
+	if err := stampOneRegistrySkill(agentsDir, skill); err != nil {
+		return fmt.Errorf("stamp registry skill after install: %w", err)
 	}
 	return nil
 }
