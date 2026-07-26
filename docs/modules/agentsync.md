@@ -69,12 +69,13 @@ Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `
 
 ## Adapter Catalog
 
-Stable adapters hiện gồm Claude Code, OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Antigravity CLI (`agy`), Codex CLI, Cline và ZCode. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
+Stable adapters hiện gồm Claude Code, Claude Desktop (app GUI), OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Antigravity CLI (`agy`), Codex CLI, Cline và ZCode. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
 
 Plugin adapter hiện có:
 
 - OpenCode merge MCP presets dưới key `mcp` (remote: `type/url/enabled`; local: `type/command[]/enabled`) và config values từ `presets/opencode/opencode.json` vào native config qua `MergeJSON` / `OpenCodeAdapter.Plan`.
 - Claude tạo script helper `~/.agents/generated/claude/mcp.commands.sh` để add MCP bằng CLI user scope.
+- Claude Desktop (`claude-desktop`, alias `claude-app` / `claudedesktop`) chỉ sync MCP: merge catalog vào key `mcpServers` của `claude_desktop_config.json` (macOS `~/Library/Application Support/Claude`, Windows `%APPDATA%\Claude`, Linux `$XDG_CONFIG_HOME/Claude`). File này chỉ đọc server stdio nên remote HTTP/SSE được bridge qua `npx -y mcp-remote <url>` (`headers` render thành cặp `--header "Name: value"` sort theo key). Không có CLI binary nên `doctor` không probe PATH; instructions/skills/subagents vẫn thuộc adapter `claude` dưới `~/.claude`. Merge giữ nguyên các key khác trong file (ví dụ `preferences`) nhưng ghi lại toàn bộ file, nên sync khi app đang đóng rồi mở lại để load server mới và tránh app ghi đè song song.
 - Codex append managed TOML block vào `~/.codex/config.toml` cho MCP servers (cùng semantics cleanup/clear-on-empty với Grok: portal disable gỡ server khỏi block và orphan tables; catalog rỗng xóa block).
 - Grok link `~/.agents/AGENTS.md` → `~/.grok/AGENTS.md` và dùng `GrokPlugin.ExtraOperations` để append managed TOML block MCP vào `~/.grok/config.toml` (`[mcp_servers.<name>]`). Trước khi ghi block, agentsync dọn `[mcp_servers.<name>]` cho: catalog enabled hiện tại, tên từng nằm trong managed block cũ, **và** tên trong `servers.disabled.json` (portal disable) — kể cả orphan table ngoài markers do update cũ để lại. Catalog rỗng (disable hết MCP) vẫn emit op để **xóa** managed block thay vì để stale. Skills **không** mirror — Grok đọc `~/.agents/skills` native.
 - OpenCode / ZCode / Codex / Kimi: skills chỉ qua `~/.agents/skills` (không mirror native skills dir). OpenCode vẫn link AGENTS.md + subagents + merge MCP; ZCode link AGENTS.md; stale symlink cũ dưới `~/.config/opencode/skill`, `~/.grok/skills`, `~/.zcode/skills` được cleanup nếu trỏ vào shared home.

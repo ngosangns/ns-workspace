@@ -35,6 +35,38 @@ func (ClaudePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, erro
 	return manifest, nil
 }
 
+// ClaudeDesktopPlugin powers the Claude Desktop app adapter. The desktop
+// app shares nothing else with Claude Code's ~/.claude tree (instructions,
+// skills and subagents stay with the `claude` adapter), so this plugin's
+// only job is rewriting the shared MCP manifest into the stdio-only shape
+// claude_desktop_config.json accepts.
+type ClaudeDesktopPlugin struct{}
+
+// ExtendCapabilities returns caps unchanged — the MCP artifact already
+// comes from Targets.MCPPath via artifactsFromSpec.
+func (ClaudeDesktopPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
+	return caps
+}
+
+// ExtraOperations returns no extras; the template method handles the
+// single MCP merge.
+func (ClaudeDesktopPlugin) ExtraOperations(_ Context, _ AdapterSpec, _ bool) ([]Operation, error) {
+	return nil, nil
+}
+
+// ExtraStatusPaths returns no extras.
+func (ClaudeDesktopPlugin) ExtraStatusPaths(_ Context, _ AdapterSpec) []string { return nil }
+
+// TransformMCPServers drops `type` and bridges remote servers through
+// `npx -y mcp-remote <url>` per transformClaudeDesktopMCPServer.
+func (ClaudeDesktopPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
+	transformed, err := transformMCPServersForAdapterImpl("claude-desktop", manifest)
+	if err != nil {
+		return MCPManifest{}, fmt.Errorf("claude-desktop transform: %w", err)
+	}
+	return MCPManifest{MCPServers: transformed}, nil
+}
+
 // OpenCodePlugin implements the OpenCode MCP rewrite: remote HTTP
 // servers get type "remote"+url+enabled; local/stdio get type "local"
 // with command as argv array + enabled. See transformOpenCodeMCPServer.
@@ -285,6 +317,7 @@ func (ZCodePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 // AdapterPlugin so the BaseAdapter constructor can wire it directly.
 var (
 	_ AdapterPlugin = ClaudePlugin{}
+	_ AdapterPlugin = ClaudeDesktopPlugin{}
 	_ AdapterPlugin = OpenCodePlugin{}
 	_ AdapterPlugin = CodexPlugin{}
 	_ AdapterPlugin = QwenPlugin{}

@@ -116,7 +116,7 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 --config ~/.config/ns-workspace/config.json
 --tools all
 --tools stable
---tools claude,opencode,grok,kimi,kiro,qwen,antigravity,codex,cline
+--tools claude,claude-desktop,opencode,grok,kimi,kiro,qwen,antigravity,codex,cline,zcode
 --tools kiro-cli
 --dry-run
 --force
@@ -175,6 +175,7 @@ Stable adapters ghi vào các user-level path đã biết:
 | Agent         | User-level targets                                                                                                                                                                 |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code   | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` với hooks, `~/.claude/skills`, `~/.claude/agents`, generated MCP commands                                                         |
+| Claude Desktop | Chỉ MCP: `mcpServers` trong `claude_desktop_config.json` (macOS `~/Library/Application Support/Claude`, Windows `%APPDATA%\Claude`, Linux `$XDG_CONFIG_HOME/Claude`); file này chỉ nhận stdio nên remote HTTP/SSE bridge qua `npx -y mcp-remote <url>`. Alias `--tools claude-app`; restart app sau sync |
 | OpenCode      | `$XDG_CONFIG_HOME/opencode/AGENTS.md`, `agent/`, `opencode.json` với MCP; skills đọc native từ `~/.agents/skills` (không mirror)                                                   |
 | Grok Build    | `~/.grok/AGENTS.md`, managed MCP block trong `~/.grok/config.toml`; skills đọc native từ `~/.agents/skills` (không mirror)                                                         |
 | Kimi Code CLI | `~/.kimi/AGENTS.md`, `~/.kimi/mcp.json`; skills không mirror vì Kimi đọc thẳng `~/.agents/skills` (generic, độc lập với `KIMI_CODE_HOME`)                                          |

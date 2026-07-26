@@ -95,6 +95,72 @@ func transformOpenCodeMCPServer(server map[string]any) map[string]any {
 	return next
 }
 
+// transformClaudeDesktopMCPServer rewrites one shared MCP entry into the
+// shape `claude_desktop_config.json` accepts.
+//
+// Claude Desktop only launches stdio servers from that file: the schema
+// documents `command` / `args` / `env` and does not read the
+// `type: "http"` + `url` pair that Claude Code accepts. Remote servers are
+// therefore bridged through the `mcp-remote` stdio proxy (the documented
+// workaround alongside adding the server as a Custom Connector in
+// Settings), and the `type` discriminator is dropped from stdio entries.
+// https://modelcontextprotocol.io/docs/develop/connect-local-servers
+func transformClaudeDesktopMCPServer(server map[string]any) map[string]any {
+	url := firstStringValue(server, "url", "httpUrl", "serverUrl")
+	cmd, hasCmd := server["command"].(string)
+
+	if url != "" && !(hasCmd && cmd != "") {
+		// mcp-remote negotiates streamable HTTP first and falls back to
+		// SSE, so the shared `type` needs no translation here.
+		args := []any{"-y", "mcp-remote", url}
+		args = append(args, claudeDesktopHeaderArgs(server)...)
+		next := map[string]any{"command": "npx", "args": args}
+		if env, ok := server["env"]; ok {
+			next["env"] = env
+		}
+		return next
+	}
+
+	next := map[string]any{}
+	for key, value := range server {
+		if key == "type" {
+			continue
+		}
+		next[key] = value
+	}
+	return next
+}
+
+// claudeDesktopHeaderArgs renders shared `headers` entries as the
+// `--header "Name: value"` argv pairs mcp-remote expects. Keys are sorted
+// so repeated syncs produce a stable file.
+func claudeDesktopHeaderArgs(server map[string]any) []any {
+	headers, ok := server["headers"].(map[string]any)
+	if !ok || len(headers) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]any, 0, len(keys)*2)
+	for _, key := range keys {
+		out = append(out, "--header", fmt.Sprintf("%s: %v", key, headers[key]))
+	}
+	return out
+}
+
+// firstStringValue returns the first non-empty string value among keys.
+func firstStringValue(server map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := server[key].(string); ok && value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // transformMCPServersForAdapterImpl is the seam used by adapter_plugins
 // to delegate to transformMCPServersForAdapter. Tests can override the
 // variable to inject custom errors and cover error branches in plugin
@@ -110,6 +176,10 @@ var transformMCPServersForAdapterImpl = transformMCPServersForAdapter
 //   - claude: keeps the shared shape verbatim. Claude Code's mcpServers
 //     accepts `type: "http"` + `url` for HTTP servers, and `command`/`args`
 //     for stdio servers.
+//   - claude-desktop: stdio only. `type` is dropped and remote servers are
+//     wrapped in the `mcp-remote` stdio bridge (`npx -y mcp-remote <url>`)
+//     because claude_desktop_config.json does not read `url`.
+//     See transformClaudeDesktopMCPServer.
 //   - opencode: remote = type "remote" + url + enabled; local/stdio =
 //     type "local" + command argv array + enabled (command string+args
 //     from the shared preset are folded into command[]). env → environment.
@@ -152,6 +222,9 @@ func transformMCPServersForAdapter(adapterID string, manifest MCPManifest) (map[
 		switch adapterID {
 		case "opencode":
 			out[name] = transformOpenCodeMCPServer(next)
+			continue
+		case "claude-desktop":
+			out[name] = transformClaudeDesktopMCPServer(next)
 			continue
 		case "qwen":
 			// Qwen requires HTTP servers to use the `httpUrl` field

@@ -1,7 +1,9 @@
 package agentsync
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -13,6 +15,36 @@ type RegistryOptions struct {
 	Home          string
 	XDGConfigHome string
 	KiroHome      string
+	// ClaudeDesktopDir overrides the directory holding
+	// claude_desktop_config.json. Empty means derive it from the running
+	// OS via claudeDesktopConfigDir.
+	ClaudeDesktopDir string
+}
+
+// registryGOOS is a seam so tests can exercise the per-OS Claude Desktop
+// config directory without running on that OS.
+var registryGOOS = runtime.GOOS
+
+// claudeDesktopConfigDir returns the directory Claude Desktop keeps
+// claude_desktop_config.json in:
+//
+//   - macOS:   ~/Library/Application Support/Claude
+//   - Windows: %APPDATA%\Claude (fallback ~/AppData/Roaming/Claude)
+//   - Linux:   $XDG_CONFIG_HOME/Claude (xdg already defaults to ~/.config)
+//
+// https://modelcontextprotocol.io/docs/develop/connect-local-servers
+func claudeDesktopConfigDir(home, xdg string) string {
+	switch registryGOOS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "Claude")
+	case "windows":
+		if appData := os.Getenv("APPDATA"); appData != "" {
+			return filepath.Join(appData, "Claude")
+		}
+		return filepath.Join(home, "AppData", "Roaming", "Claude")
+	default:
+		return filepath.Join(xdg, "Claude")
+	}
 }
 
 // NewAdapterRegistry builds the default catalog of stable +
@@ -29,6 +61,10 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 		xdg = filepath.Join(opts.Home, ".config")
 	}
 	home := opts.Home
+	claudeDesktop := opts.ClaudeDesktopDir
+	if claudeDesktop == "" {
+		claudeDesktop = claudeDesktopConfigDir(home, xdg)
+	}
 
 	r.add(&ClaudeAdapter{BaseAdapter: BaseAdapter{
 		Spec: AdapterSpec{
@@ -42,6 +78,24 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 			Docs: []string{"https://docs.claude.com/en/docs/claude-code/settings", "https://docs.claude.com/en/docs/claude-code/mcp"},
 		},
 		Plugin: ClaudePlugin{},
+	}})
+
+	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
+		Spec: AdapterSpec{
+			ID: "claude-desktop", Aliases: []string{"claude-app", "claudedesktop"}, Tier: TierStable,
+			// GUI app: no CLI binary to probe on PATH.
+			Targets: AdapterTargets{
+				MCPPath:    filepath.Join(claudeDesktop, "claude_desktop_config.json"),
+				MCPKeyPath: []string{"mcpServers"},
+			},
+			Docs: []string{
+				"https://modelcontextprotocol.io/docs/develop/connect-local-servers",
+				"https://modelcontextprotocol.io/docs/develop/connect-remote-servers",
+				"https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop",
+			},
+			Notes: "Claude Desktop app (GUI, no CLI binary). Only MCP is synced: the shared catalog is merged under mcpServers in claude_desktop_config.json (macOS ~/Library/Application Support/Claude, Windows %APPDATA%\\Claude, Linux $XDG_CONFIG_HOME/Claude). That file reads stdio servers only, so remote HTTP/SSE entries are bridged through `npx -y mcp-remote <url>`. Instructions/skills/subagents stay with the `claude` adapter under ~/.claude (the desktop app's Claude Code side reads them there); desktop-native Skills and Extensions are managed in-app and are not file-synced. Restart Claude Desktop after a sync to pick up new servers.",
+		},
+		Plugin: ClaudeDesktopPlugin{},
 	}})
 
 	r.add(&OpenCodeAdapter{
