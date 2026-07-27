@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // ClaudePlugin powers the ClaudeAdapter's extra script generation and
@@ -314,6 +315,79 @@ func (ZCodePlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error
 	return MCPManifest{MCPServers: transformed}, nil
 }
 
+// HermesPlugin powers the Hermes Agent adapter: merge skills.external_dirs
+// and mcp_servers into $HERMES_HOME/config.yaml (default ~/.hermes).
+// Skills are not mirrored into ~/.hermes/skills (Hermes bundled/hub skills
+// live there); shared skills are discovered via external_dirs.
+// Docs: https://hermes-agent.nousresearch.com/docs/user-guide/features/skills
+// Docs: https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp
+type HermesPlugin struct {
+	// Home is the resolved HERMES_HOME directory.
+	Home string
+}
+
+// ExtendCapabilities adds ArtifactMCP so `agents` reports the managed
+// config.yaml MCP target.
+func (HermesPlugin) ExtendCapabilities(_ AdapterSpec, caps AgentCapabilities) AgentCapabilities {
+	caps.Artifacts = append(caps.Artifacts, ArtifactMCP)
+	return caps
+}
+
+// ExtraOperations always emits MergeHermesConfig so update can shrink
+// MCP (portal disable) and keep external_dirs in sync. With NoMCP, only
+// external_dirs is ensured; MCP keys and the managed stamp are left alone
+// (same skip semantics as GrokPlugin). Empty AgentsDir returns nil so
+// smoke tests with a zero Context stay no-op.
+func (p HermesPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operation, error) {
+	if strings.TrimSpace(ctx.Options.AgentsDir) == "" {
+		return nil, nil
+	}
+	home := p.Home
+	if home == "" {
+		home = resolveHermesHome(ctx.Home, "")
+	}
+	cfg := filepath.Join(home, "config.yaml")
+	ext := filepath.Join(ctx.Options.AgentsDir, "skills")
+	stamp := filepath.Join(ctx.Options.AgentsDir, hermesManagedMCPStamp)
+
+	op := MergeHermesConfig{
+		Dst:               cfg,
+		ExternalSkillsDir: ext,
+		Replace:           true,
+	}
+	if ctx.NoMCP {
+		return []Operation{op}, nil
+	}
+
+	manifest, err := readMCPManifestHook(ctx)
+	if err != nil {
+		return nil, err
+	}
+	manifest = filterMCPManifest(ctx, "hermes", manifest)
+	servers, enabled := hermesMCPServers(manifest)
+	cleanup := uniqueStrings(enabled, loadHermesManagedStamp(stamp), readMCPDisabledNames(ctx))
+	op.MCPServers = servers
+	op.EnabledNames = enabled
+	op.CleanupNames = cleanup
+	op.StampPath = stamp
+	return []Operation{op}, nil
+}
+
+// ExtraStatusPaths returns the Hermes config.yaml path.
+func (p HermesPlugin) ExtraStatusPaths(ctx Context, _ AdapterSpec) []string {
+	home := p.Home
+	if home == "" {
+		home = resolveHermesHome(ctx.Home, "")
+	}
+	return []string{filepath.Join(home, "config.yaml")}
+}
+
+// TransformMCPServers returns the manifest unchanged. Hermes merge
+// transforms per-server in hermesMCPServers / transformHermesMCPServer.
+func (HermesPlugin) TransformMCPServers(manifest MCPManifest) (MCPManifest, error) {
+	return manifest, nil
+}
+
 // compile-time interface checks. Every concrete plugin must satisfy
 // AdapterPlugin so the BaseAdapter constructor can wire it directly.
 var (
@@ -326,5 +400,6 @@ var (
 	_ AdapterPlugin = ClinePlugin{}
 	_ AdapterPlugin = GrokPlugin{}
 	_ AdapterPlugin = ZCodePlugin{}
+	_ AdapterPlugin = HermesPlugin{}
 	_ AdapterPlugin = NoopPlugin{}
 )

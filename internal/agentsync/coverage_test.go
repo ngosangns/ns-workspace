@@ -2519,6 +2519,7 @@ func TestOperationArtifact(t *testing.T) {
 		{AppendManagedBlock{Label: "mcp"}, ArtifactMCP},
 		{AppendManagedBlock{Label: "rules"}, ArtifactRules},
 		{AppendMCPManagedBlock{}, ArtifactMCP},
+		{MergeHermesConfig{}, ArtifactMCP},
 		{ManualStep{}, ArtifactCommands},
 		{WriteFile{Dst: "presets/skills/x"}, ArtifactSkills},
 		{WriteRegistryHelpers{}, ArtifactSkills},
@@ -3365,6 +3366,7 @@ func TestAllPlugins(t *testing.T) {
 		{"AntigravityPlugin", AntigravityPlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"ClinePlugin", ClinePlugin{}, []ArtifactKind{ArtifactMCP}},
 		{"ZCodePlugin", ZCodePlugin{}, nil},
+		{"HermesPlugin", HermesPlugin{}, []ArtifactKind{ArtifactMCP}},
 	}
 	for _, tc := range plugins {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3396,7 +3398,7 @@ func TestAllPlugins(t *testing.T) {
 	manifest := MCPManifest{MCPServers: map[string]any{
 		"x": map[string]any{"type": "http", "url": "https://x"},
 	}}
-	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, AntigravityPlugin{}, ClinePlugin{}, ZCodePlugin{}} {
+	for _, p := range []AdapterPlugin{ClaudePlugin{}, OpenCodePlugin{}, CodexPlugin{}, QwenPlugin{}, AntigravityPlugin{}, ClinePlugin{}, ZCodePlugin{}, HermesPlugin{}} {
 		if _, err := p.TransformMCPServers(manifest); err != nil {
 			t.Fatalf("TransformMCPServers: %v", err)
 		}
@@ -4128,6 +4130,7 @@ func TestOperationArtifactFull(t *testing.T) {
 		{AppendManagedBlock{Label: "conventions"}, ArtifactRules},
 		{AppendManagedBlock{Label: "other"}, ArtifactRules},
 		{AppendMCPManagedBlock{}, ArtifactMCP},
+		{MergeHermesConfig{}, ArtifactMCP},
 		{WriteFile{Dst: "x", Data: nil}, ArtifactRules},
 		{InstallPresetFile{Src: "presets/skills/x", Dst: "y"}, ArtifactSkills},
 		{MergeJSON{Dst: "y/mcp/x.json", Values: map[string]any{}}, ArtifactMCP},
@@ -8622,7 +8625,7 @@ func TestAdapterDoctorExecutablesUnique(t *testing.T) {
 
 func TestAdapterRegistryIncludesAllPlugins(t *testing.T) {
 	r := NewAdapterRegistry(RegistryOptions{Home: t.TempDir(), XDGConfigHome: t.TempDir(), KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "kimi", "kiro", "grok"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "kimi", "kiro", "grok", "hermes"} {
 		if r.Lookup(id) == nil {
 			t.Fatalf("missing adapter: %s", id)
 		}
@@ -8640,7 +8643,7 @@ func TestAdapterRegistryCount(t *testing.T) {
 func TestAdapterStatusPathsExtra(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	r := NewAdapterRegistry(RegistryOptions{Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome, KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "hermes"} {
 		if a := r.Lookup(id); a != nil {
 			_ = a.StatusPaths(ctx)
 		}

@@ -116,7 +116,7 @@ Sau khi `setup`, mỗi lệnh dưới đây được wrap thành task `ns:<comma
 --config ~/.config/ns-workspace/config.json
 --tools all
 --tools stable
---tools claude,claude-desktop,opencode,grok,kimi,kiro,qwen,antigravity,codex,cline,zcode
+--tools claude,claude-desktop,opencode,grok,kimi,kiro,qwen,antigravity,codex,cline,zcode,hermes
 --tools kiro-cli
 --dry-run
 --force
@@ -185,6 +185,7 @@ Stable adapters ghi vào các user-level path đã biết:
 | Codex CLI     | `~/.codex/AGENTS.md`, managed MCP block trong `~/.codex/config.toml`; Codex không có `~/.codex/skills` — chỉ đọc `.agents/skills` (repo) và `~/.agents/skills` (user) nên không cần mirror |
 | Cline         | `~/.cline/skills`, `~/.cline/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                             |
 | ZCode         | `~/.zcode/AGENTS.md` (link từ shared); skills đọc native `~/.agents/skills` (không mirror)                                                                                        |
+| Hermes Agent  | Skills qua `skills.external_dirs` → `~/.agents/skills` trong `$HERMES_HOME/config.yaml` (default `~/.hermes`); MCP merge `mcp_servers` (remote `url`, stdio `command`/`args`); tôn trọng `HERMES_HOME`; không đụng `SOUL.md` / `.env` |
 
 ## Portal
 

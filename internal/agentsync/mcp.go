@@ -295,6 +295,12 @@ func transformMCPServersForAdapter(adapterID string, manifest MCPManifest) (map[
 			// still present in the enabled catalog must load in Kiro, so
 			// force disabled=false on every managed entry during sync.
 			next["disabled"] = false
+		case "hermes":
+			// Hermes Agent reads mcp_servers from config.yaml:
+			// remote url (+ headers/auth); stdio command/args/env.
+			// https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp
+			out[name] = transformHermesMCPServer(next)
+			continue
 		default:
 			// claude, kimi and other adapters: keep the shared shape.
 		}

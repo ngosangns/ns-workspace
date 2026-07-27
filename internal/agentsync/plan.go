@@ -150,6 +150,8 @@ func operationArtifact(op Operation) ArtifactKind {
 		return ArtifactRules
 	case AppendMCPManagedBlock:
 		return ArtifactMCP
+	case MergeHermesConfig:
+		return ArtifactMCP
 	case ManualStep:
 		return ArtifactCommands
 	case WriteFile:

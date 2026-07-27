@@ -69,7 +69,7 @@ Mọi write đi qua `writeFileManaged()`. Nếu nội dung đã đúng thì in `
 
 ## Adapter Catalog
 
-Stable adapters hiện gồm Claude Code, Claude Desktop (app GUI), OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Antigravity CLI (`agy`), Codex CLI, Cline và ZCode. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
+Stable adapters hiện gồm Claude Code, Claude Desktop (app GUI), OpenCode, Grok Build, Kimi Code CLI, Kiro/Kiro CLI, Qwen Code, Antigravity CLI (`agy`), Codex CLI, Cline, ZCode và Hermes Agent. Stable adapters ghi hoặc link/copy trực tiếp tới native user-level locations. Adapter phổ thông đi qua `AdapterSpec`; adapter có logic riêng dùng plugin nhỏ.
 
 Plugin adapter hiện có:
 
@@ -81,6 +81,7 @@ Plugin adapter hiện có:
 - OpenCode / ZCode / Codex / Kimi: skills chỉ qua `~/.agents/skills` (không mirror native skills dir). OpenCode vẫn link AGENTS.md + subagents + merge MCP; ZCode link AGENTS.md; stale symlink cũ dưới `~/.config/opencode/skill`, `~/.grok/skills`, `~/.zcode/skills` được cleanup nếu trỏ vào shared home.
 - Antigravity: instructions `~/.gemini/GEMINI.md`; settings `~/.gemini/antigravity-cli/settings.json`; skills mirror `~/.gemini/antigravity-cli/skills`; MCP standalone `~/.gemini/config/mcp_config.json` (remote `serverUrl`).
 - Cline skills/agents: `~/.cline/skills` và `~/.cline/agents` (theo docs); cleanup path cũ `~/.cline/data/skills` và `data/agents`.
+- Hermes Agent (`hermes`): skills qua `skills.external_dirs` → `<agents-home>/skills` trong `$HERMES_HOME/config.yaml` (default `~/.hermes`, env `HERMES_HOME`); MCP merge vào `mcp_servers` (HTTP/SSE: `url` + headers/auth; stdio: `command`/`args`/`env`) với stamp cleanup `~/.agents/generated/hermes/managed-mcp.json` khi portal disable. Không mirror skills vào `~/.hermes/skills` (chừa chỗ bundled/hub). Không ghi `SOUL.md` hay `.env`. YAML rewrite có thể mất comment trong `config.yaml`. Reload Hermes sau sync để nạp MCP.
 - Kiro dùng `KIRO_HOME` nếu env var có giá trị; nếu không dùng `~/.kiro`. Ghi custom agent `~/.kiro/agents/ns-full.json` với `tools: ["*"]`, `allowedTools: ["@builtin", "@*"]`, `includeMcpJson: true` và `resources` trỏ đến synced skills/steering. MCP sync ghi `~/.kiro/settings/mcp.json` và **force `disabled: false`** trên mọi server còn trong catalog (portal enable) — tránh Kiro panel toggle (`disabled: true`) khiến MCP không load sau sync.
 
 ## Preset Và Registry Rules

@@ -15,6 +15,9 @@ type RegistryOptions struct {
 	Home          string
 	XDGConfigHome string
 	KiroHome      string
+	// HermesHome overrides HERMES_HOME / ~/.hermes for the hermes adapter.
+	// Empty means resolve via resolveHermesHome (env then ~/.hermes).
+	HermesHome string
 	// ClaudeDesktopDir overrides the directory holding
 	// claude_desktop_config.json. Empty means derive it from the running
 	// OS via claudeDesktopConfigDir.
@@ -256,6 +259,24 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 			Notes: "ZCode discovers skills from ~/.agents/skills (preferred) and optional ~/.zcode/skills; this adapter does not mirror skills. Shared ~/.agents/AGENTS.md is file-linked into ~/.zcode/AGENTS.md. There is no first-party user-level MCP config in this ZCode release (MCP lives per-plugin under the plugin cache), so the adapter does not write an MCP file yet.",
 		},
 		Plugin: ZCodePlugin{},
+	}})
+
+	hermesHome := resolveHermesHome(home, opts.HermesHome)
+	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
+		Spec: AdapterSpec{
+			ID: "hermes", Tier: TierStable, Executables: []string{"hermes"},
+			Targets: AdapterTargets{
+				// No Instruction: SOUL.md is identity, not shared AGENTS.md.
+				// No Skills mirror: skills.external_dirs points at shared home.
+			},
+			Docs: []string{
+				"https://hermes-agent.nousresearch.com/docs/user-guide/configuration",
+				"https://hermes-agent.nousresearch.com/docs/user-guide/features/skills",
+				"https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp",
+			},
+			Notes: "Hermes Agent (CLI hermes). Skills via skills.external_dirs → <agents-home>/skills (no mirror into ~/.hermes/skills). MCP merged into $HERMES_HOME/config.yaml under mcp_servers (default ~/.hermes). Respects HERMES_HOME. Does not modify SOUL.md or .env. Reload Hermes after sync to pick up MCP. YAML rewrite may drop comments in config.yaml.",
+		},
+		Plugin: HermesPlugin{Home: hermesHome},
 	}})
 
 	return r
