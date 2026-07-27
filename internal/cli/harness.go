@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/ngosangns/ns-workspace/internal/harness"
 )
@@ -18,6 +19,7 @@ type engineAPI interface {
 	Status(id string) (*harness.State, error)
 	Resume(ctx context.Context, id string) (*harness.LoopResult, error)
 	Stop(id string) error
+	Reset(id string) error
 }
 
 // filepathAbs là seam test: cho phép thay thế filepath.Abs để mô phỏng error path.
@@ -30,7 +32,7 @@ var newEngine = func(root string, reporter harness.Reporter) engineAPI {
 
 // validSubcommands là danh sách subcommand hợp lệ; biến package-level để test
 // có thể tạm thời mở rộng nếu cần cover nhánh default.
-var validSubcommands = map[string]bool{"list": true, "run": true, "eval": true, "status": true, "resume": true, "stop": true}
+var validSubcommands = map[string]bool{"list": true, "run": true, "eval": true, "status": true, "resume": true, "stop": true, "reset": true}
 
 func IsHarnessCommand(cmd string) bool {
 	switch cmd {
@@ -52,13 +54,16 @@ func RunHarness(args []string) error {
 		}
 	}
 	if cmd == "" {
-		return fmt.Errorf("usage: harness <list|run|eval|status|resume|stop> [flags]")
+		return fmt.Errorf("usage: harness <list|run|eval|status|resume|stop|reset> [flags]")
 	}
 	flagArgs := append(args[:cmdIdx], args[cmdIdx+1:]...)
 	flagSet := flag.NewFlagSet("harness", flag.ContinueOnError)
 	project := flagSet.String("project", ".", "project root to inspect")
 	taskID := flagSet.String("task", "", "task id to run/eval/status/resume/stop")
 	dryRun := flagSet.Bool("dry-run", false, "show planned actions without running")
+	goal := flagSet.String("goal", "", "natural-language goal to materialize into a harness task")
+	goalRefine := flagSet.Bool("goal-refine", false, "refine goal requirements/scope via plan subagent")
+	goalScope := flagSet.String("scope", "", "comma-separated scope.include patterns for --goal (default **)")
 	if err := flagSet.Parse(flagArgs); err != nil {
 		return err
 	}
@@ -79,6 +84,23 @@ func RunHarness(args []string) error {
 		}
 		return nil
 	case "run":
+		if *goal != "" {
+			var scope []string
+			for _, s := range strings.Split(*goalScope, ",") {
+				if s = strings.TrimSpace(s); s != "" {
+					scope = append(scope, s)
+				}
+			}
+			task, path, err := harness.MaterializeGoalTask(ctx, root, *goal, harness.GoalOptions{
+				Scope:  scope,
+				Refine: *goalRefine,
+			}, harness.NewDriverRegistry())
+			if err != nil {
+				return err
+			}
+			fmt.Printf("goal task: %s (%s)\n", task.ID, path)
+			*taskID = task.ID
+		}
 		if *taskID == "" {
 			return fmt.Errorf("--task required")
 		}
@@ -96,11 +118,11 @@ func RunHarness(args []string) error {
 			return fmt.Errorf("--task required")
 		}
 		results, err := engine.Eval(*taskID)
-		if err != nil {
-			return err
-		}
 		for _, r := range results {
 			fmt.Printf("%s: passed=%v exit=%d\n", r.Name, r.Passed, r.ExitCode)
+		}
+		if err != nil {
+			return err
 		}
 		return nil
 	case "status":
@@ -134,6 +156,15 @@ func RunHarness(args []string) error {
 			return err
 		}
 		fmt.Printf("stopped %s\n", *taskID)
+		return nil
+	case "reset":
+		if *taskID == "" {
+			return fmt.Errorf("--task required")
+		}
+		if err := engine.Reset(*taskID); err != nil {
+			return err
+		}
+		fmt.Printf("reset %s\n", *taskID)
 		return nil
 	default:
 		return fmt.Errorf("unknown harness subcommand %q", cmd)

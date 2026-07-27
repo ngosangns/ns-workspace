@@ -10,19 +10,22 @@ Dùng để chạy và đánh giá task qua bộ harness của `ns-workspace`.
 ## Trigger
 
 - `//h`: gọi harness
-- `//he`: harness + eval
+- `//hv`: harness + eval
 - `//hl`: harness + loop
-- `//hle`: harness + loop + eval
+- `//hlv`: harness + loop + eval
+- `//hle`: harness + loop + execution
 
 ## CLI
 
 ```bash
 go run . harness list
 go run . harness run --task <id> --project <path> [--dry-run]
+go run . harness run --goal "<mục tiêu>" --project <path> [--scope "a/**"] [--goal-refine]
 go run . harness eval --task <id> --project <path>
 go run . harness status --task <id> --project <path>
 go run . harness resume --task <id> --project <path>
-go run . harness stop --task <id> --project <path>
+go run . harness stop --task <id> --project <path>   # pause
+go run . harness reset --task <id> --project <path>  # xóa state
 ```
 
 ## Task File

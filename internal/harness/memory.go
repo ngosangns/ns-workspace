@@ -67,6 +67,9 @@ func NewState(taskID string) *State {
 func (s *State) Hash() string {
 	clone := *s
 	clone.History = nil
+	// Iteration increases every loop tick and must not affect repeat-state
+	// detection; otherwise HasRepeatedState() can never fire.
+	clone.Iteration = 0
 	data, _ := json.Marshal(clone)
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])[:16]
@@ -107,6 +110,15 @@ func (s *State) MarkHypothesisTried(id string) {
 	for i := range s.Hypotheses {
 		if s.Hypotheses[i].ID == id {
 			s.Hypotheses[i].Tried = true
+			return
+		}
+	}
+}
+
+func (s *State) MarkSubtaskDone(id string) {
+	for i := range s.Subtasks {
+		if s.Subtasks[i].ID == id {
+			s.Subtasks[i].Done = true
 			return
 		}
 	}

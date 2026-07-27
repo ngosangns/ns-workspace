@@ -11,7 +11,8 @@ Dùng để chạy vòng lặp tự sửa lỗi (self-correct loop) cho task ph�
 
 - `//l`: gọi loop
 - `//hl`: harness + loop
-- `//hle`: harness + loop + eval
+- `//hlv`: harness + loop + eval
+- `//hle`: harness + loop + execution
 
 ## Luồng
 

@@ -75,15 +75,21 @@ routing:
 
 Khi phát hiện ambiguity hoặc stuck:
 
-- **Interactive**: pause terminal, in câu hỏi, chờ user trả lờirồi resume.
-- **CI/non-interactive**: ghi `decision-request.md` và dừng, user chỉnh rồi `harness resume`.
+- **Interactive**: pause terminal, in câu hỏi, chờ user trả lờirồi resume. User
+có thể chọn `[a] answer` để nhập guidance free-form; guidance được đưa vào
+prompt phase tiếp theo.
+- **CI/non-interactive**: ghi `decision-request.md` và dừng, user chỉnh rồi
+`harness resume`.
 
 ## Sử Dụng
 
 ```bash
-go run . harness run --task refactor-auth --project .
-go run . harness status --task refactor-auth
-go run . harness resume --task refactor-auth
+go run . harness run --task refactor-auth --project . [--dry-run]
+go run . harness run --goal "refactor auth module" --project .  # goal mode
+go run . harness status --task refactor-auth --project .
+go run . harness resume --task refactor-auth --project .
+go run . harness stop --task refactor-auth --project .   # pause
+go run . harness reset --task refactor-auth --project .  # xóa state
 ```
 
 ## Trigger

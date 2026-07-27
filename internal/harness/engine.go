@@ -121,14 +121,20 @@ func (e *Engine) Run(ctx context.Context, id string, dryRun bool) (*LoopResult, 
 	if err != nil {
 		return nil, err
 	}
+	evaluator := NewEvaluator(e.ProjectRoot, e.Reporter)
 	if state.Paused {
 		e.Reporter.Line("task %s is paused: %s", id, state.PausedReason)
 	}
 	if dryRun {
-		e.Reporter.Line("dry-run: would run harness %s", id)
+		e.Reporter.Line("dry-run plan for task %s", id)
+		for _, phase := range task.DefaultPhases() {
+			e.Reporter.Line("  phase=%s agent=%s", phase, task.SelectAgent(phase))
+		}
+		for _, cmd := range evaluator.CommandList(task) {
+			e.Reporter.Line("  eval: %s", cmd)
+		}
 		return &LoopResult{State: state, Finalized: false, Reason: "dry-run", Iterations: state.Iteration}, nil
 	}
-	evaluator := NewEvaluator(e.ProjectRoot, e.Reporter)
 	lc := &LoopController{
 		Engine:     e,
 		Evaluator:  evaluator,
@@ -144,7 +150,10 @@ func (e *Engine) Eval(id string) ([]EvalResult, error) {
 		return nil, err
 	}
 	evaluator := NewEvaluator(e.ProjectRoot, e.Reporter)
-	results, _ := evaluator.EvaluateAll(task, map[string]bool{})
+	results, allPassed := evaluator.EvaluateAll(task, map[string]bool{})
+	if !allPassed {
+		return results, fmt.Errorf("one or more acceptance criteria failed")
+	}
 	return results, nil
 }
 
@@ -179,6 +188,21 @@ func (e *Engine) Resume(ctx context.Context, id string) (*LoopResult, error) {
 }
 
 func (e *Engine) Stop(id string) error {
+	task, err := e.LoadTask(id)
+	if err != nil {
+		return err
+	}
+	store := NewStore(e.ProjectRoot, task)
+	state, err := store.Load()
+	if err != nil {
+		return err
+	}
+	state.Paused = true
+	state.PausedReason = "stopped by user"
+	return store.Save(state)
+}
+
+func (e *Engine) Reset(id string) error {
 	task, err := e.LoadTask(id)
 	if err != nil {
 		return err

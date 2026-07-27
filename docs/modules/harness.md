@@ -44,8 +44,38 @@ engine.Run(ctx, id, dryRun)
 engine.Eval(id)
 engine.Status(id)
 engine.Resume(ctx, id)
-engine.Stop(id)
+engine.Stop(id)  // pause và lưu state để resume
+engine.Reset(id) // xóa state
 ```
+
+## CLI
+
+```bash
+go run . harness run --task refactor-auth --project . [--dry-run]
+go run . harness eval --task refactor-auth --project .
+go run . harness status --task refactor-auth --project .
+go run . harness resume --task refactor-auth --project .
+go run . harness stop --task refactor-auth --project .   # pause
+go run . harness reset --task refactor-auth --project .  # xóa state
+```
+
+`--dry-run` in phases sẽ chạy, agents đã resolve và danh sách eval commands; không spawn subagent và không ghi state.
+
+## Goal Mode
+
+`harness run --goal "<mục tiêu>"` materialize mục tiêu ngôn ngữ tự nhiên thành
+task file qua `MaterializeGoalTask` (`goal.go`) rồi chạy loop như task viết tay:
+
+- **Slug**: kebab-case từ goal, tối đa 6 từ có nghĩa, bỏ stopword; trùng id
+  nhưng khác nội dung → suffix `-2`, `-3`. Cùng nội dung → reuse (idempotent).
+- **Template**: routing mặc định `opencode-planner` / `opencode-executor` /
+  `eval-judge` / `opencode-fixer`; `max_consecutive_failures: 3`;
+  `require_human_on_ambiguity: true`.
+- **Acceptance để trống** có chủ đích: evaluator auto-discover
+  `go test ./...` và package.json scripts, nên goal task chạy được ngay trên
+  repo Go/Node.
+- Flags: `--scope "a/**,b/**"` siết scope (mặc định `**`); `--goal-refine` nhờ
+  plan subagent đề xuất requirements/scope chi tiết trước khi ghi file.
 
 ## Task File
 
@@ -54,6 +84,7 @@ Task định nghĩa trong `.harness/tasks/<id>.yaml` hoặc `.json`:
 ```yaml
 id: sample
 description: Sample task
+type: refactor
 requirements:
   - id: REQ-1
     text: Do something
@@ -63,6 +94,8 @@ scope:
 acceptance:
   - command: go test ./...
     must_pass: true
+  - text: "code follows project conventions" # được đánh giá bởi verify agent
+    must_pass: false
 phases:
   - plan
   - execute
@@ -75,6 +108,11 @@ routing:
     agent: opencode-executor
   verify:
     agent: eval-judge
+  diagnose:
+    agent: opencode-fixer
+memory:
+  project_path: .harness/state/sample.json
+  shared_path: ~/.agents/harness/<project>/sample.json
 stopping:
   max_consecutive_failures: 3
   require_human_on_ambiguity: true
@@ -85,8 +123,12 @@ stopping:
 Evaluator kết hợp:
 
 1. Task-defined acceptance commands/scripts
-2. `package.json` scripts: `test`, `lint`, `typecheck`, `build`
-3. `go test ./...` mặc định
+2. Task-defined acceptance `text` (đánh giá bởi verify agent qua LLM judge)
+3. `package.json` scripts: `test`, `lint`, `typecheck`, `build`
+4. `go test ./...` mặc định
+
+Các acceptance entry có `must_pass: true` phải pass thì `engine.Eval` mới trả về
+không lỗi. Các lệnh eval chạy theo thứ tự tên được sort để output ổn định.
 
 ## Dispatcher
 
@@ -94,6 +136,9 @@ Evaluator kết hợp:
 
 - `OpenCodeDriver`: gọi `opencode run --dangerously-skip-permissions`
 - `MockDriver`: dùng trong tests
+
+Routing hỗ trợ `plan`, `execute`, `verify` và `diagnose`. Nếu phase `verify` có agent
+riêng, các acceptance `text` sẽ được gửi cho agent đó dưới dạng prompt judge.
 
 ## Memory
 
@@ -117,15 +162,23 @@ flowchart LR
     Diagnose --> Execute
 ```
 
+Phase `diagnose` được dispatch thật qua agent được chỉ định trong
+`routing.diagnose`. Output của diagnose được parse cùng schema với plan để bổ
+sung hypotheses/subtasks mới.
+
 Guardrails:
 
 - Verify pass
 - State lặp lại
 - Hết hypothesis
 - Consecutive failures vượt ngưỡng
-- Ambiguity
+- Ambiguity (phát hiện qua marker `AMBIGUITY: <câu hỏi>` hoặc fallback từ khóa)
 - Acceptance criteria thỏa mãn
 - Subtasks hoàn thành
+
+Interactive pause cho phép user nhập free-form guidance qua option `[a] answer`;
+guidance được lưu vào state và đưa vào prompt phase tiếp theo. CI pause ghi
+`.harness/decision-request.md` như cũ.
 
 ## Task `enrich-docs`
 

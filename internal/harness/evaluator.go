@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -36,10 +37,16 @@ func NewEvaluator(projectRoot string, reporter Reporter) *Evaluator {
 func (e *Evaluator) EvaluateAll(task *Task, prior map[string]bool) ([]EvalResult, bool) {
 	commands := e.buildCommands(task)
 	mustPass := e.buildMustPass(task)
+	names := make([]string, 0, len(commands))
+	for name := range commands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	results := make([]EvalResult, 0, len(commands))
 	allPassed := true
 	status := map[string]bool{}
-	for name, cmd := range commands {
+	for _, name := range names {
+		cmd := commands[name]
 		res := e.run(name, cmd)
 		res.MustPass = mustPass[name]
 		results = append(results, res)
@@ -80,6 +87,22 @@ func (e *Evaluator) buildCommands(task *Task) map[string]string {
 	e.discoverPackageScripts(commands)
 	e.discoverGoTests(commands)
 	return commands
+}
+
+// CommandList returns the eval commands for a task as deterministic
+// "name: command" strings, including discovered commands.
+func (e *Evaluator) CommandList(task *Task) []string {
+	commands := e.buildCommands(task)
+	names := make([]string, 0, len(commands))
+	for name := range commands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = fmt.Sprintf("%s: %s", name, commands[name])
+	}
+	return out
 }
 
 func (e *Evaluator) discoverGoTests(into map[string]string) {

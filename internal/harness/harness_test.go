@@ -49,13 +49,17 @@ func TestStateHashAndRepeat(t *testing.T) {
 	h1 := state.Hash()
 	state.Iteration = 1
 	h2 := state.Hash()
-	if h1 == h2 {
-		t.Fatal("expected different hashes")
+	if h1 != h2 {
+		t.Fatal("expected hash to be stable across iteration changes")
 	}
 	state.Iteration = 0
 	state.RecordSnapshot()
 	if !state.HasRepeatedState() {
 		t.Fatal("expected repeated state")
+	}
+	state.Hypotheses = append(state.Hypotheses, Hypothesis{ID: "h1", Description: "changed"})
+	if state.HasRepeatedState() {
+		t.Fatal("expected no repeated state after work state changed")
 	}
 }
 
@@ -131,6 +135,37 @@ func TestLoopDetectRepeatedState(t *testing.T) {
 	}
 	if res.State.ConsecutiveFailures == 0 {
 		t.Fatal("expected some failures")
+	}
+}
+
+func TestEngineStopPausesAndResetRemoves(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".harness", "tasks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".harness", "tasks", "x.yaml"), []byte("id: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine(dir, noopReporter{})
+	if err := engine.Stop("x"); err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	state, err := engine.Status("x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Paused || state.PausedReason != "stopped by user" {
+		t.Fatalf("expected paused state, got paused=%v reason=%q", state.Paused, state.PausedReason)
+	}
+	if err := engine.Reset("x"); err != nil {
+		t.Fatalf("reset failed: %v", err)
+	}
+	state, err = engine.Status("x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Paused || state.Iteration != 0 {
+		t.Fatalf("expected fresh state after reset, got paused=%v iteration=%d", state.Paused, state.Iteration)
 	}
 }
 
@@ -261,3 +296,38 @@ func TestGoTestDiscoveryRequiresGoMod(t *testing.T) {
 		t.Fatal("expected go-test command with go.mod")
 	}
 }
+
+func TestParseJudgeVerdict(t *testing.T) {
+	if !parseJudgeVerdict("PASS") {
+		t.Fatal("expected PASS")
+	}
+	if parseJudgeVerdict("FAIL") {
+		t.Fatal("expected FAIL")
+	}
+	if !parseJudgeVerdict("```json\n{\"verdict\":\"PASS\"}\n```") {
+		t.Fatal("expected JSON PASS")
+	}
+}
+
+func TestRunJudgeIntegration(t *testing.T) {
+	dir := t.TempDir()
+	task := &Task{
+		ID: "judge-task",
+		Acceptance: []Acceptance{
+			{Text: "code should compile", MustPass: true},
+		},
+		Routing: Routing{Default: "mock"},
+	}
+	e := NewEngine(dir, noopReporter{})
+	e.Dispatcher = NewDriverRegistry(MockDriver{
+		Responses: map[string]DispatchResult{
+			buildJudgePrompt(task, NewState("judge-task"), "code should compile"): {Success: true, Stdout: "PASS"},
+		},
+	})
+	lc := &LoopController{Engine: e, Dispatcher: e.Dispatcher, Reporter: noopReporter{}}
+	res := lc.runJudge(context.Background(), task, NewState("judge-task"), task.Acceptance[0], 0)
+	if !res.Passed {
+		t.Fatalf("expected judge to pass, got %+v", res)
+	}
+}
+

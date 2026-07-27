@@ -949,7 +949,7 @@ func TestLoopController_Run_Default(t *testing.T) {
 func TestLoopDetectAmbiguity(t *testing.T) {
 	state := NewState("t")
 	lc := &LoopController{}
-	if lc.detectAmbiguity(state) {
+	if ok, _ := lc.detectAmbiguity(state); ok {
 		t.Error("empty state should not be ambiguous")
 	}
 }
@@ -1928,8 +1928,21 @@ func TestLoopController_DetectAmbiguityDiagnose(t *testing.T) {
 	state := NewState("t")
 	state.ContextNotes["last_diagnose"] = "the situation is AMBIGUOUS"
 	lc := &LoopController{}
-	if !lc.detectAmbiguity(state) {
+	if ok, _ := lc.detectAmbiguity(state); !ok {
 		t.Error("should detect ambiguity in diagnose output")
+	}
+}
+
+func TestLoopController_DetectAmbiguityMarker(t *testing.T) {
+	state := NewState("t")
+	state.ContextNotes["last_plan"] = "\nAMBIGUITY: which API version?\n"
+	lc := &LoopController{}
+	ok, reason := lc.detectAmbiguity(state)
+	if !ok {
+		t.Error("should detect structured ambiguity marker")
+	}
+	if reason != "which API version?" {
+		t.Errorf("unexpected reason: %q", reason)
 	}
 }
 
@@ -2257,7 +2270,7 @@ func TestRunVerify_AllPassed(t *testing.T) {
 	state := NewState("t")
 	e := NewEngine(t.TempDir(), noopReporter{})
 	lc := &LoopController{Evaluator: NewEvaluator(t.TempDir(), noopReporter{}), Engine: e}
-	finalized, reason := lc.runVerify(task, state)
+	finalized, reason := lc.runVerify(context.Background(), task, state)
 	if !finalized || reason != "all acceptance criteria passed" {
 		t.Errorf("got (%v, %q)", finalized, reason)
 	}
@@ -2277,7 +2290,7 @@ func TestRunVerify_FailuresWithUntried(t *testing.T) {
 	// With MustPass propagation fixed, EvaluateAll reports allPassed=false.
 	// runVerify records the failure but untried hypotheses remain, so the
 	// loop continues with "(false, \"verify incomplete\")".
-	finalized, reason := lc.runVerify(task, state)
+	finalized, reason := lc.runVerify(context.Background(), task, state)
 	if finalized {
 		t.Errorf("expected finalized=false, got (%v, %q)", finalized, reason)
 	}
@@ -2300,7 +2313,7 @@ func TestRunVerify_AllSubtasksDone(t *testing.T) {
 	state.Subtasks = []Subtask{{ID: "s1", Done: true}, {ID: "s2", Done: true}}
 	e := NewEngine(t.TempDir(), noopReporter{})
 	lc := &LoopController{Evaluator: NewEvaluator(t.TempDir(), noopReporter{}), Engine: e}
-	finalized, reason := lc.runVerify(task, state)
+	finalized, reason := lc.runVerify(context.Background(), task, state)
 	if !finalized || reason != "all subtasks completed" {
 		t.Errorf("got (%v, %q)", finalized, reason)
 	}
@@ -2317,13 +2330,13 @@ func TestRunVerify_AllAcceptancePassed(t *testing.T) {
 	state.AcceptanceStatus = map[string]bool{"x": true}
 	e := NewEngine(t.TempDir(), noopReporter{})
 	lc := &LoopController{Evaluator: NewEvaluator(t.TempDir(), noopReporter{}), Engine: e}
-	finalized, reason := lc.runVerify(task, state)
+	finalized, reason := lc.runVerify(context.Background(), task, state)
 	if !finalized || reason != "all acceptance criteria passed" {
 		t.Errorf("got (%v, %q)", finalized, reason)
 	}
 }
 
-func TestRunVerify_PauseNoUntried(t *testing.T) {
+func TestRunVerify_NoPauseWhenNoUntried(t *testing.T) {
 	task := &Task{
 		ID: "t",
 		Acceptance: []Acceptance{
@@ -2334,16 +2347,16 @@ func TestRunVerify_PauseNoUntried(t *testing.T) {
 	state.Hypotheses = []Hypothesis{{ID: "h1", Tried: true}}
 	e := NewEngine(t.TempDir(), noopReporter{})
 	lc := &LoopController{Evaluator: NewEvaluator(t.TempDir(), noopReporter{}), Engine: e}
-	// With MustPass propagation fixed, a failing must-pass acceptance causes
-	// runVerify to pause when there are no untried hypotheses remaining.
-	finalized, reason := lc.runVerify(task, state)
+	// runVerify no longer pauses immediately; the loop relies on diagnose to
+	// generate new hypotheses or max_consecutive_failures to stop.
+	finalized, reason := lc.runVerify(context.Background(), task, state)
 	if finalized {
-		t.Error("expected finalized=false when pausing")
+		t.Error("expected finalized=false")
 	}
-	if !state.Paused {
-		t.Error("state.Paused should be true")
+	if state.Paused {
+		t.Error("state.Paused should be false")
 	}
-	if reason != "verify failed and no untried hypotheses" {
+	if reason != "verify incomplete" {
 		t.Errorf("unexpected reason: %q", reason)
 	}
 }
@@ -4133,10 +4146,15 @@ func TestLoopRun_VerifyFailTransitionToDiagnose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Phase != "diagnose" {
-		t.Errorf("expected phase=diagnose, got %q", state.Phase)
+	if res.Finalized {
+		t.Error("expected not finalized")
 	}
-	_ = res
+	if _, ok := state.ContextNotes["last_diagnose"]; !ok {
+		t.Error("expected diagnose to have run (last_diagnose missing)")
+	}
+	if len(state.Hypotheses) == 0 {
+		t.Error("expected hypotheses to be populated by diagnose")
+	}
 }
 
 func TestLoopRun_InteractivePaused(t *testing.T) {

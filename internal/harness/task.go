@@ -62,14 +62,16 @@ type Scope struct {
 type Acceptance struct {
 	Command  string `json:"command" yaml:"command"`
 	Script   string `json:"script" yaml:"script"`
+	Text     string `json:"text" yaml:"text"`
 	MustPass bool   `json:"must_pass" yaml:"must_pass"`
 }
 
 type Routing struct {
-	Default string      `json:"default" yaml:"default"`
-	Plan    RoutingRule `json:"plan" yaml:"plan"`
-	Execute RoutingRule `json:"execute" yaml:"execute"`
-	Verify  RoutingRule `json:"verify" yaml:"verify"`
+	Default  string      `json:"default" yaml:"default"`
+	Plan     RoutingRule `json:"plan" yaml:"plan"`
+	Execute  RoutingRule `json:"execute" yaml:"execute"`
+	Verify   RoutingRule `json:"verify" yaml:"verify"`
+	Diagnose RoutingRule `json:"diagnose" yaml:"diagnose"`
 }
 
 type RoutingRule struct {
@@ -110,6 +112,8 @@ func (t *Task) SelectAgent(phase string) string {
 		rule = t.Routing.Execute
 	case "verify":
 		rule = t.Routing.Verify
+	case "diagnose":
+		rule = t.Routing.Diagnose
 	}
 	if rule.Agent != "" {
 		return rule.Agent

@@ -34,6 +34,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | `//d`   | `cleanup`          | Quét diff/work đã triển khai/branch/commit, đọc docs và lập plan cleanup (`docs/specs/planning`) cho dead code, dead flows, dead docs. |
 | `//e`   | `execution`        | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo.                                                   |
 | `//f`   | `fix`              | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể.                                                 |
+| `//g`   | `goal`             | Nhận mục tiêu ngôn ngữ tự nhiên, materialize thành harness task rồi chạy harness loop tới khi xong hoặc pause.                            |
 | `//h`   | `harness`          | Chạy harness để đánh giá và kiểm chứng task qua subagent.                                                                                 |
 | `//i`   | `init`             | Khởi tạo knowledge base: quét codebase, lập aspect inventory markdown cho ngườimới, rồi cập nhật docs theo 2 audience business/developer. |
 | `//l`   | `loop`             | Kích hoạt looping agentic self-correct với multi-agent routing và memory persistence.                                                     |
@@ -45,6 +46,7 @@ Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan
 | `//v`   | `eval`             | Chạy evaluator để đánh giá task/skill/subagent theo acceptance criteria.                                                                  |
 | `/s`    | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ.                              |
 | `/k`    | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song.                           |
+| `/goal` | `goal`             | Nhận mục tiêu ngôn ngữ tự nhiên, materialize thành harness task rồi chạy harness loop tới khi xong hoặc pause.                            |
 
 ## Commit Skill (Registry)
 

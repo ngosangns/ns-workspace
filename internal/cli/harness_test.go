@@ -20,6 +20,7 @@ type mockEngine struct {
 	statusFunc    func(id string) (*harness.State, error)
 	resumeFunc    func(ctx context.Context, id string) (*harness.LoopResult, error)
 	stopFunc      func(id string) error
+	resetFunc     func(id string) error
 }
 
 func (m *mockEngine) ListTasks() ([]*harness.Task, error) {
@@ -60,6 +61,13 @@ func (m *mockEngine) Resume(ctx context.Context, id string) (*harness.LoopResult
 func (m *mockEngine) Stop(id string) error {
 	if m.stopFunc != nil {
 		return m.stopFunc(id)
+	}
+	return nil
+}
+
+func (m *mockEngine) Reset(id string) error {
+	if m.resetFunc != nil {
+		return m.resetFunc(id)
 	}
 	return nil
 }
@@ -436,6 +444,57 @@ routing:
 	}
 	t.Cleanup(func() { newEngine = orig })
 	_ = RunHarness([]string{"run", "--task", "run-paused-mock", "--project", dir})
+}
+
+func TestRunHarnessRunGoal(t *testing.T) {
+	dir := t.TempDir()
+	orig := newEngine
+	newEngine = func(root string, reporter harness.Reporter) engineAPI {
+		e := harness.NewEngine(root, reporter)
+		e.Dispatcher = harness.NewDriverRegistry(harness.MockDriver{
+			Responses: map[string]harness.DispatchResult{},
+		})
+		return e
+	}
+	t.Cleanup(func() { newEngine = orig })
+	if err := RunHarness([]string{"run", "--goal", "add health endpoint", "--project", dir}); err != nil {
+		t.Fatalf("run --goal failed: %v", err)
+	}
+	// Task file được materialize đúng slug và parse lại được.
+	path := filepath.Join(dir, ".harness", "tasks", "add-health-endpoint.yaml")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected task file: %v", err)
+	}
+	task, err := harness.LoadTask(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.ID != "add-health-endpoint" {
+		t.Fatalf("unexpected task id: %s", task.ID)
+	}
+	// Loop chạy đến finalized (acceptance trống + không có discovered commands
+	// must_pass) → state tồn tại.
+	if _, err := os.Stat(filepath.Join(dir, ".harness", "state", "add-health-endpoint.json")); err != nil {
+		t.Fatalf("expected state file: %v", err)
+	}
+}
+
+func TestRunHarnessRunGoalDryRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := RunHarness([]string{"run", "--goal", "add health endpoint", "--project", dir, "--dry-run"}); err != nil {
+		t.Fatalf("run --goal --dry-run failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".harness", "tasks", "add-health-endpoint.yaml")); err != nil {
+		t.Fatalf("dry-run vẫn materialize task file: %v", err)
+	}
+}
+
+func TestRunHarnessRunGoalEmpty(t *testing.T) {
+	dir := t.TempDir()
+	err := RunHarness([]string{"run", "--goal", "   ", "--project", dir})
+	if err == nil {
+		t.Fatal("expected error for empty goal")
+	}
 }
 
 func TestRunHarnessDefaultBranch(t *testing.T) {
