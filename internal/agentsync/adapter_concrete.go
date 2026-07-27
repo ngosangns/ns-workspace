@@ -50,8 +50,9 @@ func (o *OpenCodeAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Use BaseAdapter.transformMCP so the plugin transform runs.
-		transformed, err := o.transformMCP(manifest)
+		// Use BaseAdapter.transformMCP so the plugin transform runs
+		// (and per-adapter MCP provider allowlist is applied).
+		transformed, err := o.transformMCP(ctx, manifest)
 		if err != nil {
 			return nil, err
 		}
@@ -116,6 +117,7 @@ func (c *CodexAdapter) Plan(ctx Context, update bool) ([]Operation, error) {
 	if err != nil {
 		return nil, err
 	}
+	manifest = filterMCPManifest(ctx, "codex", manifest)
 	names := make([]string, 0, len(manifest.MCPServers))
 	for name := range manifest.MCPServers {
 		names = append(names, name)

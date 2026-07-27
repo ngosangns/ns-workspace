@@ -1,7 +1,7 @@
-import { createSignal, createMemo, createEffect, For, Show, onMount } from "solid-js";
+import { createSignal, createMemo, createEffect, For, Index, Show, onMount } from "solid-js";
 import { useSearchParams } from "@solidjs/router";
 import { PhArrowCounterClockwise, PhDownloadSimple, PhTrash } from "../components/Icons";
-import { api, type Skill, type CatalogSkill, type RegistrySource } from "../api";
+import { api, type Skill, type CatalogSkill, type RegistrySource, type Adapter } from "../api";
 import AppAlert from "../components/AppAlert";
 import CodeEditor from "../components/CodeEditor";
 import UiButton from "../components/UiButton";
@@ -14,6 +14,7 @@ import EmptyState from "../components/EmptyState";
 import ResourceRow from "../components/ResourceRow";
 import StatusPill from "../components/StatusPill";
 import EnableSwitch from "../components/EnableSwitch";
+import ProviderPicker from "../components/ProviderPicker";
 import UiSegmented from "../components/UiSegmented";
 import SearchInput from "../components/SearchInput";
 import { usePageFeedback } from "../lib/usePageFeedback";
@@ -75,10 +76,13 @@ export default function Skills() {
   const discoverQuery = createMemo(() => paramStr(searchParams.q));
 
   const [skills, setSkills] = createSignal<Skill[]>([]);
+  const [adapters, setAdapters] = createSignal<Adapter[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [toggling, setToggling] = createSignal<Record<string, boolean>>({});
   const [localQuery, setLocalQuery] = createSignal("");
   const fb = usePageFeedback();
+
+  const providerOptions = createMemo(() => adapters().map((a) => ({ id: a.id, label: a.id })));
 
   const [registries, setRegistries] = createSignal<RegistrySource[]>([]);
   const [registriesLoading, setRegistriesLoading] = createSignal(false);
@@ -159,7 +163,9 @@ export default function Skills() {
     setLoading(true);
     fb.clearError();
     try {
-      setSkills(await api.getSkills());
+      const [list, adapterList] = await Promise.all([api.getSkills(), api.getAdapters()]);
+      setSkills(list);
+      setAdapters(adapterList);
     } catch (e) {
       fb.fail(e);
     } finally {
@@ -257,13 +263,36 @@ export default function Skills() {
     try {
       const updated = await api.setSkillEnabled(skill.id, next);
       setSkills((list) =>
-        list.map((s) => (s.id === skill.id ? { ...s, enabled: updated.enabled, description: updated.description ?? s.description } : s)),
+        list.map((s) =>
+          s.id === skill.id
+            ? {
+                ...s,
+                enabled: updated.enabled,
+                description: updated.description ?? s.description,
+                allowedProviders: updated.allowedProviders ?? s.allowedProviders,
+              }
+            : s,
+        ),
       );
       fb.flash(next ? `Enabled ${skill.name}` : `Disabled ${skill.name}`);
     } catch (e) {
       fb.fail(e);
     } finally {
       setToggling((t) => ({ ...t, [skill.id]: false }));
+    }
+  }
+
+  async function setProviders(id: string, providers: string[]) {
+    const prev = skills().find((s) => s.id === id)?.allowedProviders;
+    // Optimistic update. List uses <Index> so row/picker state is preserved.
+    setSkills((list) => list.map((s) => (s.id === id ? { ...s, allowedProviders: providers } : s)));
+    fb.clearError();
+    try {
+      const updated = await api.setSkillProviders(id, providers);
+      setSkills((list) => list.map((s) => (s.id === id ? { ...s, allowedProviders: updated.allowedProviders ?? providers } : s)));
+    } catch (e) {
+      setSkills((list) => list.map((s) => (s.id === id ? { ...s, allowedProviders: prev } : s)));
+      fb.fail(e);
     }
   }
 
@@ -515,43 +544,51 @@ export default function Skills() {
               </span>
             </div>
             <ul class="m-0 list-none divide-y divide-border p-0">
-              <For each={filteredInstalled()}>
+              {/* Index (not For): keep row/picker mounted when skill fields update. */}
+              <Index each={filteredInstalled()}>
                 {(skill) => (
-                  <ResourceRow enabled={skill.enabled}>
-                    <button type="button" class="min-w-0 flex-1 text-left" onClick={() => void open(skill)}>
+                  <ResourceRow enabled={skill().enabled}>
+                    <button type="button" class="min-w-0 flex-1 text-left" onClick={() => void open(skill())}>
                       <div class="flex flex-wrap items-center gap-2">
-                        <span class="text-[14px] font-semibold tracking-tight text-fg">{skill.name}</span>
-                        <Show when={skill.name !== skill.id}>
-                          <span class="font-mono text-[11.5px] text-fg-muted">{skill.id}</span>
+                        <span class="text-[14px] font-semibold tracking-tight text-fg">{skill().name}</span>
+                        <Show when={skill().name !== skill().id}>
+                          <span class="font-mono text-[11.5px] text-fg-muted">{skill().id}</span>
                         </Show>
                       </div>
-                      <p class="m-0 mt-1 line-clamp-2 text-[13px] leading-normal text-fg-secondary">{description(skill)}</p>
+                      <p class="m-0 mt-1 line-clamp-2 text-[13px] leading-normal text-fg-secondary">{description(skill())}</p>
                       <div class="mt-1.5 flex flex-wrap items-center gap-2 font-mono text-[11.5px] text-fg-muted">
-                        <span>{skill.source}</span>
-                        <Show when={skill.registrySource}>
+                        <span>{skill().source}</span>
+                        <Show when={skill().registrySource}>
                           <span>·</span>
-                          <span>{skill.registrySource}</span>
+                          <span>{skill().registrySource}</span>
                         </Show>
                       </div>
                     </button>
                     <div class="flex shrink-0 flex-wrap items-center gap-2 self-center" onClick={(e) => e.stopPropagation()}>
-                      <StatusPill kind={sourceKind(skill.source)}>{sourceLabel(skill.source)}</StatusPill>
-                      <Show when={skill.overridden}>
-                        <UiButton size="sm" variant="danger" onClick={() => void reset(skill.id)}>
+                      <StatusPill kind={sourceKind(skill().source)}>{sourceLabel(skill().source)}</StatusPill>
+                      <Show when={skill().overridden}>
+                        <UiButton size="sm" variant="danger" onClick={() => void reset(skill().id)}>
                           <PhArrowCounterClockwise size={14} weight="bold" />
                           Reset
                         </UiButton>
                       </Show>
+                      <ProviderPicker
+                        value={skill().allowedProviders}
+                        options={providerOptions()}
+                        disabled={!skill().enabled}
+                        aria-label={`Allowed providers for skill ${skill().name}`}
+                        onChange={(next) => void setProviders(skill().id, next)}
+                      />
                       <EnableSwitch
-                        checked={skill.enabled}
-                        disabled={toggling()[skill.id]}
-                        aria-label={`Enable skill ${skill.name}`}
-                        onChange={(next) => void toggleEnabled(skill, next)}
+                        checked={skill().enabled}
+                        disabled={toggling()[skill().id]}
+                        aria-label={`Enable skill ${skill().name}`}
+                        onChange={(next) => void toggleEnabled(skill(), next)}
                       />
                     </div>
                   </ResourceRow>
                 )}
-              </For>
+              </Index>
             </ul>
           </Show>
         </Show>

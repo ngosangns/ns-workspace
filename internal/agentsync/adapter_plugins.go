@@ -253,6 +253,7 @@ func (GrokPlugin) ExtraOperations(ctx Context, _ AdapterSpec, _ bool) ([]Operati
 	if err != nil {
 		return nil, err
 	}
+	manifest = filterMCPManifest(ctx, "grok", manifest)
 	names := make([]string, 0, len(manifest.MCPServers))
 	for name := range manifest.MCPServers {
 		names = append(names, name)

@@ -106,7 +106,34 @@ Registry skills trong `presets/registry/skills.json` được ghi thành `~/.age
 
 **Shared skills home cohabit preset + registry:** core phase `InstallPresetTree` (`presets/skills` → `~/.agents/skills`) **không** xóa top-level skill dir lạ (registry install hoặc skill user thêm). Chỉ prune file stale *bên trong* skill thuộc preset hiện tại, và gỡ hẳn skill bị portal disable. Nếu core xóa registry skill rồi phase registry cài lại, skip theo stamp/presence sẽ không bao giờ “thấy” skill present — đó là lý do preserve foreign tops.
 
-**Adapter skill mirror (`LinkSkillDirs`):** không wipe cả `DstRoot`; replace từng entry (symlink/copy ok khi đã đúng) và chỉ remove entry native không còn trong shared home.
+**Adapter skill mirror (`LinkSkillDirs`):** không wipe cả `DstRoot`; replace từng entry (symlink/copy ok khi đã đúng) và chỉ remove entry native không còn trong shared home **hoặc** bị chặn bởi per-item allowed providers.
+
+### Allowed providers (skills + MCP)
+
+Hai file preset trung tâm khai báo provider nào được nhận từng skill / MCP server:
+
+- `presets/skills/providers.json` — key = skill top-level name (preset hoặc registry)
+- `presets/mcp/providers.json` — key = MCP server name
+
+Shape:
+
+```json
+{
+  "spawn-kimi": ["opencode", "claude"],
+  "cleanup": "all"
+}
+```
+
+- Value `"all"` / missing key / empty → allow mọi provider (backward compatible).
+- Value array adapter ids (lowercase; alias như `kiro-cli` normalize về canonical).
+- Portal ghi user overlay cùng path qua `writeOverlay`; agentsync đọc overlay-aware.
+
+**Enforce khi init/update:**
+
+- Skills: `LinkSkillDirs.Allow` filter theo adapter id; `Replace=true` (update) prune mirror disallowed.
+- MCP: filter manifest trước `transformMCP` / TOML blocks (grok, codex) / claude helper script / settings profile `shared` mcpServers.
+- Shared tree `~/.agents/skills` vẫn chứa đủ skill enabled (không lọc ở PhaseCore). Provider đọc native `~/.agents/skills` (opencode, grok, …) vẫn thấy toàn bộ skill enabled — allowlist chỉ siết mirror path.
+- `doctor` cảnh báo provider id lạ trong 2 file.
 
 Adapter fan-out skills (khi còn mirror) lấy từ `~/.agents/skills`. Lỗi từng registry skill là warning để các bước khác vẫn chạy. `but` CLI không có trên PATH → skip entry `but-skill` kèm warning.
 

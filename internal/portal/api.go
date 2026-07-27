@@ -12,7 +12,10 @@ type Skill struct {
 	RegistrySource string `json:"registrySource,omitempty"`
 	Overridden     bool   `json:"overridden"`
 	Enabled        bool   `json:"enabled"`
-	Content        string `json:"content,omitempty"`
+	// AllowedProviders is ["all"] (default) or a list of canonical adapter ids
+	// that may receive this skill during per-provider skill mirror.
+	AllowedProviders []string `json:"allowedProviders,omitempty"`
+	Content          string   `json:"content,omitempty"`
 }
 
 // SkillUpdate is the request body for updating a skill.
@@ -25,6 +28,12 @@ type EnableRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
+// ProvidersRequest is the body for allowed-providers endpoints.
+// Providers is ["all"] or a list of canonical adapter ids.
+type ProvidersRequest struct {
+	Providers []string `json:"providers"`
+}
+
 // MCPServers is the shared MCP manifest exposed through the portal API.
 type MCPServers struct {
 	MCPServers map[string]any `json:"mcpServers"`
@@ -35,6 +44,9 @@ type MCPServerItem struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
 	Config  any    `json:"config"`
+	// AllowedProviders is ["all"] (default) or a list of canonical adapter ids
+	// that may receive this MCP server during per-provider MCP write.
+	AllowedProviders []string `json:"allowedProviders,omitempty"`
 }
 
 // MCPManifest combines the effective MCP servers with provenance metadata.

@@ -311,6 +311,7 @@ func mcpCommandScript(ctx Context, agentID string, lineBuilder func(name string,
 	if err != nil {
 		return "", err
 	}
+	manifest = filterMCPManifest(ctx, agentID, manifest)
 	names := make([]string, 0, len(manifest.MCPServers))
 	for name := range manifest.MCPServers {
 		names = append(names, name)

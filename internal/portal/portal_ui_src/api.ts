@@ -10,6 +10,8 @@ export interface Skill {
   registrySource?: string;
   overridden: boolean;
   enabled: boolean;
+  /** ["all"] (default) or canonical adapter ids. */
+  allowedProviders?: string[];
   content?: string;
 }
 
@@ -85,6 +87,11 @@ export interface EnableRequest {
   enabled: boolean;
 }
 
+export interface ProvidersRequest {
+  /** ["all"] or canonical adapter ids. */
+  providers: string[];
+}
+
 /** Loose MCP server config (stdio / HTTP / SSE / vendor fields). */
 export type MCPServerConfig = Record<string, unknown>;
 
@@ -96,6 +103,8 @@ export interface MCPServerItem {
   name: string;
   enabled: boolean;
   config: MCPServerConfig;
+  /** ["all"] (default) or canonical adapter ids. */
+  allowedProviders?: string[];
 }
 
 export interface MCPManifest extends MCPServers {
@@ -200,6 +209,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ enabled } satisfies EnableRequest),
     }),
+  setSkillProviders: (id: string, providers: string[]) =>
+    fetchJSON<Skill>(`/skills/${encodeURIComponent(id)}/providers`, {
+      method: "PUT",
+      body: JSON.stringify({ providers } satisfies ProvidersRequest),
+    }),
   searchSkillsCatalog: (q: string, registry?: string) => {
     const params = new URLSearchParams({ q });
     if (registry) params.set("registry", registry);
@@ -253,6 +267,11 @@ export const api = {
     fetchJSON<MCPManifest>(`/mcps/${encodeURIComponent(name)}/enabled`, {
       method: "POST",
       body: JSON.stringify({ enabled } satisfies EnableRequest),
+    }),
+  setMCPProviders: (name: string, providers: string[]) =>
+    fetchJSON<MCPManifest>(`/mcps/${encodeURIComponent(name)}/providers`, {
+      method: "PUT",
+      body: JSON.stringify({ providers } satisfies ProvidersRequest),
     }),
   deleteMCP: (name: string) =>
     fetchJSON<MCPManifest>(`/mcps/${encodeURIComponent(name)}`, {

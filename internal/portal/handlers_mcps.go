@@ -158,6 +158,39 @@ func (s *portalServer) handleMCPServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, manifest)
 		return
 	}
+	if strings.HasSuffix(path, "/providers") {
+		name := strings.TrimSuffix(path, "/providers")
+		name = strings.TrimSuffix(name, "/")
+		if name == "" {
+			writeError(w, http.StatusBadRequest, errMissingID)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, errMethodNotAllowed)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		var req ProvidersRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := s.store.SetMCPServerProviders(name, req.Providers); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		manifest, err := s.store.ReadMCPs()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, manifest)
+		return
+	}
 	// DELETE /api/mcps/{name} — hard-remove from enabled + disabled overlay.
 	name := strings.Trim(path, "/")
 	if name == "" || strings.Contains(name, "/") {

@@ -158,6 +158,10 @@ func buildAdapterSettings(ctx Context, profile *AdapterSettingsProfile) (map[str
 		if !ok {
 			return nil, fmt.Errorf("adapter settings %s: field %q is not a JSON object", profile.ID, key)
 		}
+		// Apply per-adapter MCP allowlist when merging shared mcpServers.
+		if op.From == "shared" && key == "mcpServers" {
+			chunkMap = filterMCPServersMap(ctx, profile.ID, chunkMap)
+		}
 		switch op.Strategy {
 		case "merge-deep":
 			values[key] = mergeDeep(asMap(values[key]), chunkMap)

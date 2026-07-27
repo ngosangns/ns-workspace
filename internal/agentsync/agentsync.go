@@ -85,6 +85,11 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 			return err
 		}
 		relSlash := filepath.ToSlash(rel)
+		// Skills tree metadata (e.g. providers.json) lives next to skill
+		// dirs but must not materialize into ~/.agents/skills.
+		if filepath.ToSlash(op.SrcRoot) == "presets/skills" && !d.IsDir() && !strings.Contains(relSlash, "/") {
+			return nil
+		}
 		if skillTop := skillTopLevelName(relSlash); skillTop != "" && disabledSkills[skillTop] {
 			if d.IsDir() && skillTop == relSlash {
 				return fs.SkipDir
@@ -283,6 +288,18 @@ type LinkSkillDirs struct {
 	SrcRoot string
 	DstRoot string
 	Replace bool
+	// Allow, when non-nil, filters which top-level names under SrcRoot are
+	// mirrored. Disallowed names are skipped and (when Replace) pruned from
+	// DstRoot so update removes stale provider mirrors after an allowlist
+	// shrink. Nil means allow all (used for subagents).
+	Allow func(name string) bool
+}
+
+func (op LinkSkillDirs) allowed(name string) bool {
+	if op.Allow == nil {
+		return true
+	}
+	return op.Allow(name)
 }
 
 func (op LinkSkillDirs) Apply(ctx Context) error {
@@ -294,7 +311,8 @@ func (op LinkSkillDirs) Apply(ctx Context) error {
 	// of DstRoot) keeps unchanged entries cheap: linkOrCopy reports ok when
 	// the symlink already points at src, and only rewrites what changed.
 	// When Replace is true, also drop destination entries that are no longer
-	// present under SrcRoot (stale native mirrors after skill removal).
+	// present under SrcRoot (stale native mirrors after skill removal) or
+	// that are disallowed for this provider by ProviderRules.
 	srcNames := map[string]bool{}
 	entries, err := os.ReadDir(op.SrcRoot)
 	if err != nil {
@@ -306,6 +324,9 @@ func (op LinkSkillDirs) Apply(ctx Context) error {
 			return err
 		}
 		for _, name := range names {
+			if !op.allowed(name) {
+				continue
+			}
 			srcNames[name] = true
 			if err := linkOrCopy(ctx, filepath.Join(op.SrcRoot, name), filepath.Join(op.DstRoot, name), true); err != nil {
 				return err
@@ -313,8 +334,12 @@ func (op LinkSkillDirs) Apply(ctx Context) error {
 		}
 	} else {
 		for _, entry := range entries {
-			srcNames[entry.Name()] = true
-			if err := linkOrCopy(ctx, filepath.Join(op.SrcRoot, entry.Name()), filepath.Join(op.DstRoot, entry.Name()), true); err != nil {
+			name := entry.Name()
+			if !op.allowed(name) {
+				continue
+			}
+			srcNames[name] = true
+			if err := linkOrCopy(ctx, filepath.Join(op.SrcRoot, name), filepath.Join(op.DstRoot, name), true); err != nil {
 				return err
 			}
 		}
@@ -619,6 +644,12 @@ func (m Manager) doctor(ctx Context) error {
 	checkJSON(ctx, filepath.Join(ctx.Options.AgentsDir, "mcp", "servers.json"))
 	checkJSON(ctx, filepath.Join(ctx.Options.AgentsDir, "settings.json"))
 	checkJSON(ctx, filepath.Join(ctx.Options.AgentsDir, "registry", "skills.json"))
+	for _, w := range ValidateProviderRules(LoadProviderRules(ctx, SkillsProvidersPath), "skills providers") {
+		ctx.Report.Line("warn %s", w)
+	}
+	for _, w := range ValidateProviderRules(LoadProviderRules(ctx, MCPProvidersPath), "mcp providers") {
+		ctx.Report.Line("warn %s", w)
+	}
 	seen := map[string]bool{}
 	for _, adapter := range m.adapters(ctx) {
 		if !selected(ctx.Options, adapter) {

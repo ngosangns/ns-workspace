@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // AdapterPlugin is the explicit behavior hook every adapter may
@@ -166,7 +167,20 @@ func (b *BaseAdapter) fileLinkOps(ctx Context, replace bool) []Operation {
 		ops = append(ops, LinkOrCopy{Src: sourceAgents, Dst: t.Instruction, Replace: replace})
 	}
 	if t.Skills != "" {
-		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSkills, DstRoot: t.Skills, Replace: replace})
+		adapterID := b.Spec.ID
+		rules := LoadProviderRules(ctx, SkillsProvidersPath)
+		ops = append(ops, LinkSkillDirs{
+			SrcRoot: sourceSkills,
+			DstRoot: t.Skills,
+			Replace: replace,
+			Allow: func(name string) bool {
+				// Skip metadata files that may sit beside skill dirs.
+				if name == "providers.json" || strings.HasSuffix(name, ".json") {
+					return false
+				}
+				return rules.Allows(name, adapterID)
+			},
+		})
 	}
 	if t.Subagents != "" {
 		ops = append(ops, LinkSkillDirs{SrcRoot: sourceSubagents, DstRoot: t.Subagents, Replace: replace})
@@ -243,7 +257,7 @@ func (b *BaseAdapter) profileAndMcpOps(ctx Context, replace bool) ([]Operation, 
 		if err != nil {
 			return nil, err
 		}
-		transformed, err := b.transformMCP(manifest)
+		transformed, err := b.transformMCP(ctx, manifest)
 		if err != nil {
 			return nil, err
 		}
@@ -265,7 +279,11 @@ func (b *BaseAdapter) profileAndMcpOps(ctx Context, replace bool) ([]Operation, 
 // circuit the global dispatcher — otherwise adapters like kiro never get
 // ID-specific fixes (e.g. forcing disabled=false so IDE panel toggles do
 // not leave managed servers unloaded after portal sync).
-func (b *BaseAdapter) transformMCP(manifest MCPManifest) (map[string]any, error) {
+//
+// Servers disallowed for this adapter by presets/mcp/providers.json are
+// dropped before transform so update prunes them from native configs.
+func (b *BaseAdapter) transformMCP(ctx Context, manifest MCPManifest) (map[string]any, error) {
+	manifest = filterMCPManifest(ctx, b.Spec.ID, manifest)
 	if b.Plugin != nil {
 		if _, isNoop := b.Plugin.(NoopPlugin); !isNoop {
 			transformed, err := b.Plugin.TransformMCPServers(manifest)

@@ -1,6 +1,6 @@
-import { createSignal, createMemo, For, Show, onMount } from "solid-js";
+import { createSignal, createMemo, For, Index, Show, onMount } from "solid-js";
 import { PhFloppyDisk, PhArrowCounterClockwise, PhPlus, PhTrash } from "../components/Icons";
-import { api, type MCPManifest, type MCPServerItem, type MCPServerConfig } from "../api";
+import { api, type MCPManifest, type MCPServerItem, type MCPServerConfig, type Adapter } from "../api";
 import AppAlert from "../components/AppAlert";
 import CodeEditor from "../components/CodeEditor";
 import UiButton from "../components/UiButton";
@@ -11,6 +11,7 @@ import PageFeedback from "../components/PageFeedback";
 import EmptyState from "../components/EmptyState";
 import StatusPill from "../components/StatusPill";
 import EnableSwitch from "../components/EnableSwitch";
+import ProviderPicker from "../components/ProviderPicker";
 import UiSegmented from "../components/UiSegmented";
 import SearchInput from "../components/SearchInput";
 import { usePageFeedback } from "../lib/usePageFeedback";
@@ -31,6 +32,7 @@ type DialogMode = "form" | "raw";
 
 export default function MCPs() {
   const [manifest, setManifest] = createSignal<MCPManifest | null>(null);
+  const [adapters, setAdapters] = createSignal<Adapter[]>([]);
   const [fileRaw, setFileRaw] = createSignal("");
   const [presetRaw, setPresetRaw] = createSignal("");
   const [loading, setLoading] = createSignal(true);
@@ -43,6 +45,8 @@ export default function MCPs() {
   const [advancedTab, setAdvancedTab] = createSignal<AdvancedTab>("file");
   const [presetLoaded, setPresetLoaded] = createSignal(false);
   const fb = usePageFeedback();
+
+  const providerOptions = createMemo(() => adapters().map((a) => ({ id: a.id, label: a.id })));
 
   const [dialogOpen, setDialogOpen] = createSignal(false);
   const [dialogMode, setDialogMode] = createSignal<DialogMode>("form");
@@ -116,7 +120,9 @@ export default function MCPs() {
     setLoading(true);
     fb.clear();
     try {
-      applyManifest(await api.getMCPs());
+      const [m, adapterList] = await Promise.all([api.getMCPs(), api.getAdapters()]);
+      applyManifest(m);
+      setAdapters(adapterList);
     } catch (e) {
       fb.fail(e);
     } finally {
@@ -174,6 +180,24 @@ export default function MCPs() {
       fb.fail(e);
     } finally {
       setToggling((t) => ({ ...t, [item.name]: false }));
+    }
+  }
+
+  async function setProviders(name: string, providers: string[]) {
+    const m = manifest();
+    if (!m?.items) return;
+    const prev = m.items;
+    // Optimistic update. Grid uses <Index> so card/picker state is preserved.
+    applyManifest({
+      ...m,
+      items: m.items.map((it) => (it.name === name ? { ...it, allowedProviders: providers } : it)),
+    });
+    fb.clearError();
+    try {
+      applyManifest(await api.setMCPProviders(name, providers));
+    } catch (e) {
+      applyManifest({ ...m, items: prev });
+      fb.fail(e);
     }
   }
 
@@ -380,34 +404,44 @@ export default function MCPs() {
 
       <Show when={!loading() && filtered().length > 0}>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 fade-in-up is-visible">
-          <For each={filtered()}>
+          {/* Index (not For): keep card/picker mounted when item fields update. */}
+          <Index each={filtered()}>
             {(item) => {
-              const transport = () => inferTransport(item.config);
+              const transport = () => inferTransport(item().config);
               return (
                 <div
                   class={`surface flex flex-col gap-2 p-4 transition duration-160 ease-[var(--ease-out-soft)] hover:border-border-strong hover:bg-elevated ${
-                    item.enabled ? "" : "opacity-70"
+                    item().enabled ? "" : "opacity-70"
                   }`}
                 >
-                  <button type="button" class="min-w-0 flex-1 text-left" onClick={() => openEdit(item)}>
+                  <button type="button" class="min-w-0 flex-1 text-left" onClick={() => openEdit(item())}>
                     <div class="mb-1.5 flex flex-wrap items-center gap-2">
-                      <span class="font-mono text-[14px] font-semibold text-fg">{item.name}</span>
+                      <span class="font-mono text-[14px] font-semibold text-fg">{item().name}</span>
                       <StatusPill kind={transport() === "unknown" ? "muted" : "accent"}>{transportLabel(transport())}</StatusPill>
                     </div>
-                    <div class="line-clamp-2 font-mono text-[11.5px] leading-snug text-fg-muted">{summarizeConfig(item.config) || "—"}</div>
+                    <div class="line-clamp-2 font-mono text-[11.5px] leading-snug text-fg-muted">
+                      {summarizeConfig(item().config) || "—"}
+                    </div>
                   </button>
-                  <div class="mt-auto flex items-center justify-end border-t border-border pt-2" onClick={(e) => e.stopPropagation()}>
+                  <div class="mt-auto flex items-center justify-end gap-2 border-t border-border pt-2" onClick={(e) => e.stopPropagation()}>
+                    <ProviderPicker
+                      value={item().allowedProviders}
+                      options={providerOptions()}
+                      disabled={!item().enabled}
+                      aria-label={`Allowed providers for MCP ${item().name}`}
+                      onChange={(next) => void setProviders(item().name, next)}
+                    />
                     <EnableSwitch
-                      checked={item.enabled}
-                      disabled={toggling()[item.name]}
-                      aria-label={`Enable MCP ${item.name}`}
-                      onChange={(next) => void toggleEnabled(item, next)}
+                      checked={item().enabled}
+                      disabled={toggling()[item().name]}
+                      aria-label={`Enable MCP ${item().name}`}
+                      onChange={(next) => void toggleEnabled(item(), next)}
                     />
                   </div>
                 </div>
               );
             }}
-          </For>
+          </Index>
         </div>
       </Show>
 

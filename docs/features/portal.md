@@ -48,10 +48,12 @@ Flags:
 | PUT    | `/api/skills/{id}`                | Cập nhật skill                                                         |
 | DELETE | `/api/skills/{id}`                | Reset skill về default                                                 |
 | POST   | `/api/skills/{id}/enabled`        | Enable/disable skill (`{"enabled":bool}`) → `portal/disabled.json`     |
-| GET    | `/api/mcps`                       | MCP catalog: `items[]`, `content` (unified), `disabledServers`         |
+| PUT    | `/api/skills/{id}/providers`      | Allowed providers (`{"providers":["all"]\|[...ids]}`) → `skills/providers.json` |
+| GET    | `/api/mcps`                       | MCP catalog: `items[]` (+ `allowedProviders`), `content`, `disabledServers` |
 | PUT    | `/api/mcps`                       | Ghi **toàn bộ catalog** (`content` hoặc `mcpServers`+`disabled`)       |
 | DELETE | `/api/mcps`                       | Reset MCP overlay về embedded default                                  |
 | POST   | `/api/mcps/{name}/enabled`        | Enable/disable một MCP trong catalog                                   |
+| PUT    | `/api/mcps/{name}/providers`      | Allowed providers (`{"providers":["all"]\|[...ids]}`) → `mcp/providers.json` |
 | DELETE | `/api/mcps/{name}`                | Xóa hẳn server khỏi enabled + disabled overlay                         |
 | GET    | `/api/mcps/preset`                | Embedded MCP preset (read-only)                                        |
 | GET    | `/api/registry`                   | Registry skills + disabled + items                                     |
@@ -70,8 +72,8 @@ Flags:
 UI dùng **page kit** SolidJS chung (`PageHeader`, `UiSegmented`, `EnableSwitch`, `ResourceRow`, `EmptyState`, `ListSkeleton`, `StatusPill`, `PageFeedback`, `SearchInput`) — xem [conventions frontend](../development/conventions/preview-frontend.md).
 
 - **Dashboard**: metrics skills / MCP / registry / adapters (total + enabled/disabled), deep-link tới từng trang, path status `~/.agents`, Sync panel.
-- **Skills**: tab **Installed** (registry filter gồm **All**, name filter, enable switch, dialog Markdown) và tab **Discover** (cùng registry filter **All** + từng source, catalog GitHub, multi-select / batch install tối đa 50; skill đã cài có **Reinstall** + **Uninstall**).
-- **MCPs**: **card grid** (transport badge, summary command/url, enable switch); search + filter All/Enabled/Disabled; dialog form (stdio / HTTP / SSE) + Raw JSON; Add / edit / Remove; **Advanced** (catalog JSON + embedded preset); Reset overlay.
+- **Skills**: tab **Installed** (registry filter gồm **All**, name filter, enable switch, **ProviderPicker** allowed providers, dialog Markdown) và tab **Discover** (cùng registry filter **All** + từng source, catalog GitHub, multi-select / batch install tối đa 50; skill đã cài có **Reinstall** + **Uninstall**). Skill/MCP JSON có `allowedProviders` (`["all"]` hoặc list adapter id); picker disabled khi item bị disable global.
+- **MCPs**: **card grid** (transport badge, summary command/url, enable switch, **ProviderPicker**); search + filter All/Enabled/Disabled; dialog form (stdio / HTTP / SSE) + Raw JSON; Add / edit / Remove; **Advanced** (catalog JSON + embedded preset); Reset overlay.
 - **Registry**: list thống nhất (filter, enable switch) + Edit JSON (enabled list); Reset khi custom overlay.
 - **Adapters**: list provider (tier, artifacts, docs) + enable switch.
 - **Sync Panel**: `status`, `doctor`, `init`, `update`, `registry` + SSE log; filter provider.

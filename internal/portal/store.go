@@ -154,6 +154,10 @@ func (s *Store) ListSkills() ([]Skill, error) {
 	if err != nil {
 		return nil, err
 	}
+	skillProviders, err := s.readSkillProviderRules()
+	if err != nil {
+		return nil, err
+	}
 	regSources := s.skillRegistrySourceMap()
 	seen := map[string]bool{}
 	var skills []Skill
@@ -174,13 +178,14 @@ func (s *Store) ListSkills() ([]Skill, error) {
 		seen[id] = true
 		name, desc := s.skillMeta(id)
 		skills = append(skills, Skill{
-			ID:             id,
-			Name:           name,
-			Description:    desc,
-			Source:         "embedded",
-			RegistrySource: lookupRegistrySource(regSources, id, name),
-			Overridden:     s.isOverridden(skillPath(id)),
-			Enabled:        toggles.IsSkillEnabled(id),
+			ID:               id,
+			Name:             name,
+			Description:      desc,
+			Source:           "embedded",
+			RegistrySource:   lookupRegistrySource(regSources, id, name),
+			Overridden:       s.isOverridden(skillPath(id)),
+			Enabled:          toggles.IsSkillEnabled(id),
+			AllowedProviders: skillProviders.ProvidersFor(id),
 		})
 	}
 
@@ -194,18 +199,19 @@ func (s *Store) ListSkills() ([]Skill, error) {
 		seen[id] = true
 		name, desc := s.skillMeta(id)
 		skills = append(skills, Skill{
-			ID:             id,
-			Name:           name,
-			Description:    desc,
-			Source:         "overlay",
-			RegistrySource: lookupRegistrySource(regSources, id, name),
-			Overridden:     true,
-			Enabled:        toggles.IsSkillEnabled(id),
+			ID:               id,
+			Name:             name,
+			Description:      desc,
+			Source:           "overlay",
+			RegistrySource:   lookupRegistrySource(regSources, id, name),
+			Overridden:       true,
+			Enabled:          toggles.IsSkillEnabled(id),
+			AllowedProviders: skillProviders.ProvidersFor(id),
 		})
 	}
 
 	// Skills installed into the shared agents home (npx skills / registry).
-	for _, sk := range s.listInstalledHomeSkills(seen, toggles, regSources) {
+	for _, sk := range s.listInstalledHomeSkills(seen, toggles, regSources, skillProviders) {
 		skills = append(skills, sk)
 	}
 
@@ -215,7 +221,7 @@ func (s *Store) ListSkills() ([]Skill, error) {
 
 // listInstalledHomeSkills scans <agentsDir>/skills for SKILL.md packages that
 // are not already covered by embedded/overlay presets (real dirs or symlinks).
-func (s *Store) listInstalledHomeSkills(seen map[string]bool, toggles agentsync.PortalToggles, regSources map[string]string) []Skill {
+func (s *Store) listInstalledHomeSkills(seen map[string]bool, toggles agentsync.PortalToggles, regSources map[string]string, skillProviders agentsync.ProviderRules) []Skill {
 	if s.agentsDir == "" {
 		return nil
 	}
@@ -241,13 +247,14 @@ func (s *Store) listInstalledHomeSkills(seen map[string]bool, toggles agentsync.
 			name = id
 		}
 		out = append(out, Skill{
-			ID:             id,
-			Name:           name,
-			Description:    desc,
-			Source:         "installed",
-			RegistrySource: lookupRegistrySource(regSources, id, name),
-			Overridden:     false,
-			Enabled:        toggles.IsSkillEnabled(id),
+			ID:               id,
+			Name:             name,
+			Description:      desc,
+			Source:           "installed",
+			RegistrySource:   lookupRegistrySource(regSources, id, name),
+			Overridden:       false,
+			Enabled:          toggles.IsSkillEnabled(id),
+			AllowedProviders: skillProviders.ProvidersFor(id),
 		})
 	}
 	return out
@@ -367,19 +374,24 @@ func (s *Store) ReadSkill(id string) (*Skill, error) {
 	if err != nil {
 		return nil, err
 	}
+	skillProviders, err := s.readSkillProviderRules()
+	if err != nil {
+		return nil, err
+	}
 	name, desc := parseSkillFrontmatter(content)
 	if name == "" {
 		name = id
 	}
 	return &Skill{
-		ID:             id,
-		Name:           name,
-		Description:    desc,
-		Source:         source,
-		RegistrySource: lookupRegistrySource(s.skillRegistrySourceMap(), id, name),
-		Overridden:     source == "overlay",
-		Enabled:        toggles.IsSkillEnabled(id),
-		Content:        string(content),
+		ID:               id,
+		Name:             name,
+		Description:      desc,
+		Source:           source,
+		RegistrySource:   lookupRegistrySource(s.skillRegistrySourceMap(), id, name),
+		Overridden:       source == "overlay",
+		Enabled:          toggles.IsSkillEnabled(id),
+		AllowedProviders: skillProviders.ProvidersFor(id),
+		Content:          string(content),
 	}, nil
 }
 
@@ -459,6 +471,35 @@ func (s *Store) SetSkillEnabled(id string, enabled bool) error {
 	})
 }
 
+// SetSkillProviders sets the allowed providers for a skill
+// (presets/skills/providers.json). providers of ["all"] or empty clears
+// the restriction (default all).
+func (s *Store) SetSkillProviders(id string, providers []string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("missing skill id")
+	}
+	if err := validateProvidersRequest(providers); err != nil {
+		return err
+	}
+	return s.setProviderRules(agentsync.SkillsProvidersPath, func(rules agentsync.ProviderRules) {
+		rules.SetProviders(id, providers)
+	})
+}
+
+// SetMCPServerProviders sets the allowed providers for an MCP server
+// (presets/mcp/providers.json).
+func (s *Store) SetMCPServerProviders(name string, providers []string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("missing mcp server name")
+	}
+	if err := validateProvidersRequest(providers); err != nil {
+		return err
+	}
+	return s.setProviderRules(agentsync.MCPProvidersPath, func(rules agentsync.ProviderRules) {
+		rules.SetProviders(name, providers)
+	})
+}
+
 // ReadMCPs returns the shared MCP servers manifest with provenance metadata.
 // Portal exposes one editable Content document (all servers + disabled list).
 // On disk, enabled/disabled may still be split for agentsync materialize.
@@ -471,7 +512,11 @@ func (s *Store) ReadMCPs() (*MCPManifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	items := buildMCPItems(enabled, disabled)
+	mcpProviders, err := s.readMCPProviderRules()
+	if err != nil {
+		return nil, err
+	}
+	items := buildMCPItems(enabled, disabled, mcpProviders)
 	overridden := s.isOverridden(agentsync.MCPEnabledPath) || s.isOverridden(agentsync.MCPDisabledPath)
 	return &MCPManifest{
 		MCPServers:      MCPServers{MCPServers: enabled},
@@ -881,7 +926,7 @@ func skillPath(id string) string {
 	return fmt.Sprintf("presets/skills/%s/SKILL.md", id)
 }
 
-func buildMCPItems(enabled, disabled map[string]any) []MCPServerItem {
+func buildMCPItems(enabled, disabled map[string]any, mcpProviders agentsync.ProviderRules) []MCPServerItem {
 	items := make([]MCPServerItem, 0, len(enabled)+len(disabled))
 	names := make([]string, 0, len(enabled)+len(disabled))
 	for n := range enabled {
@@ -894,11 +939,12 @@ func buildMCPItems(enabled, disabled map[string]any) []MCPServerItem {
 	}
 	sort.Strings(names)
 	for _, n := range names {
+		providers := mcpProviders.ProvidersFor(n)
 		if cfg, ok := enabled[n]; ok {
-			items = append(items, MCPServerItem{Name: n, Enabled: true, Config: cfg})
+			items = append(items, MCPServerItem{Name: n, Enabled: true, Config: cfg, AllowedProviders: providers})
 			continue
 		}
-		items = append(items, MCPServerItem{Name: n, Enabled: false, Config: disabled[n]})
+		items = append(items, MCPServerItem{Name: n, Enabled: false, Config: disabled[n], AllowedProviders: providers})
 	}
 	return items
 }
@@ -1164,6 +1210,62 @@ func isMissingFile(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "file does not exist") || strings.Contains(msg, "no such file")
+}
+
+func (s *Store) readSkillProviderRules() (agentsync.ProviderRules, error) {
+	return s.readProviderRules(agentsync.SkillsProvidersPath)
+}
+
+func (s *Store) readMCPProviderRules() (agentsync.ProviderRules, error) {
+	return s.readProviderRules(agentsync.MCPProvidersPath)
+}
+
+func (s *Store) readProviderRules(presetKey string) (agentsync.ProviderRules, error) {
+	data, err := s.readEffective(presetKey)
+	if err != nil {
+		if isMissingFile(err) {
+			return agentsync.ProviderRules{}, nil
+		}
+		return nil, err
+	}
+	return agentsync.ParseProviderRules(data)
+}
+
+func (s *Store) setProviderRules(presetKey string, mutate func(agentsync.ProviderRules)) error {
+	rules, err := s.readProviderRules(presetKey)
+	if err != nil {
+		return err
+	}
+	if rules == nil {
+		rules = agentsync.ProviderRules{}
+	}
+	mutate(rules)
+	data, err := agentsync.FormatProviderRules(rules)
+	if err != nil {
+		return err
+	}
+	return s.writeOverlay(presetKey, data)
+}
+
+func validateProvidersRequest(providers []string) error {
+	if len(providers) == 0 {
+		return nil
+	}
+	known := agentsync.KnownAdapterIDs()
+	for _, p := range providers {
+		id := strings.ToLower(strings.TrimSpace(p))
+		if id == "" {
+			continue
+		}
+		if id == "all" || id == "*" {
+			continue
+		}
+		canonical := agentsync.CanonicalAdapterID(id)
+		if !known[id] && !known[canonical] {
+			return fmt.Errorf("unknown provider %q", p)
+		}
+	}
+	return nil
 }
 
 // setDisabled mutates disabled skill/provider maps and rewrites disabled.json.

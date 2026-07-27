@@ -9772,7 +9772,7 @@ func TestOpenCodeAdapterPlanReadOpenCodeConfigErrorReached(t *testing.T) {
 func TestPluginTransformMCPServersErrorWrap(t *testing.T) {
 	// Test that the OpenCode path uses errPlugin
 	b := &BaseAdapter{Spec: AdapterSpec{ID: "opencode", Tier: TierStable}, Plugin: errPlugin{}}
-	if _, err := b.transformMCP(MCPManifest{MCPServers: map[string]any{}}); err == nil {
+	if _, err := b.transformMCP(Context{}, MCPManifest{MCPServers: map[string]any{}}); err == nil {
 		t.Fatalf("expected transform error from errPlugin")
 	}
 }
