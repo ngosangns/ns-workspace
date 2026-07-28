@@ -1,6 +1,6 @@
 ---
 name: auto-block-banned-words
-description: Cổng chặn trước khi bàn giao — quét từ cấm và chặn output nếu còn hit. Trigger: chặn từ cấm, auto block, quét trước khi publish, kiểm tra lần cuối.
+description: "Cổng chặn trước khi bàn giao — quét từ cấm và chặn output nếu còn hit. Trigger: chặn từ cấm, auto block, quét trước khi publish, kiểm tra lần cuối."
 ---
 
 # Auto Block Banned Words

@@ -1,6 +1,6 @@
 ---
 name: ban-the-ai-words
-description: Pass từ vựng — thay hoặc xóa mọi từ/cụm từ bị cấm trong danh sách AI tells, không đụng cấu trúc. Trigger: bỏ từ AI, ban AI words, thay từ sáo rỗng.
+description: "Pass từ vựng — thay hoặc xóa mọi từ/cụm từ bị cấm trong danh sách AI tells, không đụng cấu trúc. Trigger: bỏ từ AI, ban AI words, thay từ sáo rỗng."
 ---
 
 # Ban The AI Words

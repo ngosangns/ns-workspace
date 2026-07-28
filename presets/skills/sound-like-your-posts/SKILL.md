@@ -1,6 +1,6 @@
 ---
 name: sound-like-your-posts
-description: Dựng voice profile từ bài viết cũ của user rồi viết/sửa nội dung mới khớp giọng đó. Trigger: viết giống giọng tôi, match voice, dựa theo bài cũ của tôi.
+description: "Dựng voice profile từ bài viết cũ của user rồi viết/sửa nội dung mới khớp giọng đó. Trigger: viết giống giọng tôi, match voice, dựa theo bài cũ của tôi."
 ---
 
 # Sound Like Your Posts

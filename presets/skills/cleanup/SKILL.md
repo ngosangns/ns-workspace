@@ -1,6 +1,6 @@
 ---
 name: cleanup
-description: Audit worktree/branch/commit để đánh giá dead code, dead flows, dead docs, legacy artifacts. Output là plan trong `docs/specs/planning/`. Trigger: dọn dẹp, audit branch, tìm dead code.
+description: "Audit worktree/branch/commit để đánh giá dead code, dead flows, dead docs, legacy artifacts. Output là plan trong `docs/specs/planning/`. Trigger: dọn dẹp, audit branch, tìm dead code."
 ---
 
 # Cleanup Audit Và Plan

@@ -105,6 +105,7 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		if err != nil {
 			return err
 		}
+		data = op.normalizeSkillDoc(ctx, relSlash, data)
 		return writeFileManaged(ctx, dst, data, op.Replace)
 	})
 	if walkErr != nil {
@@ -123,6 +124,7 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		if err != nil {
 			return err
 		}
+		data = op.normalizeSkillDoc(ctx, rel, data)
 		dst := filepath.Join(op.DstRoot, filepath.FromSlash(rel))
 		if err := ensureDir(ctx, filepath.Dir(dst)); err != nil {
 			return err
@@ -144,6 +146,21 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		}
 	}
 	return nil
+}
+
+// normalizeSkillDoc repairs unparseable YAML frontmatter in SKILL.md on
+// the way into the shared skills home, so every provider mirror (Kiro
+// included, whether it is a copy or a symlink) sees valid metadata.
+// Non-skill trees and already-valid documents pass through untouched.
+func (op InstallPresetTree) normalizeSkillDoc(ctx Context, relSlash string, data []byte) []byte {
+	if filepath.ToSlash(op.SrcRoot) != "presets/skills" || !isSkillDoc(filepath.ToSlash(relSlash)) {
+		return data
+	}
+	next, changed := normalizeSkillFrontmatter(data)
+	if changed {
+		ctx.Report.Line("normalize frontmatter: %s", relSlash)
+	}
+	return next
 }
 
 // skillTopLevelName returns the first path segment for skill tree entries

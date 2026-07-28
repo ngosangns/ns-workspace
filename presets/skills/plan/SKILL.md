@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Tạo file kế hoạch trong `docs/specs/planning/` cho công việc lớn, rồi chờ user phê duyệt trước khi sửa code. Trigger: lập plan, viết spec, đề xuất thiết kế, refactor lớn.
+description: "Tạo file kế hoạch trong `docs/specs/planning/` cho công việc lớn, rồi chờ user phê duyệt trước khi sửa code. Trigger: lập plan, viết spec, đề xuất thiết kế, refactor lớn."
 ---
 
 # Lập Kế Hoạch Và Xin Phép

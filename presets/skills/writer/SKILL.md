@@ -1,6 +1,6 @@
 ---
 name: writer
-description: Viết bản thảo mới (bài đăng, email, docs, landing copy) từ brief, tránh sẵn dấu hiệu văn phong AI. Trigger: viết bài, soạn nội dung, draft post, viết email.
+description: "Viết bản thảo mới (bài đăng, email, docs, landing copy) từ brief, tránh sẵn dấu hiệu văn phong AI. Trigger: viết bài, soạn nội dung, draft post, viết email."
 ---
 
 # Writer

@@ -1,6 +1,6 @@
 ---
 name: execution
-description: Triển khai thay đổi code đã được duyệt (sau `plan`) hoặc task nhỏ rõ ràng (sau `research`). Trigger: viết code, triển khai tính năng, refactor đã duyệt.
+description: "Triển khai thay đổi code đã được duyệt (sau `plan`) hoặc task nhỏ rõ ràng (sau `research`). Trigger: viết code, triển khai tính năng, refactor đã duyệt."
 ---
 
 # Thực Thi Code

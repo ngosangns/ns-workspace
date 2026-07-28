@@ -1,6 +1,6 @@
 ---
 name: editor
-description: Biên tập bản thảo đã có — cắt, sắp lại thứ tự, siết câu, làm rõ luận điểm. Trigger: biên tập, edit bài, rút gọn, làm gọn nội dung.
+description: "Biên tập bản thảo đã có — cắt, sắp lại thứ tự, siết câu, làm rõ luận điểm. Trigger: biên tập, edit bài, rút gọn, làm gọn nội dung."
 ---
 
 # Editor

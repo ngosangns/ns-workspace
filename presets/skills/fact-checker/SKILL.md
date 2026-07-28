@@ -1,6 +1,6 @@
 ---
 name: fact-checker
-description: Bóc tách và kiểm chứng từng khẳng định trong bản thảo, đánh dấu cái nào có nguồn, cái nào không. Trigger: kiểm chứng, fact check, xác minh số liệu, verify claims.
+description: "Bóc tách và kiểm chứng từng khẳng định trong bản thảo, đánh dấu cái nào có nguồn, cái nào không. Trigger: kiểm chứng, fact check, xác minh số liệu, verify claims."
 ---
 
 # Fact Checker

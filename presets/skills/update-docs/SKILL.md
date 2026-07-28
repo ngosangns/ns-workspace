@@ -1,6 +1,6 @@
 ---
 name: update-docs
-description: Cập nhật knowledge base trong `./docs` cho khớp codebase theo layout flat (features, modules, architecture, specs). Trigger: cập nhật tài liệu, sync docs, làm mới spec, ghi lại implementation, cập nhật requirements.
+description: "Cập nhật knowledge base trong `./docs` cho khớp codebase theo layout flat (features, modules, architecture, specs). Trigger: cập nhật tài liệu, sync docs, làm mới spec, ghi lại implementation, cập nhật requirements."
 ---
 
 # Cập Nhật Tài Liệu

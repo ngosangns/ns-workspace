@@ -1,6 +1,6 @@
 ---
 name: read-search-docs
-description: Đọc và tìm kiếm trong knowledge base (`docs/`) mà không sửa file. Trigger: tìm tài liệu, search specs, giải thích docs.
+description: "Đọc và tìm kiếm trong knowledge base (`docs/`) mà không sửa file. Trigger: tìm tài liệu, search specs, giải thích docs."
 ---
 
 # Đọc Và Tìm Kiếm Tài Liệu

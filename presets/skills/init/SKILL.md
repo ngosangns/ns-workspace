@@ -1,6 +1,6 @@
 ---
 name: init
-description: Khởi tạo knowledge base cho repo mới: quét codebase, lập aspect inventory, rồi cập nhật docs/specs theo layout flat trong `docs/`.
+description: "Khởi tạo knowledge base cho repo mới: quét codebase, lập aspect inventory, rồi cập nhật docs/specs theo layout flat trong `docs/`."
 ---
 
 # Init Knowledge Base

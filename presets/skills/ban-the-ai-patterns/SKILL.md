@@ -1,6 +1,6 @@
 ---
 name: ban-the-ai-patterns
-description: Pass cấu trúc — gỡ so sánh phủ định, bộ ba, câu chốt tuyên ngôn, em dash thừa và các mẫu câu lộ AI. Trigger: bỏ cấu trúc AI, ban AI patterns, sửa mẫu câu máy.
+description: "Pass cấu trúc — gỡ so sánh phủ định, bộ ba, câu chốt tuyên ngôn, em dash thừa và các mẫu câu lộ AI. Trigger: bỏ cấu trúc AI, ban AI patterns, sửa mẫu câu máy."
 ---
 
 # Ban The AI Patterns

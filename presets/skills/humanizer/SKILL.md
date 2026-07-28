@@ -1,6 +1,6 @@
 ---
 name: humanizer
-description: Viết lại nội dung để loại bỏ dấu hiệu AI qua 3 pass — từ ngữ, cấu trúc, nhịp. Trigger: humanize, làm cho tự nhiên, nghe bớt AI, viết lại cho giống người.
+description: "Viết lại nội dung để loại bỏ dấu hiệu AI qua 3 pass — từ ngữ, cấu trúc, nhịp. Trigger: humanize, làm cho tự nhiên, nghe bớt AI, viết lại cho giống người."
 ---
 
 # Humanizer

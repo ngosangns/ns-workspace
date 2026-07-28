@@ -1,6 +1,6 @@
 ---
 name: red-pen
-description: Đánh dấu điểm yếu trong bản thảo mà không viết lại — chỉ ra chỗ hỏng, mức độ, lý do. Trigger: đánh dấu điểm yếu, red pen, soi bản thảo, chỉ lỗi đừng sửa.
+description: "Đánh dấu điểm yếu trong bản thảo mà không viết lại — chỉ ra chỗ hỏng, mức độ, lý do. Trigger: đánh dấu điểm yếu, red pen, soi bản thảo, chỉ lỗi đừng sửa."
 ---
 
 # Red Pen

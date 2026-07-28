@@ -1,6 +1,6 @@
 ---
 name: self-critique
-description: Tự phản biện và sửa lặp bản thảo đến khi đạt tiêu chí, có điều kiện dừng rõ ràng. Trigger: tự phản biện, self critique, sửa đến khi ổn, review lại chính mình.
+description: "Tự phản biện và sửa lặp bản thảo đến khi đạt tiêu chí, có điều kiện dừng rõ ràng. Trigger: tự phản biện, self critique, sửa đến khi ổn, review lại chính mình."
 ---
 
 # Self Critique

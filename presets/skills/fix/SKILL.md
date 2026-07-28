@@ -1,6 +1,6 @@
 ---
 name: fix
-description: Chẩn đoán và sửa bug, test fail, regression đã có triệu chứng rõ. Trigger: sửa bug, fix lỗi, điều tra regression.
+description: "Chẩn đoán và sửa bug, test fail, regression đã có triệu chứng rõ. Trigger: sửa bug, fix lỗi, điều tra regression."
 ---
 
 # Fix Bug Có Bằng Chứng

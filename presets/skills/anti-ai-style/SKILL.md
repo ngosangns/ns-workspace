@@ -1,6 +1,6 @@
 ---
 name: anti-ai-style
-description: Bộ luật văn phong áp cho mọi nội dung sinh ra — áp lúc viết, không phải sửa sau. Trigger: anti-AI style, viết theo style không giống AI, áp style guide.
+description: "Bộ luật văn phong áp cho mọi nội dung sinh ra — áp lúc viết, không phải sửa sau. Trigger: anti-AI style, viết theo style không giống AI, áp style guide."
 ---
 
 # Anti-AI Style
