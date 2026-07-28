@@ -1,6 +1,6 @@
 ---
 name: research
-description: Phân tích, nghiên cứu và làm rõ yêu cầu trước khi triển khai. Dùng cho bước đầu khi ý định mơ hồ hoặc phụ thuộc docs/specs.
+description: Phân tích, nghiên cứu và làm rõ yêu cầu trước khi triển khai. Dùng cho bước đầu khi ý định mơ hồ hoặc cần hiểu code path/boundary.
 ---
 
 # Nghiên Cứu Trước
@@ -9,7 +9,7 @@ Dùng trước khi lập plan hoặc triển khai thay đổi. Đọc trước, 
 
 ## Mục Tiêu
 
-- Hiểu ý định user, behavior hiện tại, docs/specs liên quan.
+- Hiểu ý định user và behavior hiện tại trong code.
 - Tìm nguyên nhân gốc rễ, không dừng ở triệu chứng.
 - Đủ rộng để thấy boundary/rủi ro; đủ hẹp để xác định đúng file/module.
 - Ưu tiên tự nghiên cứu thay vì hỏi ngay.
@@ -17,16 +17,11 @@ Dùng trước khi lập plan hoặc triển khai thay đổi. Đọc trước, 
 ## Quy Trình
 
 1. Search bằng `rg` và `rg --files`. Dùng `lsp-code-graph` khi cần symbol/caller/callee context.
-2. Dùng `read-search-docs` khi đọc/tìm kiếm trong docs/specs.
-3. Nếu ý định mơ hồ, đọc specs/docs trước:
-   - `docs/features/`, `docs/modules/` cho behavior và boundary hiện tại.
-   - `docs/specs/planning/` cho plan active / design notes.
-     Suy luận từ requirements/planning notes.
-4. Xác định nguyên nhân gốc rễ bằng cách đối chiếu docs, code path, call site, data I/O.
-5. Tóm tắt bức tranh tổng quan + phạm vi tập trung + boundary + rủi ro + ngoài scope.
-6. Docs stale → nêu rõ rủi ro, coi là bối cảnh.
-7. Chỉ hỏi user sau khi đã đọc mà vẫn còn câu hỏi cụ thể.
-8. Task lớn → chuyển `plan`. Task nhỏ rõ → chuyển `execution`.
+2. Đọc code path, call site, data I/O, test liên quan để xác định behavior thật.
+3. Xác định nguyên nhân gốc rễ bằng cách đối chiếu code path, call site, data I/O.
+4. Tóm tắt bức tranh tổng quan + phạm vi tập trung + boundary + rủi ro + ngoài scope.
+5. Chỉ hỏi user sau khi đã đọc mà vẫn còn câu hỏi cụ thể.
+6. Task lớn → chuyển `plan`. Task nhỏ rõ → chuyển `execution`.
 
 ## Đầu Ra
 
@@ -39,3 +34,4 @@ Dùng trước khi lập plan hoặc triển khai thay đổi. Đọc trước, 
 
 - Không sửa file.
 - Không chạy build chỉ để hoàn tất nghiên cứu.
+- Không đọc/ghi thư mục `docs/`.

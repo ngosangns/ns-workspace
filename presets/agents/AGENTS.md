@@ -1,97 +1,56 @@
 # Agent Instructions
 
-## Trigger Skills
+## Skills
 
-Agent phải nhận diện trigger skill được viết ở đầu message của user theo cú pháp:
+Agent chọn skill theo ý định của user (không dùng short-tag / trigger prefix).
 
-```text
-//<short-tag-of-skill>
-```
+### Workflow / dev
 
-Riêng trigger `//s` hoặc `/s` ở đầu message là trigger tắt cho skill
-`spawn-opencode`, dùng để spawn OpenCode process như sub-agent.
+| Skill | Khi Dùng |
+| ----- | -------- |
+| `cleanup` | Audit worktree/branch/commit; lập plan cleanup cho dead code, dead flows, legacy artifacts. |
+| `execution` | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo. |
+| `fix` | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể. |
+| `plan` | Tạo kế hoạch cho công việc lớn, chờ user duyệt trước khi sửa code. |
+| `research` | Phân tích, nghiên cứu và làm rõ yêu cầu trước khi triển khai. |
+| `init` | Khởi tạo hiểu biết repo: quét codebase, lập aspect inventory (không ghi `docs/`). |
+| `working-document` | Tài liệu hóa thay đổi từ commit/branch (walkthrough code). |
+| `lsp-code-graph` | Tìm symbol, caller/callee, references qua Code Graph / LSP. |
 
-Trigger `//k` hoặc `/k` ở đầu message là trigger tắt cho skill `spawn-kimi`,
-dùng để spawn Kimi Code CLI process như sub-agent.
+### Harness / agentic loop
 
-Trigger có thể chứa một tag hoặc nhiều tag ghép liền nhau. Khi có nhiều tag, áp
-dụng các skill tương ứng theo đúng thứ tự chữ cái trong trigger.
+| Skill | Khi Dùng |
+| ----- | -------- |
+| `goal` | Nhận mục tiêu ngôn ngữ tự nhiên, materialize thành harness task rồi chạy harness loop tới khi xong hoặc pause. |
+| `harness` | Chạy harness để đánh giá và kiểm chứng task qua subagent. |
+| `loop` | Kích hoạt looping agentic self-correct với multi-agent routing và memory persistence. |
+| `eval` | Chạy evaluator để đánh giá task/skill/subagent theo acceptance criteria. |
 
-Ví dụ:
-
-```text
-//rpe add account notifications
-```
-
-Nghĩa là: chạy `read-search-docs` như bước search, sau đó chạy `plan`, rồi chạy
-`execution`.
-
-## Short Tags Cho Skill Local
-
-| Trigger | Skill              | Khi Dùng                                                                                                                                  |
-| ------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `//c`   | `git-commit`       | Commit workflow (registry): analyze diff, Conventional Commits, stage có chủ đích, an toàn — skill `github/awesome-copilot@git-commit`.   |
-| `//d`   | `cleanup`          | Quét diff/work đã triển khai/branch/commit, đọc docs và lập plan cleanup (`docs/specs/planning`) cho dead code, dead flows, dead docs. |
-| `//e`   | `execution`        | Triển khai thay đổi đã được duyệt hoặc task nhỏ đã rõ theo kiến trúc hiện tại của repo.                                                   |
-| `//f`   | `fix`              | Chẩn đoán và sửa bug, failing test, regression hoặc lỗi runtime đã có triệu chứng cụ thể.                                                 |
-| `//g`   | `goal`             | Nhận mục tiêu ngôn ngữ tự nhiên, materialize thành harness task rồi chạy harness loop tới khi xong hoặc pause.                            |
-| `//h`   | `harness`          | Chạy harness để đánh giá và kiểm chứng task qua subagent.                                                                                 |
-| `//i`   | `init`             | Khởi tạo knowledge base: quét codebase, lập aspect inventory markdown cho ngườimới, rồi cập nhật docs theo 2 audience business/developer. |
-| `//l`   | `loop`             | Kích hoạt looping agentic self-correct với multi-agent routing và memory persistence.                                                     |
-| `//r`   | `read-search-docs` | Search/đọc docs và specs, không sửa file.                                                                                                 |
-| `//s`   | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ.                              |
-| `//k`   | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song.                           |
-| `//p`   | `plan`             | Tạo hoặc cập nhật file planning (`docs/specs/planning`) kèm impact nghiệp vụ trong plan nếu cần, rồi chờ user duyệt.                      |
-| `//u`   | `update-docs`      | Cập nhật docs/specs theo 2 audience business/developer, gồm cả `requirements.md` của feature/module folder.                               |
-| `//v`   | `eval`             | Chạy evaluator để đánh giá task/skill/subagent theo acceptance criteria.                                                                  |
-| `/s`    | `spawn-opencode`   | Spawn OpenCode process như sub-agent cho research, review, triển khai hoặc làm việc song song có phạm vi rõ.                              |
-| `/k`    | `spawn-kimi`       | Spawn Kimi Code CLI process như sub-agent (official `kimi -p`) cho research, review, triển khai hoặc song song.                           |
-| `/goal` | `goal`             | Nhận mục tiêu ngôn ngữ tự nhiên, materialize thành harness task rồi chạy harness loop tới khi xong hoặc pause.                            |
-
-## Commit Skill (Registry)
+### Commit (registry)
 
 Preset local `commit` đã được gỡ. Commit dùng skill registry `git-commit`
 (`github/awesome-copilot`, cài qua `npx skills` khi sync registry): analyze
-diff, Conventional Commits, stage có chủ đích, an toàn. Trigger `//c` map
-tới skill này.
+diff, Conventional Commits, stage có chủ đích, an toàn.
 
-## Trigger Ghép
+### Pipeline gợi ý
 
-Các trigger ghép thường dùng:
-
-| Trigger | Pipeline                                                                                                          |
-| ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `//ec`  | Execution thay đổi code, rồi `git-commit` (registry) nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ. |
-| `//uc`  | Update docs/specs, rồi `git-commit` (registry) nếu diff đúng phạm vi và validation phù hợp đã chạy hoặc được nêu rõ. |
-| `//rf`  | Search docs/specs liên quan, rồi fix theo nguồn tham chiếu hiện có.                                               |
-| `//sf`  | Spawn OpenCode sub-agent, rồi fix khi đã đủ bối cảnh.                                                             |
-| `//fu`  | Fix lỗi, rồi update docs nếu behavior, architecture, business rules hoặc quan hệ module thay đổi.                 |
-| `//rp`  | Search docs, rồi tạo plan.                                                                                        |
-| `//ru`  | Search docs, rồi cập nhật docs/specs theo phạm vi đã xác định.                                                    |
-| `//rpe` | Search docs, tạo plan, rồi execution sau khi được duyệt nếu task cần.                                             |
-| `//re`  | Search docs, rồi execution cho thay đổi nhỏ đã rõ.                                                                |
-| `//spe` | Spawn OpenCode sub-agent, tạo plan, rồi execution sau khi được duyệt nếu task cần.                                |
-| `//eu`  | Execution thay đổi code, rồi update docs nếu behavior, architecture, business rules hoặc quan hệ module thay đổi. |
-| `//hl`  | Chạy harness looping agentic: plan → execute → verify → self-correct.                                             |
-| `//hv`  | Chạy harness rồi eval kết quả.                                                                                    |
-| `//hlv` | Chạy harness looping agentic, sau đó eval tổng thể.                                                               |
-| `//hle` | Chạy harness looping agentic, sau đó execution trực tiếp nếu loop dừng ở trạng thái pause.                        |
-
-Nếu trigger ghép có `plan` đứng trước `execution` cho task lớn, dừng lại sau
-bước plan và chờ user duyệt rõ ràng trước khi sửa source code.
+- Task lớn: `research` → `plan` → (user duyệt) → `execution`. Dừng sau `plan` cho đến khi user duyệt rõ ràng trước khi sửa source code.
+- Bug có triệu chứng: `fix` (hoặc `research` nếu còn mơ hồ).
+- Cleanup: `cleanup` → `plan` → (user duyệt) → `execution`.
+- Goal tự chạy: `goal` / `harness` + `loop` (+ `eval` khi cần).
 
 ## Hướng Dẫn Sử Dụng Harness, Loop Và Eval
 
 ### Khi nào dùng cái gì
 
-| Trigger | Pipeline                   | Khi nào dùng                                                       |
-| ------- | -------------------------- | ------------------------------------------------------------------ |
-| `//h`   | harness                    | Cần chạy kiểm chứng một task cụ thể theo acceptance criteria.      |
-| `//l`   | loop                       | Kích hoạt self-correct loop (plan → execute → verify → diagnose).  |
-| `//hl`  | harness + loop             | Task đã có task file `.harness/tasks/<id>.yaml`, cần loop tự chạy. |
-| `//hv`  | harness + eval             | Đánh giá kết quả cuối theo tiêu chí khách quan.                    |
-| `//hlv` | harness + loop + eval      | Vừa chạy loop vừa eval tổng thể sau mỗi iteration.                 |
-| `//hle` | harness + loop + execution | Nếu loop dừng ở trạng thái pause, tiếp tục execution trực tiếp.    |
+| Pipeline | Khi nào dùng |
+| -------- | ------------ |
+| harness | Cần chạy kiểm chứng một task cụ thể theo acceptance criteria. |
+| loop | Kích hoạt self-correct loop (plan → execute → verify → diagnose). |
+| harness + loop | Task đã có task file `.harness/tasks/<id>.yaml`, cần loop tự chạy. |
+| harness + eval | Đánh giá kết quả cuối theo tiêu chí khách quan. |
+| harness + loop + eval | Vừa chạy loop vừa eval tổng thể sau mỗi iteration. |
+| harness + loop + execution | Nếu loop dừng ở trạng thái pause, tiếp tục execution trực tiếp. |
 
 ### Task file
 
@@ -157,6 +116,6 @@ mãn.
 
 ### Human-in-the-loop
 
-- **Interactive**: pause terminal, in câu hỏi, chờ user trả lờirồi resume.
+- **Interactive**: pause terminal, in câu hỏi, chờ user trả lời rồi resume.
 - **CI/non-interactive**: ghi `.harness/decision-request.md` và dừng, user chỉnh
   rồi `harness resume`.

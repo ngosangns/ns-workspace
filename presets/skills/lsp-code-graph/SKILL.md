@@ -5,7 +5,7 @@ description: Dùng khi cần tìm symbol, entry point, caller/callee, references
 
 # LSP Code Graph Search
 
-Dùng skill này để lấy bối cảnh code graph có cấu trúc trước khi inspect raw files. Command dùng cùng search backend với Preview web, nên kết quả gồm Docs Semantic, Docs Graph, Code Semantic và Code Graph; phần Code Graph lấy symbol và quan hệ từ language server khi có.
+Dùng skill này để lấy bối cảnh code graph có cấu trúc trước khi inspect raw files. Command dùng search backend của Preview; ưu tiên **Code Graph** (symbol và quan hệ từ language server). Không dùng workflow này để đọc/ghi thư mục `docs/`.
 
 ## Workflow
 
@@ -21,7 +21,7 @@ Dùng skill này để lấy bối cảnh code graph có cấu trúc trước kh
 2. Nếu `graph` báo không có `--query`/`--json` hoặc không tự ensure LSP, command đang chạy không phải bản local mới. Không fallback qua Search UI/API; chuyển về checkout `ns-workspace` rồi chạy lại `go run . graph --query`.
 3. Đọc `warnings` trước. Nếu command báo install fail, thiếu prerequisite hoặc relation expansion không khả dụng, nói rõ fallback và tiếp tục bằng `rg`/code inspection.
 4. Ưu tiên `panels.codeGraph` cho symbol, owner/container, caller/callee, references và path:line cần inspect.
-5. Dùng `panels.docsGraph` khi câu hỏi cần quan hệ tài liệu/spec/module.
+5. Bỏ qua / không dựa vào `panels.docsGraph` hay Docs Semantic cho workflow skill này.
 6. Sau khi có path/line, inspect file bằng `sed`, `rg`, hoặc test liên quan. Không kết luận chỉ từ title graph nếu cần hiểu logic chi tiết.
 
 ## Language Servers
@@ -59,7 +59,6 @@ Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/
 
 ```sh
 --project PATH
---docs-dir docs
 --limit 8
 --keyword-op sum
 --keyword-op difference
@@ -69,4 +68,4 @@ Aliases được chấp nhận: `scss`/`sass` map về CSS server, `javascript`/
 --json
 ```
 
-`graph` chỉ dành cho query terminal và yêu cầu `--query`. Dùng `--no-ensure-lsp` khi cần cấm network/install side effect. Không dùng browser tools hoặc Search standalone API cho workflow này.
+`graph` chỉ dành cho query terminal và yêu cầu `--query`. Dùng `--no-ensure-lsp` khi cần cấm network/install side effect. Không dùng browser tools hoặc Search standalone API cho workflow này. Không đọc/ghi thư mục `docs/`.

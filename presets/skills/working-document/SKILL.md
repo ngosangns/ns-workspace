@@ -6,7 +6,7 @@ description: >-
   cách thay đổi, và vị trí cụ thể của từng method/property/logic trong codebase.
   Kèm theo diagrams/flows khi cần thiết. Tạo phiên bản chi tiết cho developer và
   phiên bản tóm tắt cho business khi thay đổi có tác động nghiệp vụ. Dùng khi
-  ngườidùng muốn tài liệu hoá, review, hoặc giải thích các thay đổi từ git history
+  người dùng muốn tài liệu hoá, review, hoặc giải thích các thay đổi từ git history
   một cách dễ hiểu.
 keywords:
   - working document
@@ -25,26 +25,27 @@ Skill này biến lịch sử git (một commit hoặc toàn bộ commits của 
 tài liệu giải thích dễ hiểu, đi qua từng bước thay đổi, nêu rõ nguyên nhân,
 lý do, cách thực hiện, và chỉ rõ vị trí của từng method/property/logic trong code.
 
-Mặc định ghi **một** working document kỹ thuật tại `docs/working-documents/`. Nếu thay đổi có business impact rõ và user muốn bản tóm tắt riêng, thêm section business trong cùng file hoặc file sibling cùng thư mục — không bắt buộc cây `docs/business` / `docs/developer`.
+Mặc định **trình bày working document trong hội thoại**. Chỉ ghi file khi user
+chỉ định path (không dùng thư mục `docs/`).
 
 ## Khi nào dùng skill này
 
-- Ngườidùng yêu cầu "viết tài liệu cho commit/branch này"
-- Cần giải thích cho ngườikhác (hoặc cho chính mình sau này) một loạt thay đổi
+- Người dùng yêu cầu "viết tài liệu cho commit/branch này"
+- Cần giải thích cho người khác (hoặc cho chính mình sau này) một loạt thay đổi
 - Onboarding, review, hoặc tổng kết một feature/bugfix vừa hoàn thành
 - Cần một bản walkthrough có diagram/flow cho thay đổi phức tạp
 
 ## Đầu vào cần làm rõ
 
-Trước khi bắt đầu, xác định (hỏi ngườidùng nếu chưa rõ):
+Trước khi bắt đầu, xác định (hỏi người dùng nếu chưa rõ):
 
 1. **Phạm vi**: một commit cụ thể (`<sha>`) hay toàn bộ commits của một branch?
 2. **Mốc so sánh** (nếu là branch): so với branch nền nào? (mặc định thử
    `main`/`master`, hoặc merge-base giữa branch hiện tại và branch nền)
 3. **Nơi lưu tài liệu**:
-   - Mặc định: `docs/working-documents/<tên-mô-tả>.md`
-   - Chỉ định khác nếu user yêu cầu.
-4. **Ngôn ngữ tài liệu**: viết theo ngôn ngữ ngườidùng đang dùng (mặc định tiếng Việt).
+   - Mặc định: trình bày trong hội thoại
+   - Chỉ ghi file nếu user chỉ định path ngoài `docs/`
+4. **Ngôn ngữ tài liệu**: viết theo ngôn ngữ người dùng đang dùng (mặc định tiếng Việt).
 
 ## Quy trình thực hiện
 
@@ -100,11 +101,11 @@ trong `đường/dẫn/file.ext`.
 - Public contract/API ảnh hưởng consumer
 - Quyền, phân quyền, compliance
 
-Nếu có → tạo thêm business version. Nếu chỉ là refactor nội bộ, công cụ, log → chỉ cần developer version.
+Nếu có → tạo thêm business version / section tóm tắt nghiệp vụ. Nếu chỉ là refactor nội bộ, công cụ, log → chỉ cần developer version.
 
 ### Bước 4 — Viết tài liệu
 
-Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
+Tạo markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 
 - **Dễ hiểu trước, chi tiết sau**: mở đầu bằng tóm tắt một câu cho mỗi thay đổi,
   rồi mới đi sâu.
@@ -121,7 +122,7 @@ Tạo file markdown theo cấu trúc bên dưới. Nguyên tắc viết:
 
 ## Cấu trúc tài liệu đầu ra
 
-### Working document (`docs/working-documents/<name>.md`)
+### Working document
 
 ````markdown
 ---
@@ -187,6 +188,6 @@ timestamp: <ISO 8601>
 - LUÔN trình bày cách triển khai theo từng bước hợp lý, giải thích rõ nguyên nhân, cách hoạt động và gắn đoạn code (code snippet) liên quan trực tiếp vào từng bước.
 - LUÔN chỉ rõ "thành phần → thuộc gì → ở file nào" khi nhắc đến code.
 - Diagram chỉ thêm khi nó làm rõ luồng/kiến trúc; bỏ qua nếu thay đổi đơn giản.
-- Viết để ngườidọc không quen codebase vẫn hiểu được.
+- Viết để người đọc không quen codebase vẫn hiểu được.
 - KHÔNG sửa code trong skill này; chỉ đọc git + code và viết tài liệu.
-
+- Không đọc/ghi thư mục `docs/`.

@@ -11,7 +11,7 @@ Quy tắc chung: đọc `_shared/CONVENTIONS.md`. Dấu hiệu cần tránh: `_s
 
 ## Kết Quả
 
-- **Voice profile** — file `docs/working-documents/voice-profile-<tên>.md`, tái sử dụng cho lần sau.
+- **Voice profile** — trình bày trong hội thoại, hoặc file path user chỉ định (ngoài `docs/`), tái sử dụng cho lần sau.
 - Nội dung mới hoặc bản đã chỉnh theo profile.
 - Bảng đối chiếu: chỗ nào lệch profile và đã chỉnh thế nào.
 

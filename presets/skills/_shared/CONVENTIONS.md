@@ -7,7 +7,7 @@ File này chứa quy tắc dùng chung cho nhiều skill. Mỗi skill reference 
 Khi gặp tình huống sau, **dừng lại và hỏi user** kèm bằng chứng đã thu thập + các lựa chọn khả dĩ:
 
 - Scope chưa rõ hoặc có nhiều cách diễn giải
-- Requirements/docs/code mâu thuẫn nhau mà không rõ phía nào đúng
+- Code/plan/prompt mâu thuẫn nhau mà không rõ phía nào đúng
 - Nhiều hướng kiến trúc/thiết kế hợp lý, không biết user prefer hướng nào
 - Plan thiếu sót thật sự (thiếu file, dependency, design assumption sai)
 - Cần expand scope hoặc đổi hướng so với plan đã duyệt
@@ -20,17 +20,14 @@ Không tự đoán hoặc tự chọn hướng có rủi ro sai ý user.
 
 Không chạy full build rộng nếu repo guidance không yêu cầu. Chọn validation mục tiêu theo phạm vi thay đổi.
 
-## Đọc Requirements / Module Docs
+## Nguồn Chân Lý: Code
 
 Trước khi sửa code trong phạm vi feature/module:
 
-1. Tìm docs thuộc phạm vi ảnh hưởng trong cây flat `docs/`:
-   - `docs/features/**` — behavior, acceptance criteria, user impact.
-   - `docs/modules/**` — boundary, API, invariants, business rules.
-   - `docs/specs/planning/**` — plan active nếu còn.
-   - `requirements.md` cạnh feature/module **nếu file tồn tại** (optional; không bắt buộc dual-tree).
-2. Đọc toàn bộ, coi chúng là acceptance constraints bắt buộc.
-3. Nếu requirements mâu thuẫn với plan/prompt/code hiện tại → **dừng lại** và báo rõ mâu thuẫn.
+1. Đọc code path, test, config liên quan — coi behavior trong code là nguồn chính.
+2. Dùng `rg` / `lsp-code-graph` khi cần boundary, caller/callee, contract.
+3. Nếu plan/prompt mâu thuẫn với code hiện tại → **dừng lại** và báo rõ mâu thuẫn.
+4. Không đọc/ghi thư mục `docs/` trong các skill workflow dev (cleanup, execution, fix, plan, research, init, …).
 
 ## Diff Review Loop
 

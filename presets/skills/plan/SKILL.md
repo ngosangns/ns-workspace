@@ -1,6 +1,6 @@
 ---
 name: plan
-description: "Tạo file kế hoạch trong `docs/specs/planning/` cho công việc lớn, rồi chờ user phê duyệt trước khi sửa code. Trigger: lập plan, viết spec, đề xuất thiết kế, refactor lớn."
+description: "Tạo kế hoạch cho công việc lớn, rồi chờ user phê duyệt trước khi sửa code. Trigger: lập plan, viết spec, đề xuất thiết kế, refactor lớn."
 ---
 
 # Lập Kế Hoạch Và Xin Phép
@@ -19,13 +19,7 @@ Quy tắc chung: đọc `_shared/CONVENTIONS.md`.
 
 - **Tìm nguyên nhân gốc rễ trước:** Kế hoạch phải thể hiện vì sao vấn đề tồn tại, phân biệt triệu chứng vs nguyên nhân gốc rễ.
 - **Nhìn tổng quát, giữ trọng tâm:** Bao quát context, module boundary, contract, rủi ro; chỉ đề xuất công việc trong phạm vi mục tiêu.
-- **Flat docs:** Plan đặt trong `docs/specs/planning/`. Mô tả impact nghiệp vụ trong cùng plan (hoặc section riêng) khi cần; không bắt buộc tách `docs/business` / `docs/developer`.
-
-## Vị Trí
-
-```text
-docs/specs/planning/<kebab-case-name>.md
-```
+- **Trình bày plan trong hội thoại** (hoặc file path user chỉ định ngoài `docs/`). Không ghi vào thư mục `docs/`.
 
 ## Từ Branch Hoặc Commit
 
@@ -37,18 +31,18 @@ Khi user yêu cầu tạo plan từ branch/commit:
 
 ## Quy Trình
 
-1. Đảm bảo research đã xác định docs/specs, code path, ràng buộc. Dùng `lsp-code-graph` khi cần symbol/caller/callee context.
+1. Đảm bảo research đã xác định code path, ràng buộc, boundary. Dùng `lsp-code-graph` khi cần symbol/caller/callee context.
 2. Làm rõ nguyên nhân gốc rễ và động lực thiết kế.
 3. Xác định bức tranh tổng quan rồi thu hẹp: module boundary, data flow, API/contract, vùng ảnh hưởng, ngoài phạm vi.
 4. Nếu từ branch/commit, đọc thay đổi bằng Git chỉ đọc.
-5. Tạo file kế hoạch trong `docs/specs/planning/` theo mẫu `_shared/templates/plan-template.md`.
-6. Nếu có impact nghiệp vụ rõ, ghi acceptance criteria / user impact trong plan (section riêng), không tạo cây thư mục audience song song trừ khi user yêu cầu migrate.
+5. Soạn kế hoạch theo mẫu `_shared/templates/plan-template.md`.
+6. Nếu có impact nghiệp vụ rõ, ghi acceptance criteria / user impact trong plan (section riêng).
 7. Trình bày tóm tắt kế hoạch cô đọng bằng tiếng Việt.
 8. **Dừng lại và chờ user phê duyệt** trước khi sửa code.
 
 ## Ràng Buộc
 
 - Không triển khai code cho công việc lớn trước khi user duyệt.
-- Không tạo placeholder docs không có nội dung hữu ích.
 - Không switch branch hoặc checkout commit chỉ để đọc.
 - Không đưa siêu dữ liệu Git vào kế hoạch.
+- Không đọc/ghi thư mục `docs/`.
