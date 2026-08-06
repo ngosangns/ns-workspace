@@ -883,7 +883,7 @@ func TestInstallPresetTreeOperation(t *testing.T) {
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dstRoot, "execution", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dstRoot, "harness", "SKILL.md")); err != nil {
 		t.Fatalf("missing tree file: %v", err)
 	}
 	var buf bytes.Buffer
@@ -906,7 +906,7 @@ func TestInstallPresetTreeOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Stale file inside a managed preset skill must still be pruned.
-	staleInside := filepath.Join(dstRoot, "execution", "orphan.md")
+	staleInside := filepath.Join(dstRoot, "harness", "orphan.md")
 	if err := os.WriteFile(staleInside, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1013,7 +1013,7 @@ func TestLinkSkillDirsOperation(t *testing.T) {
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dstRoot, "execution", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dstRoot, "harness", "SKILL.md")); err != nil {
 		t.Fatalf("missing linked skill: %v", err)
 	}
 	var buf bytes.Buffer
@@ -3654,7 +3654,7 @@ func TestInstallPresetTreeApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	op := InstallPresetTree{SrcRoot: "presets/skills/execution", DstRoot: filepath.Join(ctx.Options.AgentsDir, "skills", "execution"), Replace: true}
+	op := InstallPresetTree{SrcRoot: "presets/skills/harness", DstRoot: filepath.Join(ctx.Options.AgentsDir, "skills", "harness"), Replace: true}
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -3664,13 +3664,13 @@ func TestInstallPresetTreeApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(t.TempDir(), "cfg.json")
-	if err := os.WriteFile(cfgPath, []byte(fmt.Sprintf(`{"presets/skills/execution/extra.md":%q}`, extraSkill)), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(fmt.Sprintf(`{"presets/skills/harness/extra.md":%q}`, extraSkill)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	overlayCtx, _ := newTestContextWithOverlay(t, map[string]string{
-		"presets/skills/execution/extra.md": extraSkill,
+		"presets/skills/harness/extra.md": extraSkill,
 	})
-	if err := os.WriteFile(cfgPath, []byte(fmt.Sprintf(`{"presets/skills/execution/extra.md":%q}`, extraSkill)), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(fmt.Sprintf(`{"presets/skills/harness/extra.md":%q}`, extraSkill)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	overlayCtx, _ = mgr.context(Options{
@@ -3678,7 +3678,7 @@ func TestInstallPresetTreeApply(t *testing.T) {
 		ConfigPath: cfgPath,
 		ToolFilter: ParseTools("all"),
 	})
-	op2 := InstallPresetTree{SrcRoot: "presets/skills/execution", DstRoot: filepath.Join(overlayCtx.Options.AgentsDir, "skills", "execution"), Replace: true}
+	op2 := InstallPresetTree{SrcRoot: "presets/skills/harness", DstRoot: filepath.Join(overlayCtx.Options.AgentsDir, "skills", "harness"), Replace: true}
 	if err := op2.Apply(overlayCtx); err != nil {
 		t.Fatalf("Apply with user extra: %v", err)
 	}
@@ -3763,8 +3763,8 @@ func TestLinkSkillDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Use absolute path so os.ReadDir can find it from any cwd.
-	src, _ := filepath.Abs(filepath.Join("..", "..", "presets", "skills", "execution"))
-	dst := filepath.Join(ctx.Options.AgentsDir, "skills", "execution")
+	src, _ := filepath.Abs(filepath.Join("..", "..", "presets", "skills", "harness"))
+	dst := filepath.Join(ctx.Options.AgentsDir, "skills", "harness")
 	op := LinkSkillDirs{SrcRoot: src, DstRoot: dst, Replace: true}
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -4700,7 +4700,7 @@ func TestInstallPresetTreeApplyAll(t *testing.T) {
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("InstallPresetTree: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dst, "cleanup")); err != nil {
+	if _, err := os.Stat(filepath.Join(dst, "harness")); err != nil {
 		t.Fatalf("missing skill: %v", err)
 	}
 }
@@ -5601,7 +5601,7 @@ func TestInstallPresetTreeWithUserOverlay(t *testing.T) {
 		t.Fatalf("InstallPresetTree: %v", err)
 	}
 	// Verify preset skill is there.
-	if _, err := os.Stat(filepath.Join(dst, "cleanup")); err != nil {
+	if _, err := os.Stat(filepath.Join(dst, "harness")); err != nil {
 		t.Fatalf("missing preset skill: %v", err)
 	}
 	// Verify user-overlaid file is there.
@@ -8625,7 +8625,7 @@ func TestAdapterDoctorExecutablesUnique(t *testing.T) {
 
 func TestAdapterRegistryIncludesAllPlugins(t *testing.T) {
 	r := NewAdapterRegistry(RegistryOptions{Home: t.TempDir(), XDGConfigHome: t.TempDir(), KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "kimi", "kiro", "grok", "hermes"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "kimi", "kiro", "grok", "hermes", "pi"} {
 		if r.Lookup(id) == nil {
 			t.Fatalf("missing adapter: %s", id)
 		}
@@ -8643,7 +8643,7 @@ func TestAdapterRegistryCount(t *testing.T) {
 func TestAdapterStatusPathsExtra(t *testing.T) {
 	ctx, _ := newTestContext(t)
 	r := NewAdapterRegistry(RegistryOptions{Home: ctx.Home, XDGConfigHome: ctx.XDGConfigHome, KiroHome: "/kiro"})
-	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "hermes"} {
+	for _, id := range []string{"claude", "opencode", "codex", "qwen", "antigravity", "cline", "zcode", "hermes", "pi"} {
 		if a := r.Lookup(id); a != nil {
 			_ = a.StatusPaths(ctx)
 		}
@@ -9839,10 +9839,10 @@ func TestInstallPresetTreeWriteError2(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Pre-create file at path that InstallPresetTree wants to write to
-	if err := os.WriteFile(filepath.Join(dstRoot, "execution"), []byte("not a dir"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dstRoot, "harness"), []byte("not a dir"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Also pre-create file at execution/SKILL.md
+	// Also pre-create file at harness/SKILL.md
 	if err := os.MkdirAll(filepath.Join(dstRoot, "x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -10277,7 +10277,7 @@ func TestInstallPresetTreeReadPresetErrorCycle(t *testing.T) {
 	}
 
 	cfgPath := filepath.Join(t.TempDir(), "cfg.json")
-	cfgBody := fmt.Sprintf(`{"presets/skills/execution/SKILL.md": "%s"}`, overlayFile)
+	cfgBody := fmt.Sprintf(`{"presets/skills/harness/SKILL.md": "%s"}`, overlayFile)
 	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -10335,12 +10335,12 @@ func TestInstallPresetTreeWriteFileErrorCycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Pre-create a directory where the file would be
-	if err := os.MkdirAll(filepath.Join(dstRoot, "execution"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dstRoot, "harness"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	op := InstallPresetTree{SrcRoot: "presets/skills", DstRoot: dstRoot, Replace: false}
 	if err := op.Apply(ctx); err == nil {
-		t.Logf("Apply may succeed despite execution/ being a dir")
+		t.Logf("Apply may succeed despite harness/ being a dir")
 	}
 }
 
@@ -10565,7 +10565,7 @@ func TestInstallPresetTreeUserConfigDuplicate(t *testing.T) {
 	}
 
 	cfgPath := filepath.Join(t.TempDir(), "cfg.json")
-	cfgBody := fmt.Sprintf(`{"presets/skills/execution/SKILL.md": "%s"}`, override)
+	cfgBody := fmt.Sprintf(`{"presets/skills/harness/SKILL.md": "%s"}`, override)
 	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
 		t.Fatal(err)
 	}

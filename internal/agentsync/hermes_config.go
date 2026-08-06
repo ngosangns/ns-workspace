@@ -242,6 +242,18 @@ func resolveHermesHome(home, explicit string) string {
 	return filepath.Join(home, ".hermes")
 }
 
+// resolvePiAgentDir returns explicit, else PI_CODING_AGENT_DIR env, else ~/.pi/agent.
+// Pi's config directory holds AGENTS.md, settings.json, skills/, sessions/, etc.
+func resolvePiAgentDir(home, explicit string) string {
+	if strings.TrimSpace(explicit) != "" {
+		return filepath.Clean(ExpandPath(explicit))
+	}
+	if v := strings.TrimSpace(os.Getenv("PI_CODING_AGENT_DIR")); v != "" {
+		return filepath.Clean(ExpandPath(v))
+	}
+	return filepath.Join(home, ".pi", "agent")
+}
+
 // transformHermesMCPServer maps one shared-shape MCP entry into Hermes
 // config.yaml mcp_servers shape:
 //

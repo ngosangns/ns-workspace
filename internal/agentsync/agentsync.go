@@ -101,7 +101,7 @@ func (op InstallPresetTree) Apply(ctx Context) error {
 		if d.IsDir() {
 			return ensureDir(ctx, dst)
 		}
-		data, err := readPresetFile(ctx, path)
+		data, err := readPresetFileHook(ctx, path)
 		if err != nil {
 			return err
 		}

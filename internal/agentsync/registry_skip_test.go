@@ -366,7 +366,7 @@ func TestInstallPresetTreePreservesRegistrySkills(t *testing.T) {
 		t.Fatalf("registry skill removed by core tree: %v", err)
 	}
 	// Preset skill still materializes.
-	if _, err := os.Stat(filepath.Join(dstRoot, "execution", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dstRoot, "harness", "SKILL.md")); err != nil {
 		t.Fatalf("preset skill missing: %v", err)
 	}
 }
@@ -379,12 +379,12 @@ func TestInstallPresetTreeRemovesDisabledSkill(t *testing.T) {
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	execSkill := filepath.Join(dstRoot, "execution", "SKILL.md")
+	execSkill := filepath.Join(dstRoot, "harness", "SKILL.md")
 	if _, err := os.Stat(execSkill); err != nil {
-		t.Fatalf("expected execution skill: %v", err)
+		t.Fatalf("expected harness skill: %v", err)
 	}
-	// Portal-disable "execution" and re-apply.
-	ctx.DisabledSkills = map[string]bool{"execution": true}
+	// Portal-disable "harness" and re-apply.
+	ctx.DisabledSkills = map[string]bool{"harness": true}
 	if err := op.Apply(ctx); err != nil {
 		t.Fatalf("disable apply: %v", err)
 	}

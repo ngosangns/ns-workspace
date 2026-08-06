@@ -48,8 +48,8 @@ plan/execute/verify/diagnose.
 
 ## Nguyên Tắc
 
-- Goal lớn/mơ hồ về thiết kế: chạy `//p` (plan) trước, `/goal` chỉ cho phần
-  execution đã rõ acceptance.
+- Goal lớn/mơ hồ về thiết kế: làm **plan** theo workflow trong `AGENTS.md` trước;
+  `/goal` chỉ cho phần execution đã rõ acceptance.
 - Không tự viết/sửa task file bằng tay khi đang dùng `--goal`; nếu cần task
   tùy biến, viết YAML thủ công và chạy `harness run --task` (skill `harness`).
 - Không re-implement loop; mọi guardrail (max failures, ambiguity, HITL) do

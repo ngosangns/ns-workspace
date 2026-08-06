@@ -27,7 +27,7 @@ Trước khi sửa code trong phạm vi feature/module:
 1. Đọc code path, test, config liên quan — coi behavior trong code là nguồn chính.
 2. Dùng `rg` / `lsp-code-graph` khi cần boundary, caller/callee, contract.
 3. Nếu plan/prompt mâu thuẫn với code hiện tại → **dừng lại** và báo rõ mâu thuẫn.
-4. Không đọc/ghi thư mục `docs/` trong các skill workflow dev (cleanup, execution, fix, plan, research, init, …).
+4. Không đọc/ghi thư mục `docs/` trong workflow dev (research/plan/execution/fix/cleanup trong `AGENTS.md`, và các skill liên quan).
 
 ## Diff Review Loop
 

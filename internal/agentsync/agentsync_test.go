@@ -32,18 +32,18 @@ func TestApplyCreatesStableAndManualAgentLayout(t *testing.T) {
 
 	mustExist(t, filepath.Join(home, ".agents", "AGENTS.md"))
 	mustExist(t, filepath.Join(home, ".agents", "agents", "opencode-intern.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "cleanup", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "init", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "plan", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "loop", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "harness", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "goal", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "eval", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".agents", "skills", "_shared", "CONVENTIONS.md"))
 	mustExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustExist(t, filepath.Join(home, ".claude", "agents", "opencode-intern.md"))
 	mustExist(t, filepath.Join(home, ".grok", "AGENTS.md"))
-	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "harness", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".grok", "config.toml"))
 	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "skills", "harness", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustExist(t, filepath.Join(home, ".qwen", "settings.json"))
 	mustExist(t, filepath.Join(home, ".gemini", "GEMINI.md"))
@@ -234,7 +234,7 @@ func TestUpdateRewritesManagedPresetContent(t *testing.T) {
 	// Shared skills home cohabits registry/user tops: a foreign top-level
 	// skill is preserved. Stale files *inside* a managed preset skill are
 	// still pruned. Native mirrors only drop entries absent from shared.
-	staleInsideManaged := filepath.Join(home, ".agents", "skills", "execution", "orphan-local.md")
+	staleInsideManaged := filepath.Join(home, ".agents", "skills", "harness", "orphan-local.md")
 	if err := os.WriteFile(staleInsideManaged, []byte("stale\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -266,8 +266,8 @@ func TestUpdateRewritesManagedPresetContent(t *testing.T) {
 	mustNotExist(t, staleInsideManaged)
 	mustExist(t, foreignShared)
 	mustNotExist(t, staleNativeOnly)
-	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
-	mustExist(t, filepath.Join(home, ".claude", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "harness", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".claude", "skills", "harness", "SKILL.md"))
 
 	qwen := readJSONFile(t, filepath.Join(home, ".qwen", "settings.json"))
 	if _, ok := qwen["mcpServers"].(map[string]any)["stale"]; ok {
@@ -309,7 +309,7 @@ func TestKiroCLISelectionUsesKiroAdapter(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".kiro", "skills", "harness", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".kiro", "settings", "mcp.json"))
 	mustNotExist(t, filepath.Join(home, ".qwen", "settings.json"))
 }
@@ -339,7 +339,7 @@ func TestUpdateCopiesKiroSkillsInsteadOfSymlink(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	skillDir := filepath.Join(home, ".kiro", "skills", "execution")
+	skillDir := filepath.Join(home, ".kiro", "skills", "harness")
 	info, err := os.Lstat(skillDir)
 	if err != nil {
 		t.Fatalf("lstat after init: %v", err)
@@ -386,8 +386,8 @@ func TestGrokSelectionCreatesNativeSkills(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".grok", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
-	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "harness", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "harness", "SKILL.md"))
 	mustExist(t, filepath.Join(home, ".grok", "config.toml"))
 	grok := readFile(t, filepath.Join(home, ".grok", "config.toml"))
 	if !strings.Contains(grok, "[mcp_servers.context7]") || !strings.Contains(grok, "ns-workspace mcp") {
@@ -418,8 +418,8 @@ func TestGrokNoMCPSkipsManagedBlock(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".grok", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
-	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "harness", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "harness", "SKILL.md"))
 	mustNotExist(t, filepath.Join(home, ".grok", "config.toml"))
 }
 
@@ -480,7 +480,7 @@ func TestKiroHomeOverrideUsesKiroPresetPaths(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(kiroHome, "steering", "AGENTS.md"))
-	mustExist(t, filepath.Join(kiroHome, "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(kiroHome, "skills", "harness", "SKILL.md"))
 	mustExist(t, filepath.Join(kiroHome, "settings", "mcp.json"))
 	mustNotExist(t, filepath.Join(home, ".kiro", "steering", "AGENTS.md"))
 }
@@ -1500,12 +1500,12 @@ func TestPresetSkillsOverrideProviderTargetSkills(t *testing.T) {
 	t.Setenv("AGENTS_HOME", "")
 	t.Setenv("KIRO_HOME", "")
 
-	// Seed a conflicting "execution" skill in two provider targets. This is a
+	// Seed a conflicting "harness" skill in two provider targets. This is a
 	// skill the preset also ships, so the preset must win.
 	stale := "STALE PROVIDER SKILL\n"
 	conflicts := []string{
-		filepath.Join(home, ".claude", "skills", "execution", "SKILL.md"),
-		filepath.Join(home, ".kiro", "skills", "execution", "SKILL.md"),
+		filepath.Join(home, ".claude", "skills", "harness", "SKILL.md"),
+		filepath.Join(home, ".kiro", "skills", "harness", "SKILL.md"),
 	}
 	for _, path := range conflicts {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -1528,7 +1528,7 @@ func TestPresetSkillsOverrideProviderTargetSkills(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	presetSkill := readFile(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
+	presetSkill := readFile(t, filepath.Join(home, ".agents", "skills", "harness", "SKILL.md"))
 	for _, path := range conflicts {
 		got := readFile(t, path)
 		if got == stale {
@@ -1563,8 +1563,8 @@ func TestZCodeAdapterMaterializesNativeLayout(t *testing.T) {
 	}
 
 	mustExist(t, filepath.Join(home, ".zcode", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
-	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "harness", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "harness", "SKILL.md"))
 	// Selecting only zcode must not touch sibling providers.
 	mustNotExist(t, filepath.Join(home, ".claude", "CLAUDE.md"))
 	mustNotExist(t, filepath.Join(home, ".kiro", "AGENTS.md"))
@@ -1590,8 +1590,8 @@ func TestZCodeAliasResolvesAdapter(t *testing.T) {
 		t.Fatalf("init via zcode-cli alias failed: %v", err)
 	}
 	mustExist(t, filepath.Join(home, ".zcode", "AGENTS.md"))
-	mustExist(t, filepath.Join(home, ".agents", "skills", "execution", "SKILL.md"))
-	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".agents", "skills", "harness", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "harness", "SKILL.md"))
 }
 
 func TestCleanupManagedLinksRemovesSharedSymlinksOnly(t *testing.T) {
@@ -1602,7 +1602,7 @@ func TestCleanupManagedLinksRemovesSharedSymlinksOnly(t *testing.T) {
 	t.Setenv("KIRO_HOME", "")
 
 	agents := filepath.Join(home, ".agents")
-	sharedSkill := filepath.Join(agents, "skills", "execution")
+	sharedSkill := filepath.Join(agents, "skills", "harness")
 	if err := os.MkdirAll(sharedSkill, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1619,7 +1619,7 @@ func TestCleanupManagedLinksRemovesSharedSymlinksOnly(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(sharedSkill, filepath.Join(dir, "execution")); err != nil {
+		if err := os.Symlink(sharedSkill, filepath.Join(dir, "harness")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1643,17 +1643,17 @@ func TestCleanupManagedLinksRemovesSharedSymlinksOnly(t *testing.T) {
 		t.Fatalf("update failed: %v", err)
 	}
 
-	mustNotExist(t, filepath.Join(legacyGrok, "execution"))
-	mustNotExist(t, filepath.Join(legacyOC, "execution"))
-	mustNotExist(t, filepath.Join(legacyZ, "execution"))
-	mustNotExist(t, filepath.Join(legacyClineData, "execution"))
+	mustNotExist(t, filepath.Join(legacyGrok, "harness"))
+	mustNotExist(t, filepath.Join(legacyOC, "harness"))
+	mustNotExist(t, filepath.Join(legacyZ, "harness"))
+	mustNotExist(t, filepath.Join(legacyClineData, "harness"))
 	mustExist(t, filepath.Join(userOwned, "SKILL.md"))
 	// Cline now mirrors to ~/.cline/skills
-	mustExist(t, filepath.Join(home, ".cline", "skills", "execution", "SKILL.md"))
+	mustExist(t, filepath.Join(home, ".cline", "skills", "harness", "SKILL.md"))
 	// OpenCode/Grok/ZCode must not re-create native skill mirrors.
-	mustNotExist(t, filepath.Join(home, ".config", "opencode", "skill", "execution", "SKILL.md"))
-	mustNotExist(t, filepath.Join(home, ".grok", "skills", "execution", "SKILL.md"))
-	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "execution", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".config", "opencode", "skill", "harness", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".grok", "skills", "harness", "SKILL.md"))
+	mustNotExist(t, filepath.Join(home, ".zcode", "skills", "harness", "SKILL.md"))
 }
 
 // TestReadMCPManifestInitPrefersOverlayOverDisk asserts that when the portal

@@ -18,6 +18,9 @@ type RegistryOptions struct {
 	// HermesHome overrides HERMES_HOME / ~/.hermes for the hermes adapter.
 	// Empty means resolve via resolveHermesHome (env then ~/.hermes).
 	HermesHome string
+	// PiAgentDir overrides PI_CODING_AGENT_DIR / ~/.pi/agent for the pi adapter.
+	// Empty means resolve via resolvePiAgentDir (env then ~/.pi/agent).
+	PiAgentDir string
 	// ClaudeDesktopDir overrides the directory holding
 	// claude_desktop_config.json. Empty means derive it from the running
 	// OS via claudeDesktopConfigDir.
@@ -277,6 +280,26 @@ func NewAdapterRegistry(opts RegistryOptions) *AdapterRegistry {
 			Notes: "Hermes Agent (CLI hermes). Skills via skills.external_dirs → <agents-home>/skills (no mirror into ~/.hermes/skills). MCP merged into $HERMES_HOME/config.yaml under mcp_servers (default ~/.hermes). Respects HERMES_HOME. Does not modify SOUL.md or .env. Reload Hermes after sync to pick up MCP. YAML rewrite may drop comments in config.yaml.",
 		},
 		Plugin: HermesPlugin{Home: hermesHome},
+	}})
+
+	piAgent := resolvePiAgentDir(home, opts.PiAgentDir)
+	r.add(&SimpleAdapter{BaseAdapter: BaseAdapter{
+		Spec: AdapterSpec{
+			ID: "pi", Aliases: []string{"pi-coding-agent", "pi-agent"}, Tier: TierStable, Executables: []string{"pi"},
+			Targets: AdapterTargets{
+				// Global context: ~/.pi/agent/AGENTS.md (or $PI_CODING_AGENT_DIR/AGENTS.md).
+				// https://github.com/earendil-works/pi-mono / docs skills + context files
+				Instruction: filepath.Join(piAgent, "AGENTS.md"),
+				// Skills: pi discovers ~/.agents/skills and ~/.pi/agent/skills natively.
+				// Do not mirror — leave ~/.pi/agent/skills for user/package-owned skills.
+			},
+			Docs: []string{
+				"https://github.com/earendil-works/pi-mono",
+				"https://www.npmjs.com/package/@earendil-works/pi-coding-agent",
+			},
+			Notes: "Pi coding agent (CLI pi, package @earendil-works/pi-coding-agent). Links shared AGENTS.md into $PI_CODING_AGENT_DIR/AGENTS.md (default ~/.pi/agent). Skills load natively from ~/.agents/skills and optional ~/.pi/agent/skills — this adapter does not mirror skills. No first-party MCP config (pi philosophy: CLI tools/skills instead); settings.json / models.json / extensions are user-managed and not overwritten.",
+		},
+		Plugin: NoopPlugin{},
 	}})
 
 	return r

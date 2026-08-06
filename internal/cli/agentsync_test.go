@@ -86,7 +86,7 @@ func TestRunAgentSyncEmptyConfigDisablesOverlay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(shared), "Trigger Skills") {
+	if !strings.Contains(string(shared), "Workflow / dev") {
 		t.Fatalf("expected embedded AGENTS.md without overlay, got: %s", shared)
 	}
 }

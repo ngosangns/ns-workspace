@@ -1,6 +1,6 @@
 # ns-workspace
 
-`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Antigravity, Codex, Cline, ZCode và các adapter khác.
+`ns-workspace` là Go CLI để bootstrap và đồng bộ cấu hình AI coding agent cá nhân. Repo gom preset dùng chung cho instructions, skills, subagents, settings, hooks, registry và MCP servers, rồi materialize chúng sang các vị trí native của Claude Code, OpenCode, Grok Build, Kimi, Kiro, Qwen, Antigravity, Codex, Cline, ZCode, Hermes, Pi và các adapter khác.
 
 Ý tưởng chính là dùng `~/.agents` làm nguồn cấu hình chung. Từ đó, mỗi agent nhận cùng workflow, trigger skill và convention mà không phải bảo trì thủ công từng thư mục cấu hình riêng.
 
@@ -186,6 +186,7 @@ Stable adapters ghi vào các user-level path đã biết:
 | Cline         | `~/.cline/skills`, `~/.cline/agents`, `~/.cline/data/settings/cline_mcp_settings.json`                                                                                             |
 | ZCode         | `~/.zcode/AGENTS.md` (link từ shared); skills đọc native `~/.agents/skills` (không mirror)                                                                                        |
 | Hermes Agent  | Skills qua `skills.external_dirs` → `~/.agents/skills` trong `$HERMES_HOME/config.yaml` (default `~/.hermes`); MCP merge `mcp_servers` (remote `url`, stdio `command`/`args`); tôn trọng `HERMES_HOME`; không đụng `SOUL.md` / `.env` |
+| Pi (`pi`)      | `~/.pi/agent/AGENTS.md` (hoặc `$PI_CODING_AGENT_DIR/AGENTS.md`); skills đọc native từ `~/.agents/skills` (+ optional `~/.pi/agent/skills`, không mirror); không MCP/settings overwrite; alias `--tools pi-agent` / `pi-coding-agent` |
 
 ## Portal
 
